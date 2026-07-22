@@ -1,0 +1,42 @@
+# ==============================================================================
+# 🧪 [STAGE] Staging overlay
+# ------------------------------------------------------------------------------
+# Production-shaped: a real built image, no source mounts, restarts on failure.
+# Differs from production only where it helps verification — the database port
+# is published on loopback for inspection and limits are looser.
+#
+#   make stage-up    build and start
+#   make stage-psql  open a psql shell
+# ==============================================================================
+services:
+  db:
+    # loopback-only: reachable from this host, not from the network
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    build:
+      target: runner
+    image: ${IMAGE_NAME:-finance-tracker}:${IMAGE_TAG:-latest}-staging
+    environment:
+      APP_ENV: staging
+      NODE_ENV: production
+    ports:
+      - "${APP_PORT:-3001}:3000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

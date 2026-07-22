@@ -1,0 +1,29 @@
+# build artefacts & deps — reinstalled/rebuilt inside the image
+node_modules
+.next
+out
+build
+
+# local tooling and secrets
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.vscode
+.idea
+.claude
+
+# docker/orchestration files are not needed in the build context
+Dockerfile
+.dockerignore
+docker-compose*.yml
+docker/
+Makefile
+
+# misc
+*.log
+npm-debug.log*
+.DS_Store
+coverage
+README.md

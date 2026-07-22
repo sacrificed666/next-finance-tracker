@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const p=require\\('./node_modules/next/package.json'\\); console.log\\('next', p.version, 'engines:', JSON.stringify\\(p.engines\\)\\)\")",
+      "Bash(curl -s \"https://hub.docker.com/v2/repositories/docker/dockerfile/tags?page_size=20\")",
+      "Bash(python3 -c ' *)",
+      "Bash(make env *)",
+      "Bash(make check *)",
+      "Bash(make config *)",
+      "Bash(timeout 900 make dev-up)",
+      "Bash(timeout 120 bash -c 'until curl -sf http://localhost:3000/api/state >/dev/null 2>&1; do sleep 2; done')",
+      "Bash(curl -s http://localhost:3000/api/state)",
+      "Bash(make dev-down *)",
+      "Bash(timeout 900 make prod-up)",
+      "Bash(make prod-ps *)",
+      "Bash(curl -s -X PUT http://localhost:3000/api/state -H 'Content-Type: application/json' --data @/tmp/claude-1000/-workspaces-next-finance-tracker/227a490d-af40-40d9-b524-d2415820b992/scratchpad/state.json)",
+      "Bash(make help *)",
+      "Bash(timeout 180 bash -c 'until curl -sf http://localhost:3000/api/state >/dev/null 2>&1; do sleep 2; done')",
+      "Bash(node -p \"'next '+require\\('./package.json'\\).dependencies.next+' · react '+require\\('./package.json'\\).dependencies.react\")",
+      "Bash(awk '{print $6}')"
+    ]
+  }
+}

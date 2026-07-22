@@ -1,0 +1,60 @@
+# ==============================================================================
+# 🧾 Finance tracker — base stack (shared by every environment)
+# ------------------------------------------------------------------------------
+# This file alone is never meant to be run: each environment layers an overlay
+# from ./docker on top of it. Use the Makefile, which wires them together:
+#
+#   make dev-up     →  -f docker-compose.yml -f docker/development.yml
+#   make stage-up   →  -f docker-compose.yml -f docker/staging.yml
+#   make prod-up    →  -f docker-compose.yml -f docker/production.yml
+# ==============================================================================
+name: finance-tracker
+
+services:
+  # ────────────────────────────── 🐘 PostgreSQL ───────────────────────────────
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-finance}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finance}
+      POSTGRES_DB: ${POSTGRES_DB:-finance_tracker}
+      # keep the cluster in a subdirectory so the volume mountpoint stays clean
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # applied only when the volume is empty (first boot); `make <env>-migrate`
+      # re-applies it to existing databases — the schema is idempotent
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finance} -d ${POSTGRES_DB:-finance_tracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [finance]
+
+  # ─────────────────────────────── 🧾 Next.js app ─────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # overlays pick the stage: `dev` for hot reload, `runner` for a built image
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      # assembled from the parts above unless DATABASE_URL is set explicitly,
+      # which lets staging/production point at a managed database instead
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-finance}:${POSTGRES_PASSWORD:-finance}@db:5432/${POSTGRES_DB:-finance_tracker}}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [finance]
+
+volumes:
+  db-data:
+
+networks:
+  finance:
+    driver: bridge

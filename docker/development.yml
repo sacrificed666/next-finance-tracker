@@ -1,0 +1,36 @@
+# ==============================================================================
+# 🛠️ [DEV] Development overlay
+# ------------------------------------------------------------------------------
+# Source is bind-mounted for hot reload, ports are published for local tooling,
+# and nothing restarts on its own so a crash stays visible.
+#
+#   make dev-up      start the stack
+#   make dev-logs    follow the logs
+# ==============================================================================
+services:
+  db:
+    # published so you can attach psql / a GUI client from the host
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: "no"
+
+  app:
+    build:
+      target: dev
+    environment:
+      APP_ENV: development
+      NODE_ENV: development
+      # bind mounts on some hosts do not emit inotify events; polling keeps
+      # the dev server reloading reliably inside the container
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      # live source, with container-owned directories kept out of the way
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    restart: "no"
+    stdin_open: true
+    tty: true
