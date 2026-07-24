@@ -3,6 +3,9 @@
 import {
   useEffect,
   useId,
+  useRef,
+  type CSSProperties,
+  type MouseEvent,
   type ReactNode,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
@@ -36,20 +39,39 @@ export function PageHeader({
 
 export function GlassCard({
   title,
+  subtitle,
+  icon,
   action,
   children,
   className = "",
 }: {
   title?: string;
+  subtitle?: string;
+  icon?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <section className={`glass rounded-card p-5 ${className}`}>
-      {(title || action) && (
+      {(title || action || icon) && (
         <div className="mb-4 flex items-center justify-between gap-3">
-          {title && <h2 className="card-title">{title}</h2>}
+          <div className="flex min-w-0 items-center gap-2.5">
+            {icon && (
+              <span
+                aria-hidden
+                className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-ghost text-base"
+              >
+                {icon}
+              </span>
+            )}
+            {(title || subtitle) && (
+              <div className="min-w-0">
+                {title && <h2 className="card-title">{title}</h2>}
+                {subtitle && <p className="mt-0.5 text-xs text-ink-3">{subtitle}</p>}
+              </div>
+            )}
+          </div>
           {action}
         </div>
       )}
@@ -177,20 +199,33 @@ type ButtonVariant = "primary" | "ghost" | "danger" | "plain";
 export function Button({
   variant = "primary",
   className = "",
+  onClick,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
   const styles: Record<ButtonVariant, string> = {
     primary:
-      "btn-gradient shadow-md hover:brightness-110 active:scale-[0.97] disabled:opacity-40",
+      "btn-gradient hover:-translate-y-px hover:brightness-[1.06] active:translate-y-0 active:scale-[0.97] disabled:opacity-40 disabled:hover:translate-y-0",
     ghost:
       "bg-ghost text-ink-1 hover:bg-ghost-2 active:scale-[0.97] disabled:opacity-40",
     danger:
       "bg-expense/10 text-expense hover:bg-expense/20 active:scale-[0.97] disabled:opacity-40",
     plain: "text-accent hover:bg-accent-soft active:scale-[0.97] disabled:opacity-40",
   };
+  // swallow an accidental repeat click on the same action (double-tap, jitter)
+  // so a save/add/delete can't fire twice — actions are discrete, never held
+  const lastFired = useRef(0);
+  const guarded = onClick
+    ? (e: MouseEvent<HTMLButtonElement>) => {
+        const now = Date.now();
+        if (now - lastFired.current < 400) return;
+        lastFired.current = now;
+        onClick(e);
+      }
+    : undefined;
   return (
     <button
       type="button"
+      onClick={guarded}
       className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-[transform,background-color,filter] duration-150 ${styles[variant]} ${className}`}
       {...props}
     />
@@ -233,6 +268,37 @@ export function SegmentedControl<T extends string>({
         );
       })}
     </div>
+  );
+}
+
+export function Slider({
+  min,
+  max,
+  step = 1,
+  value,
+  onChange,
+  label,
+}: {
+  min: number;
+  max: number;
+  step?: number;
+  value: number;
+  onChange: (v: number) => void;
+  label?: string;
+}) {
+  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  return (
+    <input
+      type="range"
+      className="slider"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      aria-label={label}
+      onChange={(e) => onChange(Number(e.target.value))}
+      style={{ "--fill": `${pct}%` } as CSSProperties}
+    />
   );
 }
 
@@ -286,7 +352,7 @@ export function Field({
 }
 
 const controlBase =
-  "w-full rounded-control border border-hairline bg-ghost px-3.5 py-2.5 text-[15px] text-ink-1 outline-none transition-colors focus:border-accent focus:bg-transparent";
+  "w-full rounded-field border border-hairline bg-ghost px-3.5 py-2.5 text-[15px] text-ink-1 outline-none transition-colors focus:border-accent focus:bg-transparent";
 
 export function TextInput({
   className = "",
@@ -301,9 +367,27 @@ export function Select({
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={`${controlBase} appearance-none ${className}`} {...props}>
-      {children}
-    </select>
+    <div className="relative">
+      <select
+        className={`${controlBase} cursor-pointer appearance-none pr-10 ${className}`}
+        {...props}
+      >
+        {children}
+      </select>
+      {/* explicit chevron — the native one is removed by appearance-none */}
+      <svg
+        aria-hidden
+        viewBox="0 0 24 24"
+        className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-ink-2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="m6 9 6 6 6-6" />
+      </svg>
+    </div>
   );
 }
 
@@ -380,7 +464,7 @@ export function Sheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 backdrop-blur-sm sm:items-center"
+      className="overlay-in fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -389,7 +473,7 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="glass-strong max-h-[90dvh] w-full overflow-y-auto rounded-t-card p-5 sm:max-w-md sm:rounded-card"
+        className="sheet-panel glass-strong max-h-[90dvh] w-full overflow-y-auto rounded-t-sheet p-5 sm:max-w-md sm:rounded-sheet"
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 id={titleId} className="text-lg font-bold text-ink-1">

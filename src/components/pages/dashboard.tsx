@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import {
   CategoryBreakdown,
+  Donut,
   MonthlyColumns,
+  PeriodTabs,
+  Sparkline,
   StackedArea,
   StatTile,
   type AreaPoint,
@@ -70,10 +73,28 @@ export function DashboardPage() {
 
   const worth = netWorth(state, today);
 
+  // 12 months feeds the stat-tile sparklines; the cash-flow chart has its own
+  // selectable window
   const series = monthlySeries(state.transactions, month, 12, settings);
   const current = series[series.length - 1];
   const previous = series[series.length - 2];
   const netDelta = current.net - previous.net;
+
+  // liquid runway: how many months your cash covers typical spending
+  const monthsWithExpense = series.filter((m) => m.expense > 0);
+  const avgExpense = monthsWithExpense.length
+    ? monthsWithExpense.reduce((s, m) => s + m.expense, 0) / monthsWithExpense.length
+    : 0;
+  const runwayMonths = avgExpense > 0 ? worth.savings / avgExpense : 0;
+  const runwayLabel =
+    avgExpense <= 0 || worth.savings <= 0
+      ? "—"
+      : runwayMonths >= 24
+        ? "24+ mo"
+        : `${runwayMonths < 10 ? runwayMonths.toFixed(1) : Math.round(runwayMonths)} mo`;
+
+  const [cashMonths, setCashMonths] = useState(12);
+  const cashSeries = monthlySeries(state.transactions, month, cashMonths, settings);
 
   const byCategory = expensesByCategory(state.transactions, month, settings);
   const segments: BreakdownSegment[] = [...byCategory.entries()].map(
@@ -147,7 +168,7 @@ export function DashboardPage() {
     0,
     Math.round(averageMonthlyNet(state.transactions, month, 3, settings)),
   );
-  const projection = buildProjection(state, today, 60, monthlySavings);
+  const projection = buildProjection(state, today, 60, { monthlySavings });
   const projectionPoints: AreaPoint[] = projection.map((p) => ({
     label: p.month,
     a: p.savings,
@@ -201,7 +222,7 @@ export function DashboardPage() {
           />
         </GlassCard>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
+        <div className="stagger grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
           {/* hero: net worth, spans two rows next to tiles + cash flow */}
           <GlassCard className="glow md:col-span-2 xl:col-span-4 xl:row-span-2">
             <div>
@@ -228,28 +249,49 @@ export function DashboardPage() {
                 <span className="text-ink-2">Investments</span>
                 <Money amount={worth.investments} currency={base} className="font-semibold text-ink-1" />
               </div>
+              {worth.debts > 0 && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-ink-2">Debts</span>
+                  <span className="tnum font-semibold text-expense">
+                    −{formatMoney(worth.debts, base, { compact: true })}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-3">
                 <span className="text-ink-2">Subscriptions</span>
                 <span className="tnum font-semibold text-ink-1">
                   {formatMoney(subsTotal, base, { compact: true })}/mo
                 </span>
               </div>
-              {worth.total > 0 && (
+              {worth.assets > 0 && (
                 <div className="pt-1">
                   <div className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden>
                     <div
                       className="bg-series-1"
-                      style={{ width: `${(worth.savings / worth.total) * 100}%` }}
+                      style={{ width: `${(worth.savings / worth.assets) * 100}%` }}
                     />
                     <div
                       className="bg-series-5"
-                      style={{ width: `${(worth.investments / worth.total) * 100}%` }}
+                      style={{ width: `${(worth.investments / worth.assets) * 100}%` }}
                     />
                   </div>
                   <p className="mt-1.5 text-[11px] text-ink-3">
-                    {formatPercent((worth.savings / worth.total) * 100, 0)} accounts ·{" "}
-                    {formatPercent((worth.investments / worth.total) * 100, 0)} investments
+                    {formatPercent((worth.savings / worth.assets) * 100, 0)} accounts ·{" "}
+                    {formatPercent((worth.investments / worth.assets) * 100, 0)} investments
                   </p>
+                </div>
+              )}
+            </div>
+            <div className="mt-4 flex items-end justify-between gap-3 border-t border-hairline pt-4">
+              <div className="min-w-0">
+                <p className="card-title">Runway</p>
+                <p className="mt-1 text-xl font-bold text-ink-1">{runwayLabel}</p>
+                <p className="text-[11px] text-ink-3">savings cover spending</p>
+              </div>
+              {series.some((m) => m.net !== 0) && (
+                <div className="text-right">
+                  <p className="card-title mb-1.5">Net flow · 12 mo</p>
+                  <Sparkline values={series.map((m) => m.net)} width={150} height={46} />
                 </div>
               )}
             </div>
@@ -288,10 +330,15 @@ export function DashboardPage() {
           />
 
           {/* cash flow — beside the hero on xl */}
-          <GlassCard title="12-month cash flow" className="md:col-span-2 xl:col-span-8">
+          <GlassCard
+            title="Cash flow"
+            icon="📊"
+            action={<PeriodTabs value={cashMonths} onChange={setCashMonths} />}
+            className="md:col-span-2 xl:col-span-8"
+          >
             {state.transactions.length > 0 ? (
               <MonthlyColumns
-                data={series.map((m) => ({
+                data={cashSeries.map((m) => ({
                   month: m.month,
                   income: m.income,
                   expense: m.expense,
@@ -312,8 +359,9 @@ export function DashboardPage() {
           {/* breakdowns row */}
           <GlassCard
             title="Spending by category"
+            icon="💸"
             action={<CardLink href="/transactions" />}
-            className="xl:col-span-4"
+            className="self-start xl:col-span-4"
           >
             {segments.length > 0 ? (
               <CategoryBreakdown segments={segments} currency={base} rowExtra={budgetExtra} />
@@ -329,8 +377,9 @@ export function DashboardPage() {
 
           <GlassCard
             title="Net worth by holding"
+            icon="🏦"
             action={<CardLink href="/balance" />}
-            className="xl:col-span-4"
+            className="self-start xl:col-span-4"
           >
             {holdingSegments.length > 0 ? (
               <CategoryBreakdown segments={holdingSegments} currency={base} maxSegments={7} />
@@ -344,11 +393,16 @@ export function DashboardPage() {
             )}
           </GlassCard>
 
-          <GlassCard title="Currency allocation" className="xl:col-span-4">
-            {allocationSegments.length > 0 ? (
+          <GlassCard title="Currency allocation" icon="🌐" className="self-start xl:col-span-4">
+            {allocationSegments.some((s) => s.value > 0) ? (
               <>
-                <CategoryBreakdown segments={allocationSegments} currency={base} />
-                <p className="mt-3 text-xs text-ink-3">
+                <Donut
+                  segments={allocationSegments.filter((s) => s.value > 0)}
+                  currency={base}
+                  centerLabel="Held in"
+                  legendValues={false}
+                />
+                <p className="mt-4 text-xs text-ink-3">
                   Native amounts:{" "}
                   {allocation
                     .map((a) => formatMoney(a.native, a.currency, { compact: true }))
@@ -368,6 +422,7 @@ export function DashboardPage() {
           {(state.savings.length > 0 || state.investments.length > 0) && (
             <GlassCard
               title="5-year outlook"
+              icon="🔮"
               action={<CardLink href="/forecast" />}
               className="md:col-span-2 xl:col-span-8"
             >
@@ -391,6 +446,7 @@ export function DashboardPage() {
 
           <GlassCard
             title="Subscriptions"
+            icon="📱"
             action={<CardLink href="/transactions" />}
             className="xl:col-span-4"
           >
@@ -446,6 +502,7 @@ export function DashboardPage() {
           {/* recent + quick add */}
           <GlassCard
             title="Recent transactions"
+            icon="🧾"
             action={<CardLink href="/transactions" />}
             className="md:col-span-2 xl:col-span-8"
           >
@@ -551,7 +608,7 @@ function QuickAdd({ className = "" }: { className?: string }) {
   };
 
   return (
-    <GlassCard title="Quick add" className={className}>
+    <GlassCard title="Quick add" icon="⚡" className={className}>
       <div className="space-y-3">
         <SegmentedControl
           options={[
@@ -561,22 +618,18 @@ function QuickAdd({ className = "" }: { className?: string }) {
           value={type}
           onChange={switchType}
         />
-        <div className="flex gap-2">
-          <TextInput
-            inputMode="decimal"
-            placeholder="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            aria-label="Amount"
-            className="flex-1"
-          />
-          <SegmentedControl
-            options={CURRENCIES.map((c) => ({ value: c, label: c }))}
-            value={currency}
-            onChange={setCurrency}
-            className="w-40 shrink-0"
-          />
-        </div>
+        <TextInput
+          inputMode="decimal"
+          placeholder="0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          aria-label="Amount"
+        />
+        <SegmentedControl
+          options={CURRENCIES.map((c) => ({ value: c, label: c }))}
+          value={currency}
+          onChange={setCurrency}
+        />
         <Select
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}

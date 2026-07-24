@@ -85,7 +85,21 @@ export function investmentValueInBase(
 export interface NetWorth {
   savings: number;
   investments: number;
+  /** total owed across all debts, in base currency (>= 0) */
+  debts: number;
+  /** gross holdings: savings + investments */
+  assets: number;
+  /** net worth = assets - debts */
   total: number;
+}
+
+/** total owed across every debt, converted to the base currency (>= 0) */
+export function debtsTotal(state: AppState): number {
+  const { settings } = state;
+  return state.debts.reduce(
+    (sum, d) => sum + convert(d.balance, d.currency, settings.baseCurrency, settings.rates),
+    0,
+  );
 }
 
 /* ────────────────────────────── account balances ────────────────────────────── */
@@ -145,7 +159,9 @@ export function netWorth(state: AppState, todayISO: string): NetWorth {
     (sum, inv) => sum + investmentValueInBase(inv, todayISO, settings),
     0,
   );
-  return { savings, investments, total: savings + investments };
+  const debts = debtsTotal(state);
+  const assets = savings + investments;
+  return { savings, investments, debts, assets, total: assets - debts };
 }
 
 export interface ProjectionPoint {
@@ -155,19 +171,30 @@ export interface ProjectionPoint {
   total: number;
 }
 
+export interface ProjectionOptions {
+  /** amount added to savings each month, in the base currency */
+  monthlySavings: number;
+  /** annual return the savings pot earns, percent (0 = cash under a mattress) */
+  savingsReturnPct?: number;
+}
+
 /**
  * Wealth projection from `todayISO`, monthly steps, in the base currency.
- * savings grow by `monthlySavings` per month plus payout interest received;
- * investments grow by their own compounding and contributions.
+ * Savings compound at `savingsReturnPct` and grow by `monthlySavings` plus any
+ * payout interest received that month; investments grow by their own
+ * compounding and contributions.
  */
 export function buildProjection(
   state: AppState,
   todayISO: string,
   horizonMonths: number,
-  monthlySavings: number,
+  opts: ProjectionOptions,
 ): ProjectionPoint[] {
   const { settings } = state;
   const startMonth = monthOf(todayISO);
+  const day = Number(todayISO.slice(8, 10));
+  const monthlyReturn = (opts.savingsReturnPct ?? 0) / 100 / 12;
+
   const balancesNow = accountBalances(state, todayISO);
   const savingsNow = state.savings.reduce(
     (sum, acc) =>
@@ -175,29 +202,41 @@ export function buildProjection(
       convert(balancesNow.get(acc.id) ?? 0, acc.currency, settings.baseCurrency, settings.rates),
     0,
   );
-  const paidOutNow = state.investments.reduce(
-    (sum, inv) =>
-      sum +
-      convert(investmentAt(inv, todayISO).paidOut, inv.currency, settings.baseCurrency, settings.rates),
-    0,
-  );
 
-  const points: ProjectionPoint[] = [];
-  for (let m = 0; m <= horizonMonths; m++) {
-    const month = addMonths(startMonth, m);
+  // investment value + cumulative payout at a given month offset, in base
+  const investmentsAt = (m: number) => {
     // clamp today's day-of-month into the target month — a raw concatenation
-    // like `${month}-31` silently rolls over into the next month whenever
-    // the target month is shorter (JS Date parses "2027-02-31" as Mar 3).
-    const atISO = dateInMonth(month, Number(todayISO.slice(8, 10)));
-    let invValue = 0;
+    // like `${month}-31` silently rolls over into the next month whenever the
+    // target month is shorter (JS Date parses "2027-02-31" as Mar 3).
+    const atISO = dateInMonth(addMonths(startMonth, m), day);
+    let value = 0;
     let paidOut = 0;
     for (const inv of state.investments) {
       const snap = investmentAt(inv, atISO);
-      invValue += convert(snap.value, inv.currency, settings.baseCurrency, settings.rates);
+      value += convert(snap.value, inv.currency, settings.baseCurrency, settings.rates);
       paidOut += convert(snap.paidOut, inv.currency, settings.baseCurrency, settings.rates);
     }
-    const savings = savingsNow + monthlySavings * m + Math.max(0, paidOut - paidOutNow);
-    points.push({ month, savings, investments: invValue, total: savings + invValue });
+    return { value, paidOut };
+  };
+
+  const first = investmentsAt(0);
+  const points: ProjectionPoint[] = [
+    { month: startMonth, savings: savingsNow, investments: first.value, total: savingsNow + first.value },
+  ];
+
+  let savings = savingsNow;
+  let prevPaidOut = first.paidOut;
+  for (let m = 1; m <= horizonMonths; m++) {
+    const inv = investmentsAt(m);
+    const payoutInflow = Math.max(0, inv.paidOut - prevPaidOut);
+    prevPaidOut = inv.paidOut;
+    savings = savings * (1 + monthlyReturn) + opts.monthlySavings + payoutInflow;
+    points.push({
+      month: addMonths(startMonth, m),
+      savings,
+      investments: inv.value,
+      total: savings + inv.value,
+    });
   }
   return points;
 }

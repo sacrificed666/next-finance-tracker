@@ -4,6 +4,7 @@ import type {
   Budget,
   Category,
   Currency,
+  Debt,
   IncomeBreakdown,
   Investment,
   RecurringRule,
@@ -60,6 +61,7 @@ export function normalizeState(raw: unknown): AppState {
   const savings = asArray(raw.savings).filter(isSavings).map(normalizeAccount);
   const investments = asArray(raw.investments).filter(isInvestment);
   const budgets = asArray(raw.budgets).filter(isBudget);
+  const debts = asArray(raw.debts).filter(isDebt).map(normalizeDebt);
 
   const s = isRecord(raw.settings) ? raw.settings : {};
   const rates = isRecord(s.rates) ? s.rates : {};
@@ -74,6 +76,7 @@ export function normalizeState(raw: unknown): AppState {
     savings,
     investments,
     budgets,
+    debts,
     settings: {
       baseCurrency: isCurrency(s.baseCurrency) ? s.baseCurrency : "UAH",
       theme: s.theme === "light" || s.theme === "dark" ? s.theme : "system",
@@ -408,6 +411,40 @@ function isBudget(v: unknown): v is Budget {
     v.limit > 0 &&
     isCurrency(v.currency)
   );
+}
+
+function isDebt(v: unknown): v is Debt {
+  return (
+    isRecord(v) &&
+    isNonEmptyString(v.id) &&
+    isNonEmptyString(v.name) &&
+    typeof v.icon === "string" &&
+    (v.kind === "mortgage" || v.kind === "loan" || v.kind === "card") &&
+    isCurrency(v.currency) &&
+    isFiniteNumber(v.balance) &&
+    v.balance >= 0 &&
+    (v.principal === undefined || (isFiniteNumber(v.principal) && v.principal >= 0)) &&
+    (v.annualRatePct === undefined ||
+      (isFiniteNumber(v.annualRatePct) && v.annualRatePct >= 0 && v.annualRatePct <= 200)) &&
+    (v.monthlyPayment === undefined ||
+      (isFiniteNumber(v.monthlyPayment) && v.monthlyPayment >= 0))
+  );
+}
+
+/** strip optional fields down to their meaningful values (0/empty → absent) */
+function normalizeDebt(v: Debt): Debt {
+  return {
+    id: v.id,
+    name: v.name,
+    icon: v.icon,
+    kind: v.kind,
+    currency: v.currency,
+    balance: v.balance,
+    principal: v.principal && v.principal > 0 ? v.principal : undefined,
+    annualRatePct: v.annualRatePct && v.annualRatePct > 0 ? v.annualRatePct : undefined,
+    monthlyPayment: v.monthlyPayment && v.monthlyPayment > 0 ? v.monthlyPayment : undefined,
+    note: v.note?.trim() ? v.note : undefined,
+  };
 }
 
 /** serialize state for a downloadable backup file */

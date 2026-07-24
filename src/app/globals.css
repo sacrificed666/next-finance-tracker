@@ -105,8 +105,12 @@
   --color-series-7: var(--series-7);
   --color-series-8: var(--series-8);
 
-  --radius-card: 1.75rem;
+  /* one radius scale used everywhere — chips, controls, fields, cards, sheets */
+  --radius-chip: 0.625rem;
   --radius-control: 0.875rem;
+  --radius-field: 1rem;
+  --radius-card: 1.5rem;
+  --radius-sheet: 1.75rem;
 }
 
 html,
@@ -115,6 +119,11 @@ body {
 }
 
 body {
+  /* the hero-card glow (`.glow::before`, inset −14%) intentionally bleeds past
+     its card; clip the horizontal spill so it never adds a page scrollbar.
+     `clip` (unlike `hidden`) creates no scroll container, so the sticky header
+     keeps sticking to the viewport. */
+  overflow-x: clip;
   background-color: var(--bg);
   color: var(--ink-1);
   font-family: var(--font-sans);
@@ -236,7 +245,9 @@ body {
 .glow::before {
   content: "";
   position: absolute;
-  inset: -14%;
+  /* bleed vertically only — horizontal bleed would spill past a full-width
+     card and add a page scrollbar; the aura emanates from the top anyway */
+  inset: -12% 0;
   z-index: -1;
   border-radius: inherit;
   background: radial-gradient(
@@ -260,10 +271,20 @@ body {
   color: transparent;
 }
 
-/* gradient accent fill for primary actions */
+/* gradient accent fill for primary actions — colored shadow + top sheen give
+   it depth; the button component adds the hover-lift and press. */
 .btn-gradient {
+  position: relative;
   background: var(--accent-grad);
   color: #fff;
+  box-shadow:
+    0 3px 12px color-mix(in oklab, var(--accent) 42%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.btn-gradient:hover {
+  box-shadow:
+    0 6px 20px color-mix(in oklab, var(--accent) 50%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
 }
 
 /* dashboard-style card section label */
@@ -322,11 +343,181 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* ─────────────────────────── range sliders ─────────────────────────── */
+/* one styled slider used app-wide (Forecast horizon, amounts, etc.) */
+input[type="range"].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+}
+/* the track is drawn on a ::before via a gradient set inline (--fill %) */
+input[type="range"].slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent-2) var(--fill, 50%),
+    var(--fill-ghost-2) var(--fill, 50%),
+    var(--fill-ghost-2) 100%
+  );
+}
+input[type="range"].slider::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--fill-ghost-2);
+}
+input[type="range"].slider::-moz-range-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--accent), var(--accent-2));
+}
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -6px;
+  height: 20px;
+  width: 20px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  transition: transform 120ms ease;
+}
+input[type="range"].slider::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+input[type="range"].slider:hover::-webkit-slider-thumb,
+input[type="range"].slider:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+input[type="range"].slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px var(--accent-soft), 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+
+/* ──────────────────────────── scrollbars ──────────────────────────── */
+:root {
+  --scroll-thumb: color-mix(in oklab, var(--ink-3) 55%, transparent);
+  --scroll-thumb-hover: var(--ink-3);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* a slim, fully-rounded thumb floated inside a transparent gutter; the 4px
+   padding-box border keeps it clear of the content edge on both axes */
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 999px;
+  border: 4px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* keep native select dropdowns readable in either theme */
+select {
+  color-scheme: light dark;
+}
+
+/* ──────────────────────────── animations ──────────────────────────── */
+
+/* content enters with a soft rise; a stagger var lets grids cascade */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise {
+  animation: rise 0.4s cubic-bezier(0.22, 0.68, 0.24, 1) both;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+/* stagger direct children of a grid/stack for a gentle cascade on mount */
+.stagger > * {
+  animation: rise 0.42s cubic-bezier(0.22, 0.68, 0.24, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+.stagger > *:nth-child(7) { animation-delay: 220ms; }
+.stagger > *:nth-child(n + 8) { animation-delay: 240ms; }
+
+/* modal backdrop + panel entrances */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes sheet-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sheet-slide {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.overlay-in {
+  animation: overlay-in 0.2s ease both;
+}
+.sheet-panel {
+  animation: sheet-slide 0.32s cubic-bezier(0.22, 0.68, 0.24, 1) both;
+}
+@media (min-width: 640px) {
+  .sheet-panel {
+    animation: sheet-pop 0.26s cubic-bezier(0.22, 0.68, 0.24, 1) both;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
   }
 }

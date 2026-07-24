@@ -94,6 +94,46 @@ function TooltipRow({
   );
 }
 
+/** compact window selector for time-series charts (6M / 1Y / 2Y / 3Y) */
+export const CHART_PERIODS = [
+  { months: 6, label: "6M" },
+  { months: 12, label: "1Y" },
+  { months: 24, label: "2Y" },
+  { months: 36, label: "3Y" },
+] as const;
+
+export function PeriodTabs({
+  value,
+  onChange,
+  options = CHART_PERIODS,
+}: {
+  value: number;
+  onChange: (months: number) => void;
+  options?: ReadonlyArray<{ months: number; label: string }>;
+}) {
+  return (
+    <div className="flex rounded-full bg-ghost p-0.5" role="radiogroup" aria-label="Period">
+      {options.map((p) => {
+        const active = p.months === value;
+        return (
+          <button
+            key={p.months}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(p.months)}
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors duration-150 ${
+              active ? "glass-strong text-ink-1" : "text-ink-3 hover:text-ink-1"
+            }`}
+          >
+            {p.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ChartLegend({
   items,
 }: {
@@ -302,6 +342,159 @@ export interface BreakdownSegment {
   icon: string;
   value: number;
   colorSlot: number;
+}
+
+/**
+ * Donut for a small part-to-whole (≤ 6 slices) with a hero total in the hole.
+ * A legend keys the slices, so identity never rests on colour alone.
+ */
+export function Donut({
+  segments,
+  currency,
+  centerLabel,
+  size,
+  stacked = false,
+  legendValues = true,
+}: {
+  segments: BreakdownSegment[]; // sorted desc
+  currency: Currency;
+  centerLabel?: string;
+  /** fixed diameter; omit in `stacked` mode to auto-fit the container width */
+  size?: number;
+  /** legend below the ring (fills a narrow column) instead of beside it */
+  stacked?: boolean;
+  /** show the per-slice amount in the legend (off keeps it compact: label + %) */
+  legendValues?: boolean;
+}) {
+  const [hover, setHover] = useState<string | null>(null);
+  const [ref, width] = useMeasure<HTMLDivElement>();
+  const total = segments.reduce((s, seg) => s + seg.value, 0);
+
+  // stacked donuts grow to the card width (clamped); otherwise a fixed diameter
+  const dim = size ?? (stacked && width > 0 ? Math.max(150, Math.min(224, width)) : 168);
+  const stroke = Math.max(14, dim * 0.14);
+  const radius = (dim - stroke) / 2;
+  const cx = dim / 2;
+  const c = 2 * Math.PI * radius;
+  const gap = segments.length > 1 ? 3 : 0; // px of surface between slices
+
+  const arcs: Array<{ seg: BreakdownSegment; dashArray: string; dashOffset: number }> = [];
+  let offset = 0;
+  for (const seg of segments) {
+    if (total > 0) {
+      const len = (seg.value / total) * c;
+      const dash = Math.max(0, len - gap);
+      arcs.push({ seg, dashArray: `${dash} ${c - dash}`, dashOffset: -offset });
+      offset += len;
+    }
+  }
+
+  const focused = hover ? segments.find((s) => s.id === hover) : null;
+
+  // one deterministic hit-test on the whole ring: which slice does the
+  // pointer's angle fall into? per-circle handlers flicker at slice seams.
+  const hitTest = (e: React.PointerEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scale = dim / rect.width;
+    const x = (e.clientX - rect.left) * scale - cx;
+    const y = (e.clientY - rect.top) * scale - cx;
+    const dist = Math.hypot(x, y);
+    if (dist < radius - stroke / 2 - 6 || dist > radius + stroke / 2 + 6) {
+      setHover(null);
+      return;
+    }
+    // angle measured clockwise from the top (matches the -90° arc rotation)
+    let ang = Math.atan2(x, -y);
+    if (ang < 0) ang += 2 * Math.PI;
+    const frac = ang / (2 * Math.PI);
+    let acc = 0;
+    for (const seg of segments) {
+      acc += seg.value / total;
+      if (frac <= acc) {
+        setHover(seg.id);
+        return;
+      }
+    }
+  };
+
+  if (total <= 0) return null;
+
+  return (
+    <div
+      ref={ref}
+      className={
+        stacked
+          ? "flex flex-col items-center gap-5"
+          : "flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6"
+      }
+    >
+      <svg
+        width={dim}
+        height={dim}
+        viewBox={`0 0 ${dim} ${dim}`}
+        role="img"
+        aria-label={`${centerLabel ?? "Breakdown"} donut`}
+        className="shrink-0"
+        onPointerMove={hitTest}
+        onPointerLeave={() => setHover(null)}
+        style={{ touchAction: "none" }}
+      >
+        <circle cx={cx} cy={cx} r={radius} fill="none" stroke="var(--fill-ghost)" strokeWidth={stroke} />
+        {arcs.map(({ seg, dashArray, dashOffset }) => {
+          const dim = hover !== null && hover !== seg.id;
+          return (
+            <circle
+              key={seg.id}
+              cx={cx}
+              cy={cx}
+              r={radius}
+              fill="none"
+              stroke={SERIES_VAR(seg.colorSlot)}
+              strokeWidth={stroke}
+              strokeDasharray={dashArray}
+              strokeDashoffset={dashOffset}
+              strokeLinecap="round"
+              transform={`rotate(-90 ${cx} ${cx})`}
+              opacity={dim ? 0.35 : 1}
+              style={{ transition: "opacity 140ms ease", pointerEvents: "none" }}
+            />
+          );
+        })}
+        <text x={cx} y={cx - 6} textAnchor="middle" fontSize={11} fontWeight={650} fill="var(--ink-3)" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          {focused ? focused.label : (centerLabel ?? "Total")}
+        </text>
+        <text x={cx} y={cx + 14} textAnchor="middle" fontSize={17} fontWeight={700} className="tnum" fill="var(--ink-1)">
+          {formatMoney(focused ? focused.value : total, currency, { compact: true })}
+        </text>
+      </svg>
+
+      <ul className="w-full min-w-0 space-y-2">
+        {segments.map((seg) => (
+          <li
+            key={seg.id}
+            className="flex items-center gap-2.5 text-sm"
+            onPointerMove={() => setHover(seg.id)}
+            onPointerLeave={() => setHover(null)}
+          >
+            <span
+              aria-hidden
+              className="size-2.5 shrink-0 rounded-sm"
+              style={{ background: SERIES_VAR(seg.colorSlot) }}
+            />
+            <span className="min-w-0 flex-1 truncate text-ink-1">{seg.label}</span>
+            <span className="tnum text-xs text-ink-3">
+              {((seg.value / total) * 100).toFixed(0)}%
+            </span>
+            {legendValues && (
+              <span className="tnum whitespace-nowrap font-semibold text-ink-1">
+                {formatMoney(seg.value, currency, { compact: true })}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export function CategoryBreakdown({

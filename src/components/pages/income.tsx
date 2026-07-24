@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   CategoryBreakdown,
   MonthlyColumns,
+  PeriodTabs,
   StatTile,
   type BreakdownSegment,
 } from "@/components/charts";
@@ -109,6 +110,8 @@ export function IncomePage() {
   /* ---------- stats ---------- */
 
   const series = monthlySeries(state.transactions, nowMonth, 12, settings);
+  const [chartMonths, setChartMonths] = useState(12);
+  const chartSeries = monthlySeries(state.transactions, nowMonth, chartMonths, settings);
   const thisMonth = series[series.length - 1].income;
   const withIncome = series.filter((m) => m.income > 0).slice(-6);
   const avg6 =
@@ -294,7 +297,7 @@ export function IncomePage() {
         action={<Button onClick={openAdd}>+ Add income</Button>}
       />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+      <div className="stagger grid grid-cols-1 gap-4 xl:grid-cols-12">
         <StatTile
           className="xl:col-span-4"
           label="This month"
@@ -313,10 +316,16 @@ export function IncomePage() {
           value={formatMoney(ytd, base, { compact: true })}
         />
 
-        <GlassCard title="Income by month" className="xl:col-span-7">
+        <GlassCard
+          title="Income by month"
+          subtitle="What came in each month"
+          icon="📊"
+          action={<PeriodTabs value={chartMonths} onChange={setChartMonths} />}
+          className="xl:col-span-7"
+        >
           {hasIncome ? (
             <MonthlyColumns
-              data={series.map((m) => ({ month: m.month, income: m.income, expense: m.expense }))}
+              data={chartSeries.map((m) => ({ month: m.month, income: m.income, expense: m.expense }))}
               currency={base}
             />
           ) : (
@@ -329,7 +338,12 @@ export function IncomePage() {
           )}
         </GlassCard>
 
-        <GlassCard title="By source (12 months)" className="xl:col-span-5">
+        <GlassCard
+          title="By source"
+          subtitle="Last 12 months"
+          icon="🥧"
+          className="xl:col-span-5"
+        >
           {catSegments.length > 0 ? (
             <CategoryBreakdown segments={catSegments} currency={base} maxSegments={7} />
           ) : (
@@ -341,7 +355,7 @@ export function IncomePage() {
           )}
         </GlassCard>
 
-        <GlassCard title="All income" className="xl:col-span-12">
+        <GlassCard title="All income" subtitle="Newest first" icon="🧾" className="xl:col-span-12">
           {!hasIncome ? (
             <EmptyState
               icon="💸"
@@ -350,7 +364,7 @@ export function IncomePage() {
               action={<Button onClick={openAdd}>+ Add income</Button>}
             />
           ) : (
-            <div className="space-y-5">
+            <div className="stagger space-y-5">
               {months.map((month) => {
                 const rows = byMonth
                   .get(month)!

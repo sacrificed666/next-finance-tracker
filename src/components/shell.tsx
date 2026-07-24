@@ -2,31 +2,34 @@
 
 import type { ReactNode } from "react";
 import { useStore } from "@/lib/store";
-import { TabBar, TopBar } from "./nav";
+import { MobileTopBar, Sidebar, TabBar } from "./nav";
 
 /**
  * App chrome + hydration gate: pages are prerendered without localStorage
  * data, so their content renders only after the store hydrates on the
  * client — the skeleton is what both server and first client render show.
- * Desktop chrome is a single floating top bar; content runs full-bleed
- * underneath (capped only on ultra-wide monitors).
+ * Desktop chrome is a fixed glass rail on the left; content is inset past it.
+ * On mobile the rail collapses to a slim top bar plus a bottom tab bar.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const { hydrated, loadError, reload } = useStore();
   return (
     <>
       <div className="app-backdrop" aria-hidden />
-      <div className="mx-auto w-full max-w-[1760px] px-4 pb-28 pt-4 md:px-8 md:pb-10">
-        <TopBar />
-        <main className="min-w-0">
-          {!hydrated ? (
-            <Skeleton />
-          ) : loadError ? (
-            <DatabaseError message={loadError} onRetry={reload} />
-          ) : (
-            children
-          )}
-        </main>
+      <Sidebar />
+      <div className="md:pl-64">
+        <div className="mx-auto w-full max-w-[1600px] px-4 pb-28 pt-4 md:px-8 md:pb-10 md:pt-8">
+          <MobileTopBar />
+          <main className="min-w-0">
+            {!hydrated ? (
+              <Skeleton />
+            ) : loadError ? (
+              <DatabaseError message={loadError} onRetry={reload} />
+            ) : (
+              children
+            )}
+          </main>
+        </div>
       </div>
       <TabBar />
     </>

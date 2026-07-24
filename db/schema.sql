@@ -149,4 +149,20 @@ CREATE TABLE IF NOT EXISTS budgets (
     currency     text NOT NULL
 );
 
+-- ─────────────────────────────────── debts ──────────────────────────────────
+-- Liabilities (mortgage, loan, credit card). `balance` is what is still owed
+-- and is subtracted from net worth; you lower it manually as you pay it down.
+CREATE TABLE IF NOT EXISTS debts (
+    id              text PRIMARY KEY,
+    name            text NOT NULL,
+    icon            text NOT NULL DEFAULT '',
+    kind            text NOT NULL DEFAULT 'loan' CHECK (kind IN ('mortgage', 'loan', 'card')),
+    currency        text NOT NULL,
+    balance         double precision NOT NULL DEFAULT 0,
+    principal       double precision,
+    annual_rate_pct double precision,
+    monthly_payment double precision,
+    note            text
+);
+
 COMMIT;

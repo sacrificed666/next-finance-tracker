@@ -58,6 +58,7 @@ export const DEFAULT_STATE: AppState = {
   savings: [],
   investments: [],
   budgets: [],
+  debts: [],
   settings: {
     baseCurrency: "UAH",
     theme: "dark",

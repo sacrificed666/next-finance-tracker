@@ -16,7 +16,7 @@ export async function loadState(): Promise<AppState> {
   await ensureSchema();
   const pool = getPool();
 
-  const [settings, categories, recurring, subscriptions, transactions, savings, investments, budgets] =
+  const [settings, categories, recurring, subscriptions, transactions, savings, investments, budgets, debts] =
     await Promise.all([
       pool.query(
         `SELECT base_currency, theme, tax_rate_pct, tax_fixed_uah, rate_usd, rate_eur,
@@ -54,6 +54,11 @@ export async function loadState(): Promise<AppState> {
            FROM investments ORDER BY name`,
       ),
       pool.query(`SELECT category_id, limit_amount, currency FROM budgets`),
+      pool.query(
+        `SELECT id, name, icon, kind, currency, balance, principal,
+                annual_rate_pct, monthly_payment, note
+           FROM debts ORDER BY name`,
+      ),
     ]);
 
   const s = settings.rows[0];
@@ -136,6 +141,18 @@ export async function loadState(): Promise<AppState> {
       categoryId: r.category_id,
       limit: r.limit_amount,
       currency: r.currency,
+    })),
+    debts: debts.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      icon: r.icon,
+      kind: r.kind,
+      currency: r.currency,
+      balance: r.balance,
+      principal: r.principal ?? undefined,
+      annualRatePct: r.annual_rate_pct ?? undefined,
+      monthlyPayment: r.monthly_payment ?? undefined,
+      note: r.note ?? undefined,
     })),
     settings: s
       ? {
@@ -263,6 +280,16 @@ export async function saveState(incoming: AppState): Promise<void> {
       state.budgets.map((b) => [b.categoryId, b.limit, b.currency]),
     );
 
+    await upsert(
+      client,
+      "debts",
+      ["id", "name", "icon", "kind", "currency", "balance", "principal", "annual_rate_pct", "monthly_payment", "note"],
+      state.debts.map((d) => [
+        d.id, d.name, d.icon, d.kind, d.currency, d.balance,
+        d.principal ?? null, d.annualRatePct ?? null, d.monthlyPayment ?? null, d.note ?? null,
+      ]),
+    );
+
     // drop what the client removed — dependants first, categories last
     await deleteMissing(client, "transactions", "id", state.transactions.map((t) => t.id));
     await deleteMissing(client, "recurring_rules", "id", state.recurring.map((r) => r.id));
@@ -270,6 +297,7 @@ export async function saveState(incoming: AppState): Promise<void> {
     await deleteMissing(client, "savings_accounts", "id", state.savings.map((a) => a.id));
     await deleteMissing(client, "investments", "id", state.investments.map((i) => i.id));
     await deleteMissing(client, "budgets", "category_id", state.budgets.map((b) => b.categoryId));
+    await deleteMissing(client, "debts", "id", state.debts.map((d) => d.id));
     await deleteMissing(client, "categories", "id", state.categories.map((c) => c.id));
 
     const st = state.settings;

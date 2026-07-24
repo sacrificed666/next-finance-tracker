@@ -159,6 +159,31 @@ export interface Budget {
   currency: Currency;
 }
 
+export type DebtKind = "mortgage" | "loan" | "card";
+
+/**
+ * Money you owe — a mortgage, a consumer loan, a credit-card balance. The
+ * outstanding `balance` is a liability: it is subtracted from net worth. Unlike
+ * accounts, a debt is tracked by its current balance directly (you lower it as
+ * you pay it down), not derived from transactions.
+ */
+export interface Debt {
+  id: string;
+  name: string;
+  icon: string;
+  kind: DebtKind;
+  currency: Currency;
+  /** outstanding amount still owed, in `currency` */
+  balance: number;
+  /** original amount borrowed, for payoff context (optional) */
+  principal?: number;
+  /** annual interest rate, percent (optional) */
+  annualRatePct?: number;
+  /** scheduled monthly payment, in `currency` (optional) */
+  monthlyPayment?: number;
+  note?: string;
+}
+
 export type ThemePref = "system" | "light" | "dark";
 
 export type RatesSource = "manual" | "nbu" | "monobank";
@@ -188,5 +213,6 @@ export interface AppState {
   savings: SavingsAccount[];
   investments: Investment[];
   budgets: Budget[];
+  debts: Debt[];
   settings: Settings;
 }

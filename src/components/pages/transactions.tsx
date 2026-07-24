@@ -13,7 +13,9 @@ import {
   todayISO,
 } from "@/lib/date";
 import {
+  expensesByCategory,
   monthTotals,
+  monthlySeries,
   spentInCategory,
   subscriptionsMonthlyTotal,
 } from "@/lib/finmath";
@@ -44,7 +46,13 @@ import {
   Switch,
   TextInput,
 } from "@/components/ui";
-import { StatTile } from "@/components/charts";
+import {
+  Donut,
+  MonthlyColumns,
+  PeriodTabs,
+  StatTile,
+  type BreakdownSegment,
+} from "@/components/charts";
 
 const TX_TYPE_OPTIONS: Array<{ value: TxType; label: string }> = [
   { value: "expense", label: "Expense" },
@@ -105,6 +113,14 @@ const PERIOD_OPTIONS: Array<{ value: SubscriptionPeriod; label: string }> = [
   { value: "yearly", label: "Yearly" },
 ];
 
+/** top `cap-1` categories as-is, the rest folded into one "Other" slice */
+function foldSegments(all: BreakdownSegment[], cap = 6): BreakdownSegment[] {
+  if (all.length <= cap) return all;
+  const head = all.slice(0, cap - 1);
+  const rest = all.slice(cap - 1).reduce((s, x) => s + x.value, 0);
+  return [...head, { id: "__other", label: "Other", icon: "•", value: rest, colorSlot: 8 }];
+}
+
 interface BudgetForm {
   /** categoryId of the budget being edited; null = new */
   editingId: string | null;
@@ -138,6 +154,24 @@ export function TransactionsPage() {
 
   const canGoNext = monthDiff(nowMonth, month) < 12;
   const totals = monthTotals(state.transactions, month, settings);
+
+  /* ---------- charts ---------- */
+  const [flowMonths, setFlowMonths] = useState(6);
+  const flowSeries = monthlySeries(state.transactions, month, flowMonths, settings);
+  const spendEntries = [...expensesByCategory(state.transactions, month, settings).entries()];
+  const spendSegments = foldSegments(
+    spendEntries.map(([categoryId, value]) => {
+      const cat = catById.get(categoryId);
+      return {
+        id: categoryId,
+        label: cat?.name ?? "Uncategorized",
+        icon: cat?.icon ?? "❓",
+        value,
+        colorSlot: cat?.colorSlot ?? 3,
+      };
+    }),
+  );
+  const hasAnyTx = state.transactions.length > 0;
 
   const byDay = new Map<string, Transaction[]>();
   for (const tx of state.transactions) {
@@ -529,7 +563,7 @@ export function TransactionsPage() {
         subtitle="Ledger, recurring payments, subscriptions and budgets"
         action={<Button onClick={openAddTx}>+ Add</Button>}
       />
-      <div className="space-y-5">
+      <div className="stagger space-y-5">
         {/* month switcher */}
         <div className="glass flex items-center gap-3 rounded-card px-4 py-3">
           <button
@@ -575,6 +609,41 @@ export function TransactionsPage() {
             tone={totals.net < 0 ? "expense" : "income"}
           />
         </div>
+
+        {/* charts */}
+        {hasAnyTx && (
+          <div className="grid items-stretch gap-4 lg:grid-cols-2">
+            <GlassCard title="Where it went" subtitle={formatMonth(month)} icon="🍩" className="flex flex-col">
+              {spendSegments.length > 0 ? (
+                <div className="flex flex-1 flex-col justify-center">
+                  <Donut segments={spendSegments} currency={base} centerLabel="Spent" size={220} />
+                </div>
+              ) : (
+                <EmptyState
+                  icon="🧾"
+                  title="No spending this month"
+                  hint="Expenses you log this month break down here by category."
+                />
+              )}
+            </GlassCard>
+            <GlassCard
+              title="Cash flow"
+              subtitle="Income vs expenses"
+              icon="📊"
+              action={<PeriodTabs value={flowMonths} onChange={setFlowMonths} />}
+            >
+              <MonthlyColumns
+                data={flowSeries.map((m) => ({
+                  month: m.month,
+                  income: m.income,
+                  expense: m.expense,
+                }))}
+                currency={base}
+                height={220}
+              />
+            </GlassCard>
+          </div>
+        )}
 
         <div className="grid items-start gap-4 xl:grid-cols-5">
         {/* transaction list */}
@@ -666,6 +735,8 @@ export function TransactionsPage() {
         {/* subscriptions */}
         <GlassCard
           title="Subscriptions"
+          subtitle="Recurring services"
+          icon="📱"
           action={
             <Button variant="ghost" onClick={openAddSub}>
               + Add
@@ -744,6 +815,8 @@ export function TransactionsPage() {
         {/* recurring */}
         <GlassCard
           title="Recurring"
+          subtitle="Auto-posted each month"
+          icon="🔁"
           action={
             <Button variant="ghost" onClick={openAddRec}>
               + Add
@@ -805,6 +878,8 @@ export function TransactionsPage() {
         {/* budgets */}
         <GlassCard
           title="Monthly budgets"
+          subtitle="Per-category limits"
+          icon="🎯"
           action={
             <Button
               variant="ghost"

@@ -11,7 +11,7 @@ import {
   Sheet,
   TextInput,
 } from "@/components/ui";
-import { CURRENCIES, DEFAULT_STATE, ICON_CHOICES } from "@/lib/constants";
+import { CURRENCIES, CURRENCY_SYMBOL, DEFAULT_STATE, ICON_CHOICES } from "@/lib/constants";
 import { formatDate, todayISO } from "@/lib/date";
 import { exportBackup, parseBackup } from "@/lib/backup";
 import { parseAmount } from "@/lib/money";
@@ -65,6 +65,11 @@ export function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const visibleCategories = state.categories.filter((c) => c.kind === kindTab);
+  const expenseCount = state.categories.filter((c) => c.kind === "expense").length;
+  const kindOptions = KIND_OPTIONS.map((o) => ({
+    ...o,
+    label: `${o.label} (${o.value === "expense" ? expenseCount : state.categories.length - expenseCount})`,
+  }));
 
   const commitUsd = () => {
     const v = parseAmount(usdStr);
@@ -265,11 +270,14 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" />
-      <div className="grid items-start gap-4 xl:grid-cols-2">
-        <div className="space-y-4">
-        <GlassCard title="General">
-          <div className="space-y-4">
+      <PageHeader
+        title="Settings"
+        subtitle="Currencies, taxes, categories and your data — all in one place"
+      />
+      <div className="stagger grid min-w-0 items-start gap-4 xl:grid-cols-2">
+        <div className="min-w-0 space-y-4">
+        <GlassCard title="General" subtitle="Currency and appearance" icon="⚙️">
+          <div className="min-w-0 space-y-4">
             <Field label="Base currency" hint="Totals and charts are shown in it">
               <SegmentedControl
                 options={CURRENCIES.map((c) => ({ value: c, label: c }))}
@@ -291,7 +299,17 @@ export function SettingsPage() {
           </div>
         </GlassCard>
 
-        <GlassCard title="Exchange rates">
+        <GlassCard title="Exchange rates" subtitle="How ₴ / $ / € convert" icon="💱">
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            {(["USD", "EUR"] as const).map((c) => (
+              <div key={c} className="rounded-field bg-ghost px-3.5 py-3 text-center">
+                <p className="text-xs text-ink-3">1 {CURRENCY_SYMBOL[c]}</p>
+                <p className="tnum mt-0.5 text-lg font-bold text-ink-1">
+                  {settings.rates[c].toFixed(2)} ₴
+                </p>
+              </div>
+            ))}
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="USD → UAH" hint={meta?.USD ? `buy ${meta.USD.buy} · sell ${meta.USD.sell}` : undefined}>
               <TextInput
@@ -332,7 +350,7 @@ export function SettingsPage() {
           {ratesError && <p className="mt-2 text-sm text-expense">{ratesError}</p>}
         </GlassCard>
 
-        <GlassCard title="Salary tax (ФОП)">
+        <GlassCard title="Salary tax (ФОП)" subtitle="Deductions applied to income" icon="🧾">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Tax rate" hint="% removed (single tax + military levy)">
               <TextInput
@@ -360,48 +378,59 @@ export function SettingsPage() {
 
         </div>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
         <GlassCard
           title="Categories"
+          subtitle={`${state.categories.length} total · tap to edit`}
+          icon="🏷️"
           action={
             <Button variant="ghost" onClick={openAddCategory}>
               + Add
             </Button>
           }
         >
-          <SegmentedControl options={KIND_OPTIONS} value={kindTab} onChange={setKindTab} />
-          <ul className="mt-4 space-y-1">
+          <SegmentedControl options={kindOptions} value={kindTab} onChange={setKindTab} />
+          <ul className="mt-4 space-y-0.5">
             {visibleCategories.length === 0 && (
-              <li className="py-4 text-center text-sm text-ink-2">
+              <li className="py-6 text-center text-sm text-ink-2">
                 No categories of this kind yet.
               </li>
             )}
             {visibleCategories.map((cat) => (
               <li
                 key={cat.id}
-                className="flex items-center gap-3 rounded-2xl px-2 py-2"
+                className="group flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-ghost"
               >
                 <span
                   aria-hidden
-                  className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ghost text-lg"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full text-lg"
+                  style={{
+                    backgroundColor: `color-mix(in oklab, var(--series-${cat.colorSlot}) 20%, transparent)`,
+                  }}
                 >
                   {cat.icon}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">
                   {cat.name}
                 </span>
-                <Button variant="ghost" onClick={() => openEditCategory(cat)}>
-                  Edit
-                </Button>
-                <Button variant="ghost" onClick={() => requestDeleteCategory(cat.id)}>
-                  Delete
-                </Button>
+                <div className="flex shrink-0 items-center opacity-60 transition-opacity group-hover:opacity-100">
+                  <IconAction label={`Edit ${cat.name}`} onClick={() => openEditCategory(cat)}>
+                    ✏️
+                  </IconAction>
+                  <IconAction
+                    label={`Delete ${cat.name}`}
+                    danger
+                    onClick={() => requestDeleteCategory(cat.id)}
+                  >
+                    🗑️
+                  </IconAction>
+                </div>
               </li>
             ))}
           </ul>
         </GlassCard>
 
-        <GlassCard title="Data">
+        <GlassCard title="Data" subtitle="Backup, restore, reset" icon="💾">
           <div className="divide-y divide-hairline">
             <DataRow
               title="Export to file"
@@ -417,17 +446,18 @@ export function SettingsPage() {
                 </Button>
               }
             />
-            <DataRow
-              title="Reset everything"
-              caption="Deletes all data permanently"
-              action={
-                <Button variant="danger" onClick={() => setResetOpen(true)}>
-                  Reset
-                </Button>
-              }
-            />
           </div>
           {importError && <p className="mt-3 text-sm text-expense">{importError}</p>}
+          {/* destructive action, set apart in its own danger zone */}
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-expense/20 bg-expense/8 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-expense">Reset everything</p>
+              <p className="text-xs text-ink-3">Deletes all data permanently</p>
+            </div>
+            <Button variant="danger" onClick={() => setResetOpen(true)}>
+              Reset
+            </Button>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -437,7 +467,15 @@ export function SettingsPage() {
           />
         </GlassCard>
 
-        <GlassCard title="About">
+        <GlassCard title="About" subtitle="What lives in your database" icon="ℹ️">
+          <div className="mb-4 grid grid-cols-3 gap-2 text-center">
+            <AtAGlance label="Transactions" value={state.transactions.length} />
+            <AtAGlance label="Categories" value={state.categories.length} />
+            <AtAGlance
+              label="Holdings"
+              value={state.savings.length + state.investments.length}
+            />
+          </div>
           <p className="text-sm leading-relaxed text-ink-2">
             All data is stored in your own PostgreSQL database and is never sent anywhere
             else. Changes are saved automatically a moment after you make them. Export a
@@ -541,6 +579,40 @@ export function SettingsPage() {
         confirmLabel="Reset"
       />
     </>
+  );
+}
+
+function IconAction({
+  label,
+  onClick,
+  danger,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className={`flex size-8 items-center justify-center rounded-full text-sm transition-colors hover:bg-ghost-2 active:scale-90 ${
+        danger ? "hover:bg-expense/15" : ""
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AtAGlance({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-field bg-ghost px-2 py-3">
+      <p className="tnum text-xl font-bold text-ink-1">{value}</p>
+      <p className="mt-0.5 text-[11px] text-ink-3">{label}</p>
+    </div>
   );
 }
 

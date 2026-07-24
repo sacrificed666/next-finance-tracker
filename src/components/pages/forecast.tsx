@@ -8,13 +8,17 @@ import {
   Field,
   GlassCard,
   PageHeader,
+  SegmentedControl,
+  Slider,
+  Switch,
   TextInput,
 } from "@/components/ui";
-import { CURRENCY_SYMBOL } from "@/lib/constants";
-import { currentMonth, formatMonthShort, todayISO } from "@/lib/date";
-import { averageMonthlyNet, buildProjection, netWorth } from "@/lib/finmath";
-import { formatMoney, formatPercent, parseAmount } from "@/lib/money";
+import { CURRENCIES, CURRENCY_SYMBOL } from "@/lib/constants";
+import { currentMonth, formatMonthCompact, formatMonthShort, todayISO } from "@/lib/date";
+import { averageMonthlyNet, buildProjection } from "@/lib/finmath";
+import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
 import { useStore } from "@/lib/store";
+import type { Currency } from "@/lib/types";
 
 function LinkButton({ href, children }: { href: string; children: ReactNode }) {
   return (
@@ -27,95 +31,202 @@ function LinkButton({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
+const num = (s: string) => {
+  const v = parseAmount(s);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+};
+
+// Long-run average CPI per currency — the hryvnia erodes far faster than the
+// dollar or euro, so "today's money" is discounted at the *view* currency's rate.
+const INFLATION_PCT: Record<Currency, number> = { UAH: 10, USD: 3, EUR: 2.5 };
+
 export function ForecastPage() {
   const { state } = useStore();
   const { settings } = state;
   const base = settings.baseCurrency;
   const today = todayISO();
+  const startMonth = currentMonth();
 
+  /* ---------- assumptions ---------- */
   const [years, setYears] = useState(10);
-  const [savingsInput, setSavingsInput] = useState<string>(() =>
-    String(
-      Math.max(
-        0,
-        Math.round(averageMonthlyNet(state.transactions, currentMonth(), 3, settings)),
-      ),
-    ),
+  const [view, setView] = useState<Currency>(base);
+  const [returnPct, setReturnPct] = useState(0);
+  const [inflationOn, setInflationOn] = useState(false);
+  const inflationPct = INFLATION_PCT[view]; // depends on the currency being shown
+
+  // monthly saving entered per currency — the whole point of a multi-currency plan
+  const [saveByCur, setSaveByCur] = useState<Record<Currency, string>>(() => {
+    const avg = Math.max(
+      0,
+      Math.round(averageMonthlyNet(state.transactions, startMonth, 3, settings)),
+    );
+    return {
+      UAH: base === "UAH" ? String(avg) : "",
+      USD: base === "USD" ? String(avg) : "",
+      EUR: base === "EUR" ? String(avg) : "",
+    };
+  });
+
+  // sum the per-currency contributions into the base currency
+  const monthlySavingsBase = CURRENCIES.reduce(
+    (sum, c) => sum + convert(num(saveByCur[c]), c, base, settings.rates),
+    0,
   );
 
-  const parsed = parseAmount(savingsInput);
-  const monthlySavings = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  /* ---------- projection (computed in base, shown in `view`) ---------- */
+  // the forecast projects the wealth you are building — accounts + investments.
+  // Debts are a Balance-sheet concern; they don't grow, so they stay out of it.
+  const projection = buildProjection(state, today, years * 12, {
+    monthlySavings: monthlySavingsBase,
+    savingsReturnPct: returnPct,
+  });
 
-  const worth = netWorth(state, today);
-  const projection = buildProjection(state, today, years * 12, monthlySavings);
-  const last = projection[projection.length - 1];
-  const diff = last.total - worth.total;
+  const inflMonthly = inflationOn ? inflationPct / 100 / 12 : 0;
+  // base value at month index i → the display currency, then discounted at the
+  // view currency's own inflation so purchasing power is measured in that basket
+  const show = (baseValue: number, i: number) =>
+    convert(baseValue, base, view, settings.rates) / Math.pow(1 + inflMonthly, i);
+
+  const assetsNow = projection[0].total; // gross holdings today, in base
+  const nowTotal = show(assetsNow, 0);
+  const endTotal = show(projection[projection.length - 1].total, projection.length - 1);
+  const diff = endTotal - nowTotal;
 
   const isEmpty =
     state.savings.length === 0 &&
     state.investments.length === 0 &&
-    monthlySavings === 0;
+    monthlySavingsBase === 0;
 
   const tickEvery = years >= 3 ? 12 : 3;
-  const points: AreaPoint[] = projection.map((p) => ({
+  const points: AreaPoint[] = projection.map((p, i) => ({
     label: p.month,
-    a: p.savings,
-    b: p.investments,
+    a: show(p.savings, i),
+    b: show(p.investments, i),
   }));
-  const yearRows = projection.filter((_, i) => i % 12 === 0);
+  const yearRows = projection
+    .map((p, i) => ({ p, i }))
+    .filter(({ i }) => i % 12 === 0);
+
+  /* ---------- goal calculator ---------- */
+  const [goalAmount, setGoalAmount] = useState("");
+  const [goalCurrency, setGoalCurrency] = useState<Currency>(base);
+  const goalBase = convert(num(goalAmount), goalCurrency, base, settings.rates);
+  const goalHitIndex =
+    goalBase > 0 ? projection.findIndex((p) => p.total >= goalBase) : -1;
+  const goalHitMonth = goalHitIndex >= 0 ? projection[goalHitIndex].month : null;
+  const alreadyThere = goalBase > 0 && assetsNow >= goalBase;
 
   return (
     <>
-      <PageHeader title="Forecast" subtitle="Savings + investments over time" />
-      <div className="space-y-5">
-        <GlassCard>
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1">
-              <Field label={`Horizon: ${years} ${years === 1 ? "year" : "years"}`}>
-                <input
-                  type="range"
-                  min={1}
-                  max={30}
-                  step={1}
-                  value={years}
-                  onChange={(e) => setYears(Number(e.target.value))}
-                  aria-label="Forecast horizon in years"
-                  className="h-11 w-full"
-                  style={{ accentColor: "var(--accent)" }}
-                />
-              </Field>
+      <PageHeader
+        title="Forecast"
+        subtitle="Project your wealth, in any currency, under your own assumptions"
+        action={
+          <SegmentedControl
+            options={CURRENCIES.map((c) => ({ value: c, label: c }))}
+            value={view}
+            onChange={setView}
+            className="w-44"
+          />
+        }
+      />
+
+      <div className="stagger space-y-4">
+        {/* assumptions */}
+        <GlassCard title="Assumptions" subtitle="Tune the projection" icon="🎛️">
+          <div className="grid gap-x-6 gap-y-5 lg:grid-cols-2">
+            <div>
+              <div className="mb-2 flex items-baseline justify-between">
+                <span className="text-[13px] font-medium text-ink-2">Horizon</span>
+                <span className="tnum text-sm font-semibold text-ink-1">
+                  {years} {years === 1 ? "year" : "years"}
+                </span>
+              </div>
+              <Slider min={1} max={40} value={years} onChange={setYears} label="Horizon in years" />
             </div>
-            <div className="min-w-0 flex-1">
-              <Field
-                label={`Monthly saving, ${CURRENCY_SYMBOL[base]}`}
-                hint="prefilled with your 3-month average net flow"
-              >
-                <TextInput
-                  inputMode="decimal"
-                  value={savingsInput}
-                  onChange={(e) => setSavingsInput(e.target.value)}
-                  placeholder="0"
-                />
-              </Field>
+
+            <div>
+              <div className="mb-2 flex items-baseline justify-between">
+                <span className="text-[13px] font-medium text-ink-2">
+                  Return on savings
+                </span>
+                <span className="tnum text-sm font-semibold text-ink-1">
+                  {formatPercent(returnPct)}/yr
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={25}
+                step={0.5}
+                value={returnPct}
+                onChange={setReturnPct}
+                label="Annual return on savings"
+              />
+            </div>
+
+            <div className="lg:col-span-2">
+              <span className="mb-2 block text-[13px] font-medium text-ink-2">
+                Monthly saving — split across currencies
+              </span>
+              <div className="grid grid-cols-3 gap-3">
+                {CURRENCIES.map((c) => (
+                  <div key={c} className="relative">
+                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-3">
+                      {CURRENCY_SYMBOL[c]}
+                    </span>
+                    <TextInput
+                      inputMode="decimal"
+                      value={saveByCur[c]}
+                      onChange={(e) =>
+                        setSaveByCur((prev) => ({ ...prev, [c]: e.target.value }))
+                      }
+                      placeholder="0"
+                      className="pl-8"
+                      aria-label={`Monthly saving in ${c}`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-ink-3">
+                {monthlySavingsBase > 0
+                  ? `≈ ${formatMoney(convert(monthlySavingsBase, base, view, settings.rates), view, { exact: true })} / month combined`
+                  : "The ₴ field is prefilled with your 3-month average net flow."}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 lg:col-span-2">
+              <div>
+                <p className="text-[15px] font-medium text-ink-1">Show in today’s money</p>
+                <p className="mt-0.5 text-xs text-ink-3">
+                  Real terms — discount {CURRENCY_SYMBOL[view]} by {formatPercent(inflationPct, 1)}/yr,
+                  its long-run inflation
+                </p>
+              </div>
+              <Switch
+                checked={inflationOn}
+                onChange={setInflationOn}
+                label="Adjust for inflation"
+              />
             </div>
           </div>
         </GlassCard>
 
+        {/* headline numbers */}
         <div className="grid grid-cols-3 gap-4">
-          <StatTile label="Now" value={formatMoney(worth.total, base, { compact: true })} />
+          <StatTile label="Now" value={formatMoney(nowTotal, view, { compact: true })} />
           <StatTile
-            label={`In ${years} yr`}
-            value={formatMoney(last.total, base, { compact: true })}
+            label={`In ${years} yr${inflationOn ? " (real)" : ""}`}
+            value={formatMoney(endTotal, view, { compact: true })}
           />
           <StatTile
             label="Growth"
-            value={formatMoney(diff, base, { compact: true, sign: true })}
-            tone="income"
+            value={formatMoney(diff, view, { compact: true, sign: true })}
+            tone={diff >= 0 ? "income" : "expense"}
             delta={
-              worth.total > 0
+              nowTotal > 0
                 ? {
-                    text: `${diff > 0 ? "+" : ""}${formatPercent((diff / worth.total) * 100)}`,
-                    good: true,
+                    text: `${diff >= 0 ? "+" : ""}${formatPercent((diff / nowTotal) * 100)}`,
+                    good: diff >= 0,
                   }
                 : undefined
             }
@@ -137,24 +248,83 @@ export function ForecastPage() {
             />
           </GlassCard>
         ) : (
-          <div className="grid items-start gap-4 xl:grid-cols-3">
-            <GlassCard title="Wealth projection" className="xl:col-span-2">
-              <StackedArea
-                points={points}
-                currency={base}
-                height={320}
-                xTickEvery={tickEvery}
-                xTickFormat={(label) =>
-                  tickEvery === 12 ? label.slice(0, 4) : formatMonthShort(label)
-                }
-              />
-              <p className="mt-3 text-xs text-ink-3">
-                Payout-type interest is added to savings as it is received. Savings themselves
-                earn no interest in this projection.
-              </p>
-            </GlassCard>
+          <>
+            <div className="grid items-start gap-4 xl:grid-cols-3">
+              <GlassCard title={`Wealth projection · ${view}`} icon="📈" className="xl:col-span-2">
+                <StackedArea
+                  points={points}
+                  currency={view}
+                  height={320}
+                  xTickEvery={tickEvery}
+                  xTickFormat={(label) =>
+                    tickEvery === 12 ? label.slice(0, 4) : formatMonthShort(label)
+                  }
+                />
+                <p className="mt-3 text-xs text-ink-3">
+                  Savings compound at {formatPercent(returnPct)}/yr; payout interest is added as
+                  it is received. Investments follow their own terms.
+                  {inflationOn && " Values are shown in today’s purchasing power."}
+                </p>
+              </GlassCard>
 
-            <GlassCard title="Year by year">
+              {/* goal calculator */}
+              <GlassCard title="Reach a goal" subtitle="When you hit a target" icon="🎯">
+                <p className="mb-3 text-sm text-ink-2">
+                  How long until you have a certain amount?
+                </p>
+                <Field label="Target amount">
+                  <TextInput
+                    inputMode="decimal"
+                    value={goalAmount}
+                    onChange={(e) => setGoalAmount(e.target.value)}
+                    placeholder="e.g. 20 000"
+                  />
+                </Field>
+                <div className="mt-3">
+                  <Field label="Currency">
+                    <SegmentedControl
+                      options={CURRENCIES.map((c) => ({ value: c, label: c }))}
+                      value={goalCurrency}
+                      onChange={setGoalCurrency}
+                    />
+                  </Field>
+                </div>
+
+                <div className="mt-4 rounded-field bg-ghost p-4 text-center">
+                  {goalBase <= 0 ? (
+                    <p className="text-sm text-ink-3">Enter a target to see when you reach it.</p>
+                  ) : alreadyThere ? (
+                    <>
+                      <p className="text-2xl">🎉</p>
+                      <p className="mt-1 text-sm font-semibold text-income">
+                        You’re already there
+                      </p>
+                    </>
+                  ) : goalHitMonth ? (
+                    <>
+                      <p className="card-title">Reached around</p>
+                      <p className="hero-number mt-1 text-2xl font-bold">
+                        {formatMonthCompact(goalHitMonth)}
+                      </p>
+                      <p className="mt-1 text-xs text-ink-3">
+                        in {goalHitIndex} month{goalHitIndex === 1 ? "" : "s"}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-ink-1">
+                        Not within {years} years
+                      </p>
+                      <p className="mt-1 text-xs text-ink-3">
+                        Save more, raise the return, or extend the horizon.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </GlassCard>
+            </div>
+
+            <GlassCard title={`Year by year · ${view}`} icon="📅">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -166,19 +336,19 @@ export function ForecastPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {yearRows.map((p, i) => (
+                    {yearRows.map(({ p, i }) => (
                       <tr key={p.month} className="border-b border-hairline last:border-b-0">
                         <td className="py-2.5 pr-3 text-ink-1">
                           {i === 0 ? "Now" : p.month.slice(0, 4)}
                         </td>
                         <td className="tnum px-3 py-2.5 text-right text-ink-2">
-                          {formatMoney(p.savings, base, { compact: true })}
+                          {formatMoney(show(p.savings, i), view, { compact: true })}
                         </td>
                         <td className="tnum px-3 py-2.5 text-right text-ink-2">
-                          {formatMoney(p.investments, base, { compact: true })}
+                          {formatMoney(show(p.investments, i), view, { compact: true })}
                         </td>
                         <td className="tnum py-2.5 pl-3 text-right font-semibold text-ink-1">
-                          {formatMoney(p.total, base, { compact: true })}
+                          {formatMoney(show(p.total, i), view, { compact: true })}
                         </td>
                       </tr>
                     ))}
@@ -186,7 +356,7 @@ export function ForecastPage() {
                 </table>
               </div>
             </GlassCard>
-          </div>
+          </>
         )}
       </div>
     </>

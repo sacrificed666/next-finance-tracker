@@ -64,6 +64,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // guards the debounced writer against firing for the state we just loaded
   const dirty = useRef(false);
+  // save serialization: at most one PUT is ever in flight, and it always sends
+  // the newest state — overlapping writes can no longer interleave on the server
+  const stateRef = useRef(state);
+  const savingRef = useRef(false);
+  const resaveRef = useRef(false);
+
+  // keep the latest state reachable from the async writer (updated post-render,
+  // never during render, so the compiler's ref rule is satisfied)
+  useEffect(() => {
+    stateRef.current = state;
+  });
 
   const load = useCallback(async () => {
     try {
@@ -92,24 +103,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void load();
   }, [load]);
 
-  // persist to Postgres (debounced) once something actually changed
+  // persist to Postgres, debounced, once something actually changed. The
+  // debounce coalesces rapid edits; the serialized writer below guarantees only
+  // one PUT is ever in flight and it always sends the newest state, so
+  // overlapping saves can never interleave and re-create rows on the server.
   useEffect(() => {
     if (!hydrated || !dirty.current) return;
-    if (persistTimer.current) clearTimeout(persistTimer.current);
-    persistTimer.current = setTimeout(() => {
+    const save = async (): Promise<void> => {
+      if (savingRef.current) {
+        resaveRef.current = true; // a save is running — send the latest next
+        return;
+      }
+      savingRef.current = true;
       setSync("saving");
-      fetch(STATE_ENDPOINT, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state),
-        keepalive: true,
-      })
-        .then(async (res) => {
-          if (!res.ok) throw new Error(`Server responded with ${res.status}`);
-          setSync("idle");
-        })
-        .catch(() => setSync("error"));
-    }, 500);
+      try {
+        const res = await fetch(STATE_ENDPOINT, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(stateRef.current),
+          keepalive: true,
+        });
+        if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+        setSync("idle");
+      } catch {
+        setSync("error");
+        resaveRef.current = true; // retry the latest state on the next change
+      } finally {
+        savingRef.current = false;
+        if (resaveRef.current) {
+          resaveRef.current = false;
+          void save();
+        }
+      }
+    };
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => void save(), 500);
     return () => {
       if (persistTimer.current) clearTimeout(persistTimer.current);
     };
@@ -183,7 +211,10 @@ export function materializeRecurring(state: AppState): AppState {
     changed = true;
     for (const m of due) {
       newTx.push({
-        id: uid(),
+        // deterministic id: one posting per (rule, month). Re-running
+        // materialization, importing a backup, or overlapping saves can never
+        // create a second copy — the id is the same, so an upsert dedups it.
+        id: `rec:${rule.id}:${m}`,
         type: rule.type,
         amount: rule.amount,
         currency: rule.currency,
@@ -211,7 +242,8 @@ export function materializeRecurring(state: AppState): AppState {
     changed = true;
     for (const m of due) {
       newTx.push({
-        id: uid(),
+        // deterministic id: one charge per (subscription, month) — see above
+        id: `sub:${sub.id}:${m}`,
         type: "expense",
         amount: perMonth,
         currency: sub.currency,

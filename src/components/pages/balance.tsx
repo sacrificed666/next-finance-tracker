@@ -35,6 +35,8 @@ import type {
   Compounding,
   CompoundingFreq,
   Currency,
+  Debt,
+  DebtKind,
   Investment,
   SavingsAccount,
 } from "@/lib/types";
@@ -84,6 +86,38 @@ interface InvestmentForm {
   note: string;
 }
 
+/* ---------- debt form ---------- */
+
+const DEBT_KIND_OPTIONS: Array<{ value: DebtKind; label: string }> = [
+  { value: "mortgage", label: "Mortgage" },
+  { value: "loan", label: "Loan" },
+  { value: "card", label: "Credit card" },
+];
+
+const DEBT_KIND_ICON: Record<DebtKind, string> = {
+  mortgage: "🏠",
+  loan: "🏦",
+  card: "💳",
+};
+
+const DEBT_KIND_LABEL: Record<DebtKind, string> = {
+  mortgage: "Mortgage",
+  loan: "Loan",
+  card: "Credit card",
+};
+
+interface DebtForm {
+  id: string | null;
+  name: string;
+  kind: DebtKind;
+  currency: Currency;
+  balance: string;
+  principal: string;
+  rate: string;
+  monthlyPayment: string;
+  note: string;
+}
+
 /** value trajectory in own currency: monthly points over the last year */
 function sparkValues(inv: Investment, today: string): number[] {
   const nowMonth = monthOf(today);
@@ -121,6 +155,11 @@ export function BalancePage() {
   const [invForm, setInvForm] = useState<InvestmentForm | null>(null);
   const [invError, setInvError] = useState<string | null>(null);
   const [invDeleteId, setInvDeleteId] = useState<string | null>(null);
+
+  /* ---------- debts state ---------- */
+  const [debtForm, setDebtForm] = useState<DebtForm | null>(null);
+  const [debtError, setDebtError] = useState<string | null>(null);
+  const [debtDeleteId, setDebtDeleteId] = useState<string | null>(null);
 
   /* ---------- investments totals ---------- */
   const invTotals = state.investments.reduce(
@@ -386,18 +425,117 @@ export function BalancePage() {
     setInvForm(null);
   };
 
+  /* ---------- debt handlers ---------- */
+
+  const openAddDebt = () => {
+    setDebtForm({
+      id: null,
+      name: "",
+      kind: "mortgage",
+      currency: "UAH",
+      balance: "",
+      principal: "",
+      rate: "",
+      monthlyPayment: "",
+      note: "",
+    });
+    setDebtError(null);
+  };
+
+  const openEditDebt = (debt: Debt) => {
+    setDebtForm({
+      id: debt.id,
+      name: debt.name,
+      kind: debt.kind,
+      currency: debt.currency,
+      balance: String(debt.balance),
+      principal: debt.principal != null ? String(debt.principal) : "",
+      rate: debt.annualRatePct != null ? String(debt.annualRatePct) : "",
+      monthlyPayment: debt.monthlyPayment != null ? String(debt.monthlyPayment) : "",
+      note: debt.note ?? "",
+    });
+    setDebtError(null);
+  };
+
+  const submitDebt = () => {
+    if (!debtForm) return;
+    const name = debtForm.name.trim();
+    if (!name) {
+      setDebtError("Name the debt.");
+      return;
+    }
+    const balance = parseAmount(debtForm.balance);
+    if (!Number.isFinite(balance) || balance < 0) {
+      setDebtError("Outstanding balance must be a non-negative number.");
+      return;
+    }
+    const optional = (raw: string, max: number, msg: string): number | undefined | null => {
+      if (raw.trim() === "") return undefined;
+      const v = parseAmount(raw);
+      if (!Number.isFinite(v) || v < 0 || v > max) {
+        setDebtError(msg);
+        return null; // signal invalid
+      }
+      return v > 0 ? v : undefined;
+    };
+    const principal = optional(debtForm.principal, 1e12, "Original amount looks off.");
+    if (principal === null) return;
+    const rate = optional(debtForm.rate, 200, "Rate must be between 0 and 200% per year.");
+    if (rate === null) return;
+    const monthlyPayment = optional(debtForm.monthlyPayment, 1e12, "Monthly payment looks off.");
+    if (monthlyPayment === null) return;
+    const note = debtForm.note.trim();
+
+    const fields = {
+      name,
+      icon: DEBT_KIND_ICON[debtForm.kind],
+      kind: debtForm.kind,
+      currency: debtForm.currency,
+      balance,
+      principal,
+      annualRatePct: rate,
+      monthlyPayment,
+      note: note || undefined,
+    };
+
+    if (debtForm.id) {
+      const id = debtForm.id;
+      update((s) => ({
+        ...s,
+        debts: s.debts.map((d) => (d.id === id ? { ...d, ...fields } : d)),
+      }));
+    } else {
+      update((s) => ({ ...s, debts: [...s.debts, { id: uid(), ...fields }] }));
+    }
+    setDebtForm(null);
+  };
+
+  const confirmDeleteDebt = () => {
+    if (!debtDeleteId) return;
+    update((s) => ({ ...s, debts: s.debts.filter((d) => d.id !== debtDeleteId) }));
+    setDebtDeleteId(null);
+    setDebtForm(null);
+  };
+
   const deletingAccount = state.savings.find((a) => a.id === accDeleteId);
   const deletingInvestment = state.investments.find((i) => i.id === invDeleteId);
+  const deletingDebt = state.debts.find((d) => d.id === debtDeleteId);
 
-  const isEmpty = state.savings.length === 0 && state.investments.length === 0;
+  const isEmpty =
+    state.savings.length === 0 &&
+    state.investments.length === 0 &&
+    state.debts.length === 0;
 
   return (
     <>
       <PageHeader
         title="Balance"
-        subtitle="Everything you hold — accounts and investments"
+        subtitle="Everything you own and owe — net worth at a glance"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" onClick={openAddDebt}>
+              + Debt
+            </Button>
             <Button variant="ghost" onClick={openAddInvestment}>
               + Investment
             </Button>
@@ -405,7 +543,7 @@ export function BalancePage() {
           </div>
         }
       />
-      <div className="space-y-4">
+      <div className="stagger space-y-4">
         <div className="grid items-start gap-4 xl:grid-cols-3">
           {/* net worth hero */}
           <GlassCard className="glow xl:col-span-1">
@@ -413,10 +551,17 @@ export function BalancePage() {
             <div className="mt-2">
               <TripleMoney amount={worth.total} currency={base} settings={settings} size="lg" />
             </div>
-            <p className="mt-3 border-t border-hairline pt-3 text-sm text-ink-2">
-              Accounts {formatMoney(worth.savings, base, { compact: true })} · Investments{" "}
-              {formatMoney(worth.investments, base, { compact: true })}
-            </p>
+            <div className="mt-3 space-y-1 border-t border-hairline pt-3 text-sm">
+              <p className="text-ink-2">
+                Accounts {formatMoney(worth.savings, base, { compact: true })} · Investments{" "}
+                {formatMoney(worth.investments, base, { compact: true })}
+              </p>
+              {worth.debts > 0 && (
+                <p className="text-expense">
+                  Debts −{formatMoney(worth.debts, base, { compact: true })}
+                </p>
+              )}
+            </div>
           </GlassCard>
 
           {!isEmpty && (
@@ -424,6 +569,8 @@ export function BalancePage() {
             {/* accounts balance sheet */}
             <GlassCard
               title="Accounts"
+              subtitle="Where your money sits"
+              icon="🏦"
               action={
                 <Button variant="ghost" onClick={openAddAccount}>
                   + Add
@@ -500,7 +647,9 @@ export function BalancePage() {
                     );
                   })}
                   <div className="mt-1 hidden grid-cols-[minmax(0,1fr)_repeat(3,7.5rem)] gap-3 border-t border-hairline px-2 pt-2.5 sm:grid">
-                    <span className="text-sm font-semibold text-ink-1">Total incl. investments</span>
+                    <span className="text-sm font-semibold text-ink-1">
+                      Net worth {worth.debts > 0 ? "(after debts)" : "(incl. investments)"}
+                    </span>
                     {CURRENCIES.map((c) => (
                       <span key={c} className="tnum text-right text-sm font-semibold text-ink-1">
                         {formatMoney(convert(worth.total, base, c, settings.rates), c, {
@@ -516,12 +665,91 @@ export function BalancePage() {
           )}
         </div>
 
+        {/* debts / liabilities */}
+        {state.debts.length > 0 && (
+          <GlassCard
+            title="Debts"
+            subtitle={`You owe ${formatMoney(worth.debts, base, { compact: true })} across ${state.debts.length} ${state.debts.length === 1 ? "liability" : "liabilities"}`}
+            icon="💳"
+            action={
+              <Button variant="ghost" onClick={openAddDebt}>
+                + Add
+              </Button>
+            }
+          >
+            <div className="space-y-1">
+              {state.debts.map((debt) => {
+                const principal = debt.principal ?? 0;
+                const hasProgress = principal > 0;
+                const paid = Math.max(0, principal - debt.balance);
+                return (
+                  <button
+                    key={debt.id}
+                    type="button"
+                    onClick={() => openEditDebt(debt)}
+                    className="row-tap block w-full px-3 py-2.5 text-left"
+                  >
+                    <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span
+                          aria-hidden
+                          className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-ghost text-lg"
+                        >
+                          {debt.icon}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-ink-1">
+                            {debt.name}
+                          </span>
+                          <span className="block text-xs text-ink-3">
+                            {DEBT_KIND_LABEL[debt.kind]}
+                            {debt.annualRatePct ? ` · ${formatPercent(debt.annualRatePct)}/yr` : ""}
+                          </span>
+                        </span>
+                      </span>
+                      <span className="text-right">
+                        <span className="tnum block text-sm font-semibold text-expense">
+                          −{formatMoney(debt.balance, debt.currency, { exact: true })}
+                        </span>
+                        {debt.currency !== base && (
+                          <span className="tnum block text-xs text-ink-3">
+                            −{formatMoney(convert(debt.balance, debt.currency, base, settings.rates), base, { compact: true })}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    {hasProgress && (
+                      <span className="mt-2 block pl-13 pr-1">
+                        <ProgressMeter value={paid} max={principal} />
+                        <span className="tnum mt-1 block text-xs text-ink-3">
+                          {formatMoney(paid, debt.currency, { compact: true })} of{" "}
+                          {formatMoney(principal, debt.currency, { compact: true })} paid off (
+                          {formatPercent((paid / principal) * 100, 0)})
+                          {debt.monthlyPayment
+                            ? ` · ${formatMoney(debt.monthlyPayment, debt.currency, { compact: true })}/mo`
+                            : ""}
+                        </span>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              <div className="mt-1 flex items-center justify-between gap-3 border-t border-hairline px-2 pt-2.5">
+                <span className="text-sm font-semibold text-ink-1">Total owed</span>
+                <span className="tnum text-sm font-semibold text-expense">
+                  −{formatMoney(worth.debts, base, { exact: true })}
+                </span>
+              </div>
+            </div>
+          </GlassCard>
+        )}
+
         {isEmpty ? (
           <GlassCard>
             <EmptyState
               icon="🏦"
               title="Nothing here yet"
-              hint="Add your accounts (cards, cash, even CS2 skins) and interest-bearing investments to see your full balance sheet."
+              hint="Add your accounts (cards, cash, even CS2 skins), interest-bearing investments and any debts to see your full balance sheet."
               action={<Button onClick={openAddAccount}>+ Add account</Button>}
             />
           </GlassCard>
@@ -547,7 +775,7 @@ export function BalancePage() {
                   />
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2">
                   {state.investments.map((inv) => {
                     const snap = investmentAt(inv, today);
                     const inYear = investmentAt(
@@ -558,8 +786,12 @@ export function BalancePage() {
                       inv.compounding === "reinvest"
                         ? `Compound interest · ${FREQ_ADVERB[inv.compoundingFreq]} reinvestment`
                         : "Simple interest · paid out to you";
+                    const earned = snap.accrued + snap.paidOut;
+                    const gainPct = snap.invested > 0 ? (earned / snap.invested) * 100 : 0;
+                    const projGain =
+                      inYear.accrued - snap.accrued + (inYear.paidOut - snap.paidOut);
                     return (
-                      <GlassCard key={inv.id}>
+                      <GlassCard key={inv.id} className="flex flex-col">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <h3 className="truncate font-semibold text-ink-1">{inv.name}</h3>
@@ -571,13 +803,27 @@ export function BalancePage() {
                         </div>
 
                         <div className="mt-3 flex items-end justify-between gap-3">
-                          <Money
-                            amount={snap.value}
-                            currency={inv.currency}
-                            exact
-                            className="text-[26px] font-bold leading-tight tracking-tight text-ink-1"
-                          />
-                          <Sparkline values={sparkValues(inv, today)} />
+                          <div className="min-w-0">
+                            <Money
+                              amount={snap.value}
+                              currency={inv.currency}
+                              exact
+                              className="block text-[28px] font-bold leading-tight tracking-tight text-ink-1"
+                            />
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <span
+                                className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                  earned >= 0 ? "bg-income/12 text-income" : "bg-expense/12 text-expense"
+                                }`}
+                              >
+                                {earned >= 0 ? "▲" : "▼"} {formatPercent(Math.abs(gainPct))}
+                              </span>
+                              <span className="tnum text-xs text-ink-3">
+                                {formatMoney(earned, inv.currency, { sign: true, compact: true })} earned
+                              </span>
+                            </div>
+                          </div>
+                          <Sparkline values={sparkValues(inv, today)} width={116} height={46} />
                         </div>
 
                         <div className="mt-4 space-y-1.5 text-sm">
@@ -585,26 +831,6 @@ export function BalancePage() {
                           <InfoRow label="Invested">
                             <Money amount={snap.invested} currency={inv.currency} exact />
                           </InfoRow>
-                          {inv.compounding === "reinvest" ? (
-                            <InfoRow label="Accrued">
-                              <Money
-                                amount={snap.accrued}
-                                currency={inv.currency}
-                                sign
-                                exact
-                                className="text-income"
-                              />
-                            </InfoRow>
-                          ) : (
-                            <InfoRow label="Interest paid out">
-                              <Money
-                                amount={snap.paidOut}
-                                currency={inv.currency}
-                                exact
-                                className="text-income"
-                              />
-                            </InfoRow>
-                          )}
                           {inv.monthlyContribution != null && inv.monthlyContribution > 0 && (
                             <InfoRow label="Top-up">
                               {formatMoney(inv.monthlyContribution, inv.currency)}/mo
@@ -614,12 +840,7 @@ export function BalancePage() {
                             <span>
                               <Money amount={inYear.value} currency={inv.currency} exact />{" "}
                               <span className="text-income">
-                                (+
-                                {formatMoney(
-                                  inYear.accrued - snap.accrued + (inYear.paidOut - snap.paidOut),
-                                  inv.currency,
-                                )}
-                                )
+                                (+{formatMoney(projGain, inv.currency)})
                               </span>
                             </span>
                           </InfoRow>
@@ -628,7 +849,7 @@ export function BalancePage() {
 
                         {inv.note && <p className="mt-3 text-xs text-ink-3">{inv.note}</p>}
 
-                        <div className="mt-4 flex gap-2">
+                        <div className="mt-auto flex gap-2 pt-4">
                           <Button
                             variant="ghost"
                             className="flex-1"
@@ -648,18 +869,18 @@ export function BalancePage() {
                     );
                   })}
                 </div>
+
+                <GlassCard title="How interest is calculated" subtitle="Reinvest vs payout" icon="ℹ️">
+                  <p className="text-sm leading-relaxed text-ink-2">
+                    Reinvest means compound interest: accrued interest joins the principal at the
+                    chosen frequency and keeps earning, and monthly top-ups compound from the month
+                    they land. Payout means simple interest: interest on the invested amount is paid
+                    out to you, so the position itself does not grow (the forecast adds payouts to
+                    your savings instead).
+                  </p>
+                </GlassCard>
               </>
             )}
-
-            <GlassCard title="How interest is calculated">
-              <p className="text-sm leading-relaxed text-ink-2">
-                Reinvest means compound interest: accrued interest joins the principal at the
-                chosen frequency and keeps earning, and monthly top-ups compound from the month
-                they land. Payout means simple interest: interest on the invested amount is paid
-                out to you, so the position itself does not grow (the forecast adds payouts to
-                your savings instead).
-              </p>
-            </GlassCard>
           </>
         )}
       </div>
@@ -921,6 +1142,99 @@ export function BalancePage() {
         </Sheet>
       )}
 
+      {/* debt sheet */}
+      {debtForm && (
+        <Sheet
+          open
+          onClose={() => setDebtForm(null)}
+          title={debtForm.id ? "Edit debt" : "New debt"}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setDebtForm(null)}>
+                Cancel
+              </Button>
+              <Button onClick={submitDebt}>Save</Button>
+            </>
+          }
+        >
+          <Field label="Name">
+            <TextInput
+              value={debtForm.name}
+              onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })}
+              placeholder="Apartment mortgage"
+            />
+          </Field>
+          <Field label="Type">
+            <SegmentedControl
+              options={DEBT_KIND_OPTIONS}
+              value={debtForm.kind}
+              onChange={(v) => setDebtForm({ ...debtForm, kind: v })}
+            />
+          </Field>
+          <Field label="Currency">
+            <SegmentedControl
+              options={CURRENCIES.map((c) => ({ value: c, label: c }))}
+              value={debtForm.currency}
+              onChange={(v) => setDebtForm({ ...debtForm, currency: v })}
+            />
+          </Field>
+          <Field
+            label="Outstanding balance"
+            hint="What you still owe today — this is what lowers your net worth"
+          >
+            <TextInput
+              inputMode="decimal"
+              value={debtForm.balance}
+              onChange={(e) => setDebtForm({ ...debtForm, balance: e.target.value })}
+              placeholder="850 000"
+            />
+          </Field>
+          <Field label="Original amount" hint="optional · shows a payoff progress bar">
+            <TextInput
+              inputMode="decimal"
+              value={debtForm.principal}
+              onChange={(e) => setDebtForm({ ...debtForm, principal: e.target.value })}
+              placeholder="1 000 000"
+            />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Interest rate" hint="% per year · optional">
+              <TextInput
+                inputMode="decimal"
+                value={debtForm.rate}
+                onChange={(e) => setDebtForm({ ...debtForm, rate: e.target.value })}
+                placeholder="12.5"
+              />
+            </Field>
+            <Field label="Monthly payment" hint="optional">
+              <TextInput
+                inputMode="decimal"
+                value={debtForm.monthlyPayment}
+                onChange={(e) => setDebtForm({ ...debtForm, monthlyPayment: e.target.value })}
+                placeholder="15 000"
+              />
+            </Field>
+          </div>
+          <Field label="Note">
+            <TextInput
+              value={debtForm.note}
+              onChange={(e) => setDebtForm({ ...debtForm, note: e.target.value })}
+              placeholder="Optional"
+            />
+          </Field>
+          {debtError && <p className="text-sm text-expense">{debtError}</p>}
+          {debtForm.id && (
+            <Button
+              variant="danger"
+              className="w-full"
+              onClick={() => setDebtDeleteId(debtForm.id)}
+            >
+              Delete debt
+            </Button>
+          )}
+        </Sheet>
+      )}
+
       <ConfirmDialog
         open={accDeleteId !== null}
         onClose={() => setAccDeleteId(null)}
@@ -934,6 +1248,13 @@ export function BalancePage() {
         onConfirm={confirmDeleteInvestment}
         title="Delete this investment?"
         message={`“${deletingInvestment?.name ?? ""}” will be removed permanently. This cannot be undone.`}
+      />
+      <ConfirmDialog
+        open={debtDeleteId !== null}
+        onClose={() => setDebtDeleteId(null)}
+        onConfirm={confirmDeleteDebt}
+        title="Delete this debt?"
+        message={`“${deletingDebt?.name ?? ""}” will be removed permanently. This cannot be undone.`}
       />
     </>
   );
