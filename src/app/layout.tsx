@@ -22,8 +22,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   // matches --bg in globals.css, so the browser chrome blends into the page
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f2f8" },
-    { media: "(prefers-color-scheme: dark)", color: "#0b0910" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f7f9" },
+    { media: "(prefers-color-scheme: dark)", color: "#121013" },
   ],
 };
 

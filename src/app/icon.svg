@@ -1,15 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
   <defs>
-    <!-- the app's brand gradient: dusty rose → muted violet -->
+    <!-- the app's brand gradient: one raspberry at two depths, matching the
+         accent-grad token on the same 135deg diagonal the CSS uses -->
     <linearGradient id="g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#d15c95"/>
-      <stop offset="1" stop-color="#8163d6"/>
+      <stop class="s0" offset="0" stop-color="#c2103f"/>
+      <stop class="s1" offset="1" stop-color="#8f0026"/>
     </linearGradient>
     <!-- the sheen the app draws across its own gradient surfaces -->
     <linearGradient id="s" x1="0" y1="0" x2="0" y2="32" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#fff" stop-opacity="0.28"/>
       <stop offset="0.55" stop-color="#fff" stop-opacity="0"/>
     </linearGradient>
+    <style>
+      /* browsers that honour prefers-color-scheme in a favicon get the dark
+         theme's lighter stops, so the tab matches the brand tile in the nav;
+         everywhere else the light pair above stands as the fallback */
+      @media (prefers-color-scheme: dark) {
+        .s0 { stop-color: #e0245a }
+        .s1 { stop-color: #a3002f }
+      }
+    </style>
   </defs>
   <rect width="32" height="32" rx="9" fill="url(#g)"/>
   <rect width="32" height="32" rx="9" fill="url(#s)"/>

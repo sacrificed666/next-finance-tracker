@@ -20,7 +20,7 @@ import {
   subscriptionsMonthlyTotal,
 } from "@/lib/finmath";
 import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
-import { deleteSchedule, remateralizeRecurring, uid, useStore } from "@/lib/store";
+import { deleteSchedule, remateralizeRecurring, syncSchedule, uid, useStore } from "@/lib/store";
 import type {
   Budget,
   Currency,
@@ -387,15 +387,20 @@ export function TransactionsPage() {
       startMonth: recForm.startMonth,
       endMonth: recForm.endMonth || undefined,
     };
-    // remateralize rebuilds future postings with the new values while keeping
-    // already-posted history (current and past months) untouched
+    // the new values reach every month this rule posted, past ones included —
+    // the ledger has to agree with the rule that produced it
+    const id = recForm.id ?? uid();
     update((s) =>
-      remateralizeRecurring({
-        ...s,
-        recurring: recForm.id
-          ? s.recurring.map((r) => (r.id === recForm.id ? { ...r, ...patch } : r))
-          : [...s.recurring, { id: uid(), ...patch }],
-      }),
+      syncSchedule(
+        {
+          ...s,
+          recurring: recForm.id
+            ? s.recurring.map((r) => (r.id === id ? { ...r, ...patch } : r))
+            : [...s.recurring, { id, ...patch }],
+        },
+        "recurring",
+        id,
+      ),
     );
     setRecForm(null);
   };
@@ -461,19 +466,20 @@ export function TransactionsPage() {
       accountId: subForm.accountId || undefined,
       dayOfMonth: Math.min(31, Math.max(1, subDay)),
     };
-    // remateralize rebuilds the year of future postings with the new price/period
+    // a new price or billing day rewrites every charge this subscription has
+    // posted, not just the planned ones
+    const id = subForm.id ?? uid();
     update((s) =>
-      remateralizeRecurring({
-        ...s,
-        subscriptions: subForm.id
-          ? s.subscriptions.map((sub) =>
-              sub.id === subForm.id ? { ...sub, ...patch } : sub,
-            )
-          : [
-              ...s.subscriptions,
-              { id: uid(), ...patch, startMonth: nowMonth, active: true },
-            ],
-      }),
+      syncSchedule(
+        {
+          ...s,
+          subscriptions: subForm.id
+            ? s.subscriptions.map((sub) => (sub.id === id ? { ...sub, ...patch } : sub))
+            : [...s.subscriptions, { id, ...patch, startMonth: nowMonth, active: true }],
+        },
+        "subscription",
+        id,
+      ),
     );
     setSubForm(null);
   };
@@ -1162,6 +1168,12 @@ export function TransactionsPage() {
           onClose={() => setRecForm(null)}
           title={recForm.id ? "Edit recurring rule" : "New recurring rule"}
         >
+          {recForm.id && (
+            <p className="rounded-field bg-ghost px-3 py-2.5 text-xs leading-snug text-ink-2">
+              Saving rewrites every month this rule posted, the ones already recorded
+              included — so the ledger keeps matching the rule.
+            </p>
+          )}
           <SegmentedControl
             options={KIND_OPTIONS}
             value={recForm.type}
@@ -1262,6 +1274,12 @@ export function TransactionsPage() {
           onClose={() => setSubForm(null)}
           title={subForm.id ? "Edit subscription" : "New subscription"}
         >
+          {subForm.id && (
+            <p className="rounded-field bg-ghost px-3 py-2.5 text-xs leading-snug text-ink-2">
+              Saving rewrites every charge this subscription posted, past months
+              included. To stop it without touching them, switch it off instead.
+            </p>
+          )}
           <Field label="Name">
             <TextInput
               value={subForm.name}

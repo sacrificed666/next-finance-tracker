@@ -18,12 +18,15 @@
   --ink-2: #4b515f;
   --ink-3: #737a88;
   --hairline: rgba(20, 22, 28, 0.1);
+  /* the neutral fills every hover and press works in — see "one hover
+     language" below for why they are not tinted with the brand colour.
+     ghost is the resting fill of a control; hover and press step past it,
+     measured so the change is visible (≈1.2:1 and ≈1.3:1 against the card)
+     rather than a wash you have to look for. */
   --fill-ghost: rgba(20, 22, 28, 0.045);
   --fill-ghost-2: rgba(20, 22, 28, 0.085);
-  /* one tinted fill for hover and selection, so every surface reacts in the
-     brand colour instead of going grey */
-  --fill-tint: rgba(184, 12, 60, 0.07);
-  --fill-tint-2: rgba(184, 12, 60, 0.12);
+  --fill-hover: rgba(20, 22, 28, 0.09);
+  --fill-press: rgba(20, 22, 28, 0.15);
 
   /* Brand: one saturated raspberry, used at three depths of the same hue —
      no second accent colour anywhere, so the chrome reads as one material.
@@ -83,8 +86,8 @@
   --hairline: rgba(255, 240, 245, 0.11);
   --fill-ghost: rgba(255, 240, 245, 0.055);
   --fill-ghost-2: rgba(255, 240, 245, 0.1);
-  --fill-tint: rgba(255, 77, 109, 0.1);
-  --fill-tint-2: rgba(255, 77, 109, 0.16);
+  --fill-hover: rgba(255, 240, 245, 0.11);
+  --fill-press: rgba(255, 240, 245, 0.18);
 
   --accent: #ff4d6d;
   --accent-2: #c2103f;
@@ -125,11 +128,11 @@
   --color-hairline: var(--hairline);
   --color-ghost: var(--fill-ghost);
   --color-ghost-2: var(--fill-ghost-2);
+  --color-fill-hover: var(--fill-hover);
+  --color-fill-press: var(--fill-press);
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
   --color-accent-soft: var(--accent-soft);
-  --color-tint: var(--fill-tint);
-  --color-tint-2: var(--fill-tint-2);
   --color-accent-3: var(--accent-3);
   --color-on-accent: var(--on-accent);
   --color-income: var(--income);
@@ -431,8 +434,11 @@ body {
 }
 
 /* ─────────────────────── one hover language ─────────────────────── */
-/* Every hoverable surface answers the same way: a wash of the brand colour
-   and a touch more ink. Nothing goes grey, nothing jumps. */
+/* Every hoverable surface answers the same way: the surface itself lifts a
+   step, and the ink goes up with it. Hover is a pointer following the mouse
+   around, not a decision — so it stays neutral, and the brand colour is left
+   to mean one thing only: this is the row, chip or tab you picked. Washing
+   whole lists in raspberry on the way past made both harder to read. */
 .row-tap {
   border-radius: 1rem;
   transition:
@@ -441,14 +447,15 @@ body {
 }
 @media (hover: hover) {
   .row-tap:hover {
-    background-color: var(--fill-tint);
+    background-color: var(--fill-hover);
   }
 }
 .row-tap:active {
-  background-color: var(--fill-tint-2);
+  background-color: var(--fill-press);
 }
 
-/* icon-only affordances: circular, ghost at rest, tinted under the pointer */
+/* icon-only affordances: circular, ghost at rest, a step brighter under the
+   pointer — the icon reaches full ink rather than turning brand-red */
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -462,8 +469,8 @@ body {
 }
 @media (hover: hover) {
   .icon-btn:hover {
-    background-color: var(--fill-tint);
-    color: var(--accent);
+    background-color: var(--fill-press);
+    color: var(--ink-1);
   }
   .icon-btn-danger:hover {
     background-color: color-mix(in oklab, var(--expense) 14%, transparent);
@@ -484,7 +491,7 @@ body {
 }
 @media (hover: hover) {
   .table-row:hover {
-    background-color: var(--fill-tint);
+    background-color: var(--fill-hover);
   }
 }
 

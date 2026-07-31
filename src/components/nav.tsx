@@ -171,7 +171,7 @@ function ThemeChoice({ compact = false }: { compact?: boolean }) {
               update((s) => ({ ...s, settings: { ...s.settings, theme: choice.value } }))
             }
             className={`relative z-1 flex flex-1 items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-semibold outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-accent-soft ${
-              active ? "text-accent" : "text-ink-3 hover:text-ink-1"
+              active ? "text-ink-1" : "text-ink-3 hover:text-ink-1"
             } ${compact ? "size-8 p-0" : ""}`}
           >
             <svg
@@ -243,7 +243,7 @@ export function Sidebar() {
                 className={`flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-semibold transition-all duration-150 ${
                   active
                     ? "btn-gradient"
-                    : "text-ink-2 hover:bg-tint hover:text-ink-1"
+                    : "text-ink-2 hover:bg-fill-hover hover:text-ink-1"
                 }`}
               >
                 {item.icon(active)}

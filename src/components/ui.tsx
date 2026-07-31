@@ -222,7 +222,7 @@ export function Button({
     primary:
       "btn-gradient shadow-[0_2px_10px_rgba(4,20,32,0.18)] hover:-translate-y-px hover:brightness-[1.07] active:translate-y-0 active:scale-[0.97] disabled:opacity-40 disabled:hover:translate-y-0",
     ghost:
-      "border border-hairline bg-ghost text-ink-1 shadow-[inset_0_1px_0_var(--card-highlight)] hover:border-[color-mix(in_oklab,var(--accent)_35%,var(--hairline))] hover:bg-ghost-2 hover:text-ink-1 active:scale-[0.97] disabled:opacity-40",
+      "border border-hairline bg-ghost text-ink-1 shadow-[inset_0_1px_0_var(--card-highlight)] hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-fill-hover hover:text-ink-1 active:scale-[0.97] disabled:opacity-40",
     danger:
       "border border-expense/25 bg-expense/12 text-expense hover:bg-expense/20 active:scale-[0.97] disabled:opacity-40",
     plain:
@@ -253,27 +253,47 @@ export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
+  size = "md",
+  label,
   className = "",
 }: {
   options: Array<{ value: T; label: string }>;
   value: T;
   onChange: (v: T) => void;
+  /** sm is the in-card version (chart windows, card headers) */
+  size?: "sm" | "md";
+  /** accessible name, for groups that stand on their own without a Field */
+  label?: string;
   className?: string;
 }) {
   const index = Math.max(0, options.findIndex((o) => o.value === value));
+  const small = size === "sm";
+  // the track's own padding, which the thumb has to sit inside
+  const pad = small ? "0.125rem" : "0.25rem";
   return (
     <div
       role="radiogroup"
-      className={`relative flex rounded-full border border-hairline bg-ghost p-1 ${className}`}
+      aria-label={label}
+      // Equal columns, not equal flex shares: a flex track sized to its content
+      // hands out the *sum* of the labels split n ways, so the widest one ("6M"
+      // among 1Y/2Y/3Y) got ellipsised down to "6…". A 1fr grid sizes every
+      // column to the widest label, which is also what keeps the thumb's
+      // 100%/n geometry honest.
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      className={`relative grid rounded-full border border-hairline bg-ghost ${
+        small ? "p-0.5" : "p-1"
+      } ${className}`}
     >
       {/* one thumb that travels, rather than three buttons that light up:
           the movement is what makes the choice legible */}
       <span
         aria-hidden
-        className="absolute inset-y-1 rounded-full bg-(--card-strong) shadow-[inset_0_1px_0_var(--card-highlight),0_1px_4px_rgba(10,12,20,0.14)] transition-[left] duration-300 ease-[cubic-bezier(0.22,0.68,0.24,1)]"
+        className={`absolute rounded-full bg-(--card-strong) shadow-[inset_0_1px_0_var(--card-highlight),0_1px_4px_rgba(10,12,20,0.14)] transition-[left,width] duration-300 ease-[cubic-bezier(0.22,0.68,0.24,1)] ${
+          small ? "inset-y-0.5" : "inset-y-1"
+        }`}
         style={{
-          width: `calc((100% - 0.5rem) / ${options.length})`,
-          left: `calc(0.25rem + ${index} * (100% - 0.5rem) / ${options.length})`,
+          width: `calc((100% - ${pad} * 2) / ${options.length})`,
+          left: `calc(${pad} + ${index} * (100% - ${pad} * 2) / ${options.length})`,
         }}
       />
       {options.map((opt) => {
@@ -285,9 +305,11 @@ export function SegmentedControl<T extends string>({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(opt.value)}
-            className={`relative z-1 min-w-0 flex-1 truncate rounded-full px-2.5 py-2 text-[13px] font-semibold outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-accent-soft sm:px-3 ${
-              active ? "text-accent" : "text-ink-3 hover:text-ink-1"
-            }`}
+            // the thumb says which one is chosen; the label only has to be
+            // legible, so it darkens to full ink instead of turning brand-red
+            className={`relative z-1 min-w-0 truncate rounded-full font-semibold outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-accent-soft ${
+              small ? "px-2.5 py-1.5 text-xs" : "px-2.5 py-2 text-[13px] sm:px-3"
+            } ${active ? "text-ink-1" : "text-ink-3 hover:text-ink-1"}`}
           >
             {opt.label}
           </button>
@@ -317,7 +339,19 @@ export function OptionChips<T extends string>({
   size?: "md" | "lg";
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+    <div
+      role="radiogroup"
+      aria-label={label}
+      // Columns that divide the full width, not a left-packed wrap: the flex
+      // version stopped wherever the last chip happened to land and left a
+      // ragged 18–40px of dead space down the right edge, next to fields and
+      // segmented controls that all reach the far side. The chips keep their
+      // own round size and centre inside their column.
+      style={{
+        gridTemplateColumns: `repeat(auto-fit, minmax(${size === "lg" ? "2.75rem" : "2.25rem"}, 1fr))`,
+      }}
+      className="grid gap-2"
+    >
       {options.map((opt) => {
         const active = opt.value === value;
         return (
@@ -328,12 +362,14 @@ export function OptionChips<T extends string>({
             aria-checked={active}
             title={opt.title}
             onClick={() => onChange(opt.value)}
-            className={`flex items-center justify-center rounded-full border outline-none transition-[background-color,border-color,transform] duration-150 focus-visible:ring-4 focus-visible:ring-accent-soft active:scale-95 ${
+            className={`flex items-center justify-center justify-self-center rounded-full border outline-none transition-[background-color,border-color,transform] duration-150 focus-visible:ring-4 focus-visible:ring-accent-soft active:scale-95 ${
               size === "lg" ? "size-11 text-xl" : "size-9 text-base"
             } ${
               active
                 ? "border-accent bg-accent text-on-accent shadow-[0_2px_10px_var(--glow-a)]"
-                : "border-hairline bg-ghost hover:border-[color-mix(in_oklab,var(--accent)_35%,var(--hairline))] hover:bg-tint"
+                : // brand colour marks the chosen chip; hovering an unchosen one
+                  // only lifts its surface, so the two never look alike
+                  "border-hairline bg-ghost hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-fill-hover"
             }`}
           >
             {opt.label}
@@ -421,6 +457,32 @@ export function Field({
       {children}
       {hint && <span className="mt-1.5 block text-xs leading-snug text-ink-3">{hint}</span>}
     </label>
+  );
+}
+
+/**
+ * A Field for things that are not a single form control — a chip grid, a row
+ * of swatches, a radiogroup. Looks identical, but wrapping those in a `<label>`
+ * is a lie: a label points at one control, so screen readers announce the
+ * caption on whichever button happens to be first. The group carries its own
+ * accessible name instead (`OptionChips` takes `label`, radiogroups take
+ * `aria-label`).
+ */
+export function FieldSet({
+  label,
+  children,
+  hint,
+}: {
+  label: string;
+  children: ReactNode;
+  hint?: string;
+}) {
+  return (
+    <div className="block">
+      <span className="mb-1.5 block text-[13px] font-medium text-ink-2">{label}</span>
+      {children}
+      {hint && <span className="mt-1.5 block text-xs leading-snug text-ink-3">{hint}</span>}
+    </div>
   );
 }
 

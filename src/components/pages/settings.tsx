@@ -5,6 +5,7 @@ import {
   Button,
   ConfirmDialog,
   Field,
+  FieldSet,
   GlassCard,
   OptionChips,
   PageHeader,
@@ -13,7 +14,7 @@ import {
   TextInput,
 } from "@/components/ui";
 import { CURRENCIES, CURRENCY_SYMBOL, DEFAULT_STATE, ICON_CHOICES } from "@/lib/constants";
-import { formatDate, todayISO } from "@/lib/date";
+import { formatDateTime, todayISO } from "@/lib/date";
 import { exportBackup, parseBackup } from "@/lib/backup";
 import { parseAmount } from "@/lib/money";
 import { fetchLiveRates } from "@/lib/rates";
@@ -45,10 +46,6 @@ export function SettingsPage() {
   const { state, update, replace } = useStore();
   const { settings } = state;
 
-  const [usdStr, setUsdStr] = useState(() => String(settings.rates.USD));
-  const [eurStr, setEurStr] = useState(() => String(settings.rates.EUR));
-  const [taxRateStr, setTaxRateStr] = useState(() => String(settings.tax.ratePct));
-  const [taxFixedStr, setTaxFixedStr] = useState(() => String(settings.tax.fixedUAH));
   const [ratesLoading, setRatesLoading] = useState(false);
   const [ratesError, setRatesError] = useState<string | null>(null);
 
@@ -58,9 +55,9 @@ export function SettingsPage() {
   const [catForm, setCatForm] = useState<CategoryForm>(() => emptyCategoryForm(1));
   const [catError, setCatError] = useState<string | null>(null);
   const [catDeleteId, setCatDeleteId] = useState<string | null>(null);
-  const [catBlockedMsg, setCatBlockedMsg] = useState<string | null>(null);
 
   const [importError, setImportError] = useState<string | null>(null);
+  const [importSummary, setImportSummary] = useState<string | null>(null);
   const [pendingImport, setPendingImport] = useState<AppState | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,65 +69,28 @@ export function SettingsPage() {
     label: `${o.label} (${o.value === "expense" ? expenseCount : state.categories.length - expenseCount})`,
   }));
 
-  const commitUsd = () => {
-    const v = parseAmount(usdStr);
-    if (!Number.isFinite(v) || v <= 0) {
-      setUsdStr(String(settings.rates.USD));
-      return;
-    }
+  const setRate = (currency: "USD" | "EUR", value: number) =>
     update((s) => ({
       ...s,
       settings: {
         ...s.settings,
-        rates: { ...s.settings.rates, USD: v },
+        rates: { ...s.settings.rates, [currency]: value },
+        // a hand-typed rate is nobody's quote but yours: drop the bank's
+        // buy/sell detail so the card cannot claim a source it no longer has
         ratesSource: "manual",
         ratesMeta: undefined,
+        ratesUpdatedAt: new Date().toISOString(),
       },
     }));
-  };
 
-  const commitEur = () => {
-    const v = parseAmount(eurStr);
-    if (!Number.isFinite(v) || v <= 0) {
-      setEurStr(String(settings.rates.EUR));
-      return;
-    }
-    update((s) => ({
-      ...s,
-      settings: {
-        ...s.settings,
-        rates: { ...s.settings.rates, EUR: v },
-        ratesSource: "manual",
-        ratesMeta: undefined,
-      },
-    }));
-  };
-
-  const commitTaxRate = () => {
-    const v = parseAmount(taxRateStr);
-    if (!Number.isFinite(v) || v < 0 || v >= 100) {
-      setTaxRateStr(String(settings.tax.ratePct));
-      return;
-    }
-    update((s) => ({ ...s, settings: { ...s.settings, tax: { ...s.settings.tax, ratePct: v } } }));
-  };
-
-  const commitTaxFixed = () => {
-    const v = parseAmount(taxFixedStr);
-    if (!Number.isFinite(v) || v < 0) {
-      setTaxFixedStr(String(settings.tax.fixedUAH));
-      return;
-    }
-    update((s) => ({ ...s, settings: { ...s.settings, tax: { ...s.settings.tax, fixedUAH: v } } }));
-  };
+  const setTax = (key: "ratePct" | "fixedUAH", value: number) =>
+    update((s) => ({ ...s, settings: { ...s.settings, tax: { ...s.settings.tax, [key]: value } } }));
 
   const refreshRates = async () => {
     setRatesLoading(true);
     setRatesError(null);
     try {
       const fetched = await fetchLiveRates();
-      setUsdStr(String(fetched.USD.buy));
-      setEurStr(String(fetched.EUR.buy));
       update((s) => ({
         ...s,
         settings: {
@@ -143,9 +103,11 @@ export function SettingsPage() {
           ratesUpdatedAt: new Date().toISOString(),
         },
       }));
-    } catch {
+    } catch (err) {
+      // say what actually went wrong — "rate limited" and "you are offline"
+      // call for different next steps, and the old text always claimed the first
       setRatesError(
-        "Could not fetch live rates (Monobank limits requests to one per 5 minutes). Try again later or enter rates manually.",
+        `${err instanceof Error ? err.message : "Both rate sources were unreachable."} You can type the rates in by hand below.`,
       );
     } finally {
       setRatesLoading(false);
@@ -154,9 +116,18 @@ export function SettingsPage() {
 
   /* ---------- categories ---------- */
 
+  /** the colour slot this kind of category leans on least, so a new one stands apart */
+  const leastUsedSlot = (kind: CategoryKind): number => {
+    const counts = new Array(9).fill(0);
+    for (const c of state.categories) if (c.kind === kind) counts[c.colorSlot] = (counts[c.colorSlot] ?? 0) + 1;
+    let best = 1;
+    for (let slot = 2; slot <= 8; slot++) if (counts[slot] < counts[best]) best = slot;
+    return best;
+  };
+
   const openAddCategory = () => {
     setEditingCatId(null);
-    setCatForm(emptyCategoryForm((state.categories.length % 8) + 1));
+    setCatForm(emptyCategoryForm(leastUsedSlot(kindTab)));
     setCatError(null);
     setCatSheetOpen(true);
   };
@@ -202,19 +173,31 @@ export function SettingsPage() {
     closeCatSheet();
   };
 
-  const categoryInUse = (id: string): boolean =>
-    state.transactions.some((t) => t.categoryId === id) ||
-    state.recurring.some((r) => r.categoryId === id) ||
-    state.budgets.some((b) => b.categoryId === id);
+  /**
+   * What still points at each category. Deleting one of these would leave
+   * transactions pointing at a category that no longer exists, so the row says
+   * so up front instead of letting the button fail after the click.
+   */
+  const categoryUse = new Map<string, { records: number; rules: number; budgets: number }>();
+  const bump = (id: string, key: "records" | "rules" | "budgets") => {
+    if (!id) return;
+    const entry = categoryUse.get(id) ?? { records: 0, rules: 0, budgets: 0 };
+    entry[key]++;
+    categoryUse.set(id, entry);
+  };
+  for (const t of state.transactions) bump(t.categoryId, "records");
+  for (const r of state.recurring) bump(r.categoryId, "rules");
+  for (const b of state.budgets) bump(b.categoryId, "budgets");
 
-  const requestDeleteCategory = (id: string) => {
-    if (categoryInUse(id)) {
-      setCatBlockedMsg(
-        "This category is used by transactions, recurring rules or budgets — reassign them first.",
-      );
-      return;
-    }
-    setCatDeleteId(id);
+  const blockedReason = (id: string): string | null => {
+    const use = categoryUse.get(id);
+    if (!use) return null;
+    const parts = [
+      use.records && `${use.records} ${use.records === 1 ? "record" : "records"}`,
+      use.rules && `${use.rules} recurring ${use.rules === 1 ? "rule" : "rules"}`,
+      use.budgets && "a budget",
+    ].filter(Boolean);
+    return `In use by ${parts.join(", ")} — reassign them before deleting`;
   };
 
   const confirmDeleteCategory = () => {
@@ -247,6 +230,7 @@ export function SettingsPage() {
     e.target.value = "";
     if (!file) return;
     setImportError(null);
+    setImportSummary(null);
     try {
       const text = await file.text();
       const parsed = parseBackup(text);
@@ -258,8 +242,16 @@ export function SettingsPage() {
 
   const confirmImport = () => {
     if (!pendingImport) return;
+    const { transactions, categories, savings, investments } = pendingImport;
     replace(pendingImport);
     setPendingImport(null);
+    // a silent swap of the whole dataset leaves you guessing whether the file
+    // was the one you meant — say what came in
+    setImportSummary(
+      `Imported ${transactions.length} records, ${categories.length} categories, ${
+        savings.length + investments.length
+      } accounts and investments.`,
+    );
   };
 
   const confirmReset = () => {
@@ -277,105 +269,160 @@ export function SettingsPage() {
       />
       {/* CSS columns balance the cards by height on their own — hand-packed
           columns always left one side short */}
-      <div className="stagger min-w-0 xl:columns-2 xl:gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
+      <div className="stagger min-w-0 xl:columns-2 xl:gap-4 *:mb-4 *:break-inside-avoid">
         <GlassCard title="General" subtitle="Currency and appearance" icon="⚙️">
           <div className="min-w-0 space-y-4">
-            <Field label="Base currency" hint="Totals and charts are shown in it">
+            <FieldSet label="Base currency" hint="Totals and charts are shown in it">
               <SegmentedControl
+                label="Base currency"
                 options={CURRENCIES.map((c) => ({ value: c, label: c }))}
                 value={settings.baseCurrency}
                 onChange={(v: Currency) =>
                   update((s) => ({ ...s, settings: { ...s.settings, baseCurrency: v } }))
                 }
               />
-            </Field>
-            <Field label="Theme">
+            </FieldSet>
+            <FieldSet label="Theme">
               <SegmentedControl
+                label="Theme"
                 options={THEME_OPTIONS}
                 value={settings.theme}
                 onChange={(v: ThemePref) =>
                   update((s) => ({ ...s, settings: { ...s.settings, theme: v } }))
                 }
               />
-            </Field>
+            </FieldSet>
           </div>
         </GlassCard>
 
         <GlassCard title="Exchange rates" subtitle="How ₴ / $ / € convert" icon="💱">
-          <div className="mb-4 grid grid-cols-2 gap-3">
-            {(["USD", "EUR"] as const).map((c) => (
-              <div key={c} className="rounded-field bg-ghost px-3.5 py-3 text-center">
-                <p className="text-xs text-ink-3">1 {CURRENCY_SYMBOL[c]}</p>
-                <p className="tnum mt-0.5 text-lg font-bold text-ink-1">
-                  {settings.rates[c].toFixed(2)} ₴
-                </p>
-              </div>
-            ))}
-          </div>
+          {/* the two read-only tiles that used to sit here printed the same two
+              numbers as the fields directly below them */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="USD → UAH" hint={meta?.USD ? `buy ${meta.USD.buy} · sell ${meta.USD.sell}` : undefined}>
-              <TextInput
-                inputMode="decimal"
-                value={usdStr}
-                onChange={(e) => setUsdStr(e.target.value)}
-                onBlur={commitUsd}
+            {(["USD", "EUR"] as const).map((c) => (
+              <NumericSetting
+                key={c}
+                label={`${c} → UAH`}
+                hint={
+                  meta?.[c]
+                    ? `bank buy ${meta[c].buy} · sell ${meta[c].sell}`
+                    : `₴ for 1 ${CURRENCY_SYMBOL[c]}`
+                }
+                value={settings.rates[c]}
+                isValid={(v) => v > 0}
+                onCommit={(v) => setRate(c, v)}
               />
-            </Field>
-            <Field label="EUR → UAH" hint={meta?.EUR ? `buy ${meta.EUR.buy} · sell ${meta.EUR.sell}` : undefined}>
-              <TextInput
-                inputMode="decimal"
-                value={eurStr}
-                onChange={(e) => setEurStr(e.target.value)}
-                onBlur={commitEur}
-              />
-            </Field>
+            ))}
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <Button variant="ghost" onClick={refreshRates} disabled={ratesLoading}>
-              {ratesLoading ? "Updating…" : "Update from Monobank"}
+              {ratesLoading ? "Updating…" : "Update rates"}
             </Button>
-            {settings.ratesUpdatedAt && (
-              <span className="text-xs text-ink-3">
-                Updated {formatDate(settings.ratesUpdatedAt.slice(0, 10))}
-                {settings.ratesSource === "monobank"
-                  ? " (Monobank, buy rate)"
-                  : settings.ratesSource === "nbu"
-                    ? " (NBU official)"
-                    : ""}
-              </span>
-            )}
+            <span className="text-xs text-ink-3">{ratesOrigin(settings)}</span>
           </div>
           <p className="mt-2 text-xs text-ink-3">
-            Conversions use the bank buy rate — what you actually get when selling $ or €.
-            Falls back to the official NBU rate if Monobank is unavailable.
+            Fetched from Monobank, falling back to the official NBU rate. Conversions use
+            the bank buy rate — what you actually get when selling $ or €.
           </p>
           {ratesError && <p className="mt-2 text-sm text-expense">{ratesError}</p>}
         </GlassCard>
 
         <GlassCard title="Salary tax (ФОП)" subtitle="Deductions applied to income" icon="🧾">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Tax rate" hint="% removed (single tax + military levy)">
-              <TextInput
-                inputMode="decimal"
-                value={taxRateStr}
-                onChange={(e) => setTaxRateStr(e.target.value)}
-                onBlur={commitTaxRate}
-              />
-            </Field>
-            <Field label="Fixed deduction" hint="₴ per entry (ЄСВ)">
-              <TextInput
-                inputMode="decimal"
-                value={taxFixedStr}
-                onChange={(e) => setTaxFixedStr(e.target.value)}
-                onBlur={commitTaxFixed}
-              />
-            </Field>
+            <NumericSetting
+              label="Tax rate"
+              hint="% removed (single tax + military levy)"
+              value={settings.tax.ratePct}
+              isValid={(v) => v >= 0 && v < 100}
+              onCommit={(v) => setTax("ratePct", v)}
+            />
+            <NumericSetting
+              label="Fixed deduction"
+              hint="₴ per entry (ЄСВ)"
+              value={settings.tax.fixedUAH}
+              isValid={(v) => v >= 0}
+              onCommit={(v) => setTax("fixedUAH", v)}
+            />
           </div>
           <p className="mt-3 text-xs text-ink-3">
             Used by the “Apply ФОП tax” toggle when logging income: take-home = gross ×{" "}
             {(1 - settings.tax.ratePct / 100).toFixed(2)} − {settings.tax.fixedUAH} ₴ (the fixed
             part converted into the income currency).
           </p>
+        </GlassCard>
+
+        <GlassCard
+          title="Categories"
+          subtitle={`${state.categories.length} total · tap a row to edit`}
+          icon="🏷️"
+          action={
+            <Button variant="ghost" onClick={openAddCategory}>
+              + Add
+            </Button>
+          }
+        >
+          <SegmentedControl
+            label="Category kind"
+            options={kindOptions}
+            value={kindTab}
+            onChange={setKindTab}
+          />
+          {/* two abreast once there is room: a single column of twenty rows made
+              this card twice the height of the page's other column, and the CSS
+              columns cannot split a card to make up for it */}
+          <ul className="mt-4 grid gap-x-3 gap-y-0.5 sm:grid-cols-2">
+            {visibleCategories.length === 0 && (
+              <li className="py-6 text-center text-sm text-ink-2 sm:col-span-2">
+                No categories of this kind yet.
+              </li>
+            )}
+            {visibleCategories.map((cat) => {
+              const blocked = blockedReason(cat.id);
+              const records = categoryUse.get(cat.id)?.records ?? 0;
+              return (
+                <li key={cat.id} className="flex items-center gap-1">
+                  {/* the whole row opens the editor, like every other list in
+                      the app — the separate pencil button was the only way in */}
+                  <button
+                    type="button"
+                    onClick={() => openEditCategory(cat)}
+                    className="row-tap flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left"
+                  >
+                    <span
+                      aria-hidden
+                      className="flex size-9 shrink-0 items-center justify-center rounded-full text-lg"
+                      style={{
+                        backgroundColor: `color-mix(in oklab, var(--series-${cat.colorSlot}) 20%, transparent)`,
+                      }}
+                    >
+                      {cat.icon}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">
+                      {cat.name}
+                    </span>
+                    {records > 0 && (
+                      // the bare count, so the name keeps the width: spelling
+                      // out "records" truncated "Subscriptions" to "Subscri…"
+                      <span
+                        className="tnum shrink-0 text-xs text-ink-3"
+                        title={`${records} ${records === 1 ? "record" : "records"}`}
+                      >
+                        {records}
+                      </span>
+                    )}
+                  </button>
+                  <IconAction
+                    label={`Delete ${cat.name}`}
+                    title={blocked ?? `Delete ${cat.name}`}
+                    icon="delete"
+                    danger
+                    disabled={blocked !== null}
+                    onClick={() => setCatDeleteId(cat.id)}
+                  />
+                </li>
+              );
+            })}
+          </ul>
         </GlassCard>
 
         <GlassCard title="Data" subtitle="Backup, restore, reset" icon="💾">
@@ -396,6 +443,7 @@ export function SettingsPage() {
             />
           </div>
           {importError && <p className="mt-3 text-sm text-expense">{importError}</p>}
+          {importSummary && <p className="mt-3 text-sm text-income">{importSummary}</p>}
           {/* destructive action, set apart in its own danger zone */}
           <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-expense/20 bg-expense/8 px-4 py-3">
             <div className="min-w-0">
@@ -416,13 +464,12 @@ export function SettingsPage() {
         </GlassCard>
 
         <GlassCard title="About" subtitle="What lives in your database" icon="ℹ️">
+          {/* "Categories" moved out — the card above already counts them, and
+              "Holdings" lumped two different things into one number */}
           <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-            <AtAGlance label="Transactions" value={state.transactions.length} />
-            <AtAGlance label="Categories" value={state.categories.length} />
-            <AtAGlance
-              label="Holdings"
-              value={state.savings.length + state.investments.length}
-            />
+            <AtAGlance label="Records" value={state.transactions.length} />
+            <AtAGlance label="Accounts" value={state.savings.length} />
+            <AtAGlance label="Investments" value={state.investments.length} />
           </div>
           <p className="text-sm leading-relaxed text-ink-2">
             All data is stored in your own PostgreSQL database and is never sent anywhere
@@ -432,57 +479,6 @@ export function SettingsPage() {
           </p>
         </GlassCard>
 
-        <GlassCard
-          title="Categories"
-          subtitle={`${state.categories.length} total · tap to edit`}
-          icon="🏷️"
-          action={
-            <Button variant="ghost" onClick={openAddCategory}>
-              + Add
-            </Button>
-          }
-        >
-          <SegmentedControl options={kindOptions} value={kindTab} onChange={setKindTab} />
-          <ul className="mt-4 space-y-0.5">
-            {visibleCategories.length === 0 && (
-              <li className="py-6 text-center text-sm text-ink-2">
-                No categories of this kind yet.
-              </li>
-            )}
-            {visibleCategories.map((cat) => (
-              <li
-                key={cat.id}
-                className="group flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-ghost"
-              >
-                <span
-                  aria-hidden
-                  className="flex size-9 shrink-0 items-center justify-center rounded-full text-lg"
-                  style={{
-                    backgroundColor: `color-mix(in oklab, var(--series-${cat.colorSlot}) 20%, transparent)`,
-                  }}
-                >
-                  {cat.icon}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">
-                  {cat.name}
-                </span>
-                <div className="flex shrink-0 items-center opacity-60 transition-opacity group-hover:opacity-100">
-                  <IconAction
-                    label={`Edit ${cat.name}`}
-                    icon="edit"
-                    onClick={() => openEditCategory(cat)}
-                  />
-                  <IconAction
-                    label={`Delete ${cat.name}`}
-                    icon="delete"
-                    danger
-                    onClick={() => requestDeleteCategory(cat.id)}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </GlassCard>
       </div>
 
       {/* category add/edit */}
@@ -506,39 +502,48 @@ export function SettingsPage() {
             placeholder="e.g. Sports"
           />
         </Field>
-        <Field label="Icon">
+        <FieldSet label="Icon">
           <OptionChips
             label="Icon"
             options={ICON_CHOICES.map((icon) => ({ value: icon, label: icon }))}
             value={catForm.icon}
             onChange={(icon) => setCatForm({ ...catForm, icon })}
           />
-        </Field>
-        <Field label="Color">
-          <div className="flex flex-wrap gap-2">
-            {Array.from({ length: 8 }, (_, i) => i + 1).map((slot) => (
-              <button
-                key={slot}
-                type="button"
-                onClick={() => setCatForm({ ...catForm, colorSlot: slot })}
-                aria-label={`Color ${slot}`}
-                aria-pressed={catForm.colorSlot === slot}
-                className={`flex size-9 items-center justify-center rounded-full text-white outline-none transition-transform duration-150 hover:scale-110 focus-visible:ring-4 focus-visible:ring-accent-soft active:scale-95 ${
-                  catForm.colorSlot === slot
-                    ? "ring-2 ring-ink-1 ring-offset-2 ring-offset-(--card-strong)"
-                    : ""
-                }`}
-                style={{ backgroundColor: `var(--series-${slot})` }}
-              >
-                {catForm.colorSlot === slot && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="m5 13 4 4L19 7" />
-                  </svg>
-                )}
-              </button>
-            ))}
+        </FieldSet>
+        <FieldSet label="Color" hint="Used by this category's slice in every chart">
+          {/* one choice out of eight: a radiogroup, like the chips above it.
+              As eight independent toggle buttons it announced "pressed" on one
+              swatch and said nothing about the other seven. */}
+          {/* eight columns across the full width, matching the icon grid it
+              sits under — as a wrap it stopped ~60px short of the right edge */}
+          <div role="radiogroup" aria-label="Color" className="grid grid-cols-8 gap-2">
+            {Array.from({ length: 8 }, (_, i) => i + 1).map((slot) => {
+              const active = catForm.colorSlot === slot;
+              return (
+                <button
+                  key={slot}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  aria-label={`Colour ${slot}`}
+                  onClick={() => setCatForm({ ...catForm, colorSlot: slot })}
+                  className={`flex size-9 items-center justify-center justify-self-center rounded-full text-white outline-none transition-[transform,box-shadow] duration-150 focus-visible:ring-4 focus-visible:ring-accent-soft active:scale-95 ${
+                    active
+                      ? "ring-2 ring-ink-1 ring-offset-2 ring-offset-(--card-strong)"
+                      : "hover:scale-110"
+                  }`}
+                  style={{ backgroundColor: `var(--series-${slot})` }}
+                >
+                  {active && (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="m5 13 4 4L19 7" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        </Field>
+        </FieldSet>
         {catError && <p className="text-sm text-expense">{catError}</p>}
       </Sheet>
 
@@ -549,15 +554,6 @@ export function SettingsPage() {
         title="Delete this category?"
         message={`“${deletingCat?.name ?? ""}” will be removed permanently.`}
       />
-
-      <Sheet
-        open={catBlockedMsg !== null}
-        onClose={() => setCatBlockedMsg(null)}
-        title="Category cannot be deleted"
-        footer={<Button onClick={() => setCatBlockedMsg(null)}>Got it</Button>}
-      >
-        <p className="text-sm text-ink-2">{catBlockedMsg}</p>
-      </Sheet>
 
       <ConfirmDialog
         open={pendingImport !== null}
@@ -592,22 +588,30 @@ const ACTION_ICONS = {
  */
 function IconAction({
   label,
+  title,
   onClick,
   icon,
   danger,
+  disabled,
 }: {
   label: string;
+  /** hover text; defaults to the label, or explains why the action is off */
+  title?: string;
   onClick: () => void;
   icon: keyof typeof ACTION_ICONS;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       aria-label={label}
-      title={label}
+      title={title ?? label}
       onClick={onClick}
-      className={`icon-btn size-9 ${danger ? "icon-btn-danger" : ""}`}
+      disabled={disabled}
+      className={`icon-btn size-9 shrink-0 disabled:cursor-not-allowed disabled:opacity-30 ${
+        danger ? "icon-btn-danger" : ""
+      }`}
     >
       <svg
         width="17"
@@ -624,6 +628,67 @@ function IconAction({
       </svg>
     </button>
   );
+}
+
+/**
+ * A number that lives in the store, edited through a text field.
+ *
+ * The draft only exists while you are typing in it: everywhere else the field
+ * reads straight from the store. Keeping the text in its own state instead
+ * meant an import or a reset changed the setting underneath the field while it
+ * went on showing the old number — and blurring it, with nothing typed, wrote
+ * that stale number back over what had just come in.
+ */
+function NumericSetting({
+  label,
+  hint,
+  value,
+  isValid,
+  onCommit,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  isValid: (v: number) => boolean;
+  onCommit: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = () => {
+    if (draft === null) return; // untouched — nothing to write
+    const parsed = parseAmount(draft);
+    if (Number.isFinite(parsed) && isValid(parsed)) onCommit(parsed);
+    // either way the field goes back to mirroring the store, so a rejected
+    // entry visibly snaps back instead of sitting there looking accepted
+    setDraft(null);
+  };
+
+  return (
+    <Field label={label} hint={hint}>
+      <TextInput
+        inputMode="decimal"
+        value={draft ?? String(value)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") setDraft(null);
+        }}
+      />
+    </Field>
+  );
+}
+
+/** where the rates on screen came from, and when */
+function ratesOrigin(settings: AppState["settings"]): string {
+  if (!settings.ratesUpdatedAt) return "Starting rates — not updated yet";
+  const source =
+    settings.ratesSource === "monobank"
+      ? "Monobank, buy rate"
+      : settings.ratesSource === "nbu"
+        ? "NBU official"
+        : "typed in by hand";
+  return `Updated ${formatDateTime(settings.ratesUpdatedAt)} · ${source}`;
 }
 
 function AtAGlance({ label, value }: { label: string; value: number }) {

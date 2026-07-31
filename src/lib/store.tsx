@@ -13,7 +13,7 @@ import { DEFAULT_STATE, THEME_KEY } from "./constants";
 import { addMonths, currentMonth, dateInMonth, monthOf } from "./date";
 import { dueMonths } from "./finmath";
 import { normalizeState } from "./backup";
-import type { AppState, Transaction } from "./types";
+import type { AppState, RecurringRule, Subscription, Transaction } from "./types";
 
 /** how many months of known recurring costs are pre-posted (current + ahead) */
 export const PLANNING_HORIZON_MONTHS = 12;
@@ -213,6 +213,60 @@ export function isPostingOf(tx: Transaction, kind: ScheduleKind, ownerId: string
 }
 
 /**
+ * The month a posting belongs to. The deterministic id carries it, which
+ * survives a hand-edited date; only rows that predate that id (or whose date
+ * was moved before it existed) fall back to reading the month off the date.
+ */
+function postingMonth(tx: Transaction, kind: ScheduleKind, ownerId: string): string {
+  const prefix = postingId(kind, ownerId, "");
+  const tail = tx.id.startsWith(prefix) ? tx.id.slice(prefix.length) : "";
+  return /^\d{4}-\d{2}$/.test(tail) ? tail : monthOf(tx.date);
+}
+
+/**
+ * Everything a posting derives from its rule. Kept in one place so the row a
+ * schedule creates and the row it later rewrites can never drift apart.
+ */
+function recurringPosting(rule: RecurringRule, month: string): Omit<Transaction, "id"> {
+  return {
+    type: rule.type,
+    amount: rule.amount,
+    currency: rule.currency,
+    categoryId: rule.categoryId,
+    date: dateInMonth(month, rule.dayOfMonth),
+    note: rule.note,
+    accountId: rule.accountId,
+    recurringId: rule.id,
+  };
+}
+
+/** as above for a subscription; a yearly plan posts price/12 every month */
+function subscriptionPosting(
+  sub: Subscription,
+  month: string,
+  categoryId: string,
+): Omit<Transaction, "id"> {
+  return {
+    type: "expense",
+    amount: sub.period === "yearly" ? sub.price / 12 : sub.price,
+    currency: sub.currency,
+    categoryId,
+    date: dateInMonth(month, sub.dayOfMonth),
+    note: sub.name,
+    accountId: sub.accountId,
+    subscriptionId: sub.id,
+  };
+}
+
+/** subscriptions post here; falls back to any expense category if it was deleted */
+function subscriptionCategoryId(state: AppState): string | undefined {
+  return (
+    state.categories.find((c) => c.id === "cat-subs")?.id ??
+    state.categories.find((c) => c.kind === "expense")?.id
+  );
+}
+
+/**
  * Delete a recurring rule or a subscription together with every transaction it
  * posted — past, current and planned months alike. A cancelled subscription
  * should leave nothing behind in any month; use the active switch instead to
@@ -262,24 +316,12 @@ export function materializeRecurring(state: AppState): AppState {
       const id = postingId("recurring", rule.id, m);
       if (posted.has(id)) continue;
       posted.add(id);
-      newTx.push({
-        id,
-        type: rule.type,
-        amount: rule.amount,
-        currency: rule.currency,
-        categoryId: rule.categoryId,
-        date: dateInMonth(m, rule.dayOfMonth),
-        note: rule.note,
-        accountId: rule.accountId,
-        recurringId: rule.id,
-      });
+      newTx.push({ id, ...recurringPosting(rule, m) });
     }
     return { ...rule, lastAppliedMonth: due[due.length - 1] };
   });
 
-  const subsCategoryId =
-    state.categories.find((c) => c.id === "cat-subs")?.id ??
-    state.categories.find((c) => c.kind === "expense")?.id;
+  const subsCategoryId = subscriptionCategoryId(state);
 
   const subscriptions = state.subscriptions.map((sub) => {
     if (!sub.active || !subsCategoryId) return sub;
@@ -287,23 +329,12 @@ export function materializeRecurring(state: AppState): AppState {
     // twelve equal monthly charges (price / 12) so budgets stay smooth
     const due = dueMonths(sub, 1, horizon);
     if (due.length === 0) return sub;
-    const perMonth = sub.period === "yearly" ? sub.price / 12 : sub.price;
     changed = true;
     for (const m of due) {
       const id = postingId("subscription", sub.id, m);
       if (posted.has(id)) continue;
       posted.add(id);
-      newTx.push({
-        id,
-        type: "expense",
-        amount: perMonth,
-        currency: sub.currency,
-        categoryId: subsCategoryId,
-        date: dateInMonth(m, sub.dayOfMonth),
-        note: sub.name,
-        accountId: sub.accountId,
-        subscriptionId: sub.id,
-      });
+      newTx.push({ id, ...subscriptionPosting(sub, m, subsCategoryId) });
     }
     return { ...sub, lastAppliedMonth: due[due.length - 1] };
   });
@@ -318,11 +349,93 @@ export function materializeRecurring(state: AppState): AppState {
 }
 
 /**
+ * Push a rule's or subscription's current values onto **every** transaction it
+ * posted — the months already posted included, not just the planned ones. An
+ * edit is a correction of the standing arrangement ("rent is 21 000 now", "the
+ * salary rule pays on the 5th"), so the ledger it produced has to say the same
+ * thing; a row that no longer matches the rule that owns it is a row nobody can
+ * explain. Months the schedule has stopped covering (its start moved later, its
+ * end moved earlier) are dropped, and months it now covers but never posted are
+ * filled in.
+ *
+ * A hand-edited posting is rewritten along with the rest: it belongs to the
+ * schedule, and there is no way to tell a deliberate override from a stale row.
+ * Record a one-off that should survive as its own transaction instead.
+ */
+export function syncSchedule(state: AppState, kind: ScheduleKind, id: string): AppState {
+  const rule = kind === "recurring" ? state.recurring.find((r) => r.id === id) : undefined;
+  const sub =
+    kind === "subscription" ? state.subscriptions.find((s) => s.id === id) : undefined;
+  const schedule: RecurringRule | Subscription | undefined = rule ?? sub;
+  if (!schedule) return state;
+
+  const horizon = addMonths(currentMonth(), PLANNING_HORIZON_MONTHS - 1);
+  // the full span the schedule covers today, read without `lastAppliedMonth`
+  // so it describes the arrangement rather than how far it happens to have run
+  const covered = new Set(
+    dueMonths(
+      { startMonth: schedule.startMonth, endMonth: rule?.endMonth },
+      1,
+      horizon,
+    ),
+  );
+  const subsCategoryId = subscriptionCategoryId(state);
+
+  const transactions = state.transactions.flatMap((t) => {
+    if (!isPostingOf(t, kind, id)) return [t];
+    const month = postingMonth(t, kind, id);
+    if (!covered.has(month)) return [];
+    // rebuilt rather than merged, so a posting that was hand-edited into
+    // something else (a transfer, a different category) comes back in line
+    if (rule) return [{ id: t.id, ...recurringPosting(rule, month) }];
+    if (!subsCategoryId) return [t];
+    return [{ id: t.id, ...subscriptionPosting(sub!, month, subsCategoryId) }];
+  });
+
+  // an inactive subscription posts nothing further, so materialization leaves
+  // it alone — give it the month its own history actually reaches. Everything
+  // else starts from scratch, which is what fills the gaps the span opened up.
+  const lastApplied = sub && !sub.active ? lastPostedMonth(transactions, kind, id) : undefined;
+
+  return materializeRecurring({
+    ...state,
+    transactions,
+    recurring:
+      kind === "recurring"
+        ? state.recurring.map((r) =>
+            r.id === id ? { ...r, lastAppliedMonth: undefined } : r,
+          )
+        : state.recurring,
+    subscriptions:
+      kind === "subscription"
+        ? state.subscriptions.map((s) =>
+            s.id === id ? { ...s, lastAppliedMonth: lastApplied } : s,
+          )
+        : state.subscriptions,
+  });
+}
+
+/** newest month `id` has a posting for, or undefined when it has none */
+function lastPostedMonth(
+  transactions: Transaction[],
+  kind: ScheduleKind,
+  id: string,
+): string | undefined {
+  const months = transactions
+    .filter((t) => isPostingOf(t, kind, id))
+    .map((t) => postingMonth(t, kind, id))
+    .sort();
+  return months.length > 0 ? months[months.length - 1] : undefined;
+}
+
+/**
  * Drop future (planned) postings and rebuild them from current rule and
- * subscription values, so an edit or a cancellation propagates to the months
- * ahead while already-posted history stays untouched. Use after any change to
- * a recurring rule or subscription; hydration uses the append-only
- * `materializeRecurring` instead to avoid id churn.
+ * subscription values, leaving already-posted history untouched. This is the
+ * right tool when the schedule itself did not change but what it should still
+ * post did — switching a subscription off keeps what it already charged and
+ * clears the months ahead. For an edit to the values themselves use
+ * `syncSchedule`, which carries them into the posted months too; hydration uses
+ * the append-only `materializeRecurring` to avoid id churn.
  */
 export function remateralizeRecurring(state: AppState): AppState {
   const cur = currentMonth();

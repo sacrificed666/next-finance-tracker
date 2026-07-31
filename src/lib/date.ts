@@ -103,3 +103,14 @@ export function formatDateShort(dateISO: string): string {
   const [, m, d] = dateISO.split("-").map(Number);
   return `${d} ${MONTHS_SHORT[m - 1]}`;
 }
+
+/**
+ * "21 Jul 2026, 14:05" from an ISO datetime. Exchange rates move during the
+ * day, so a date alone cannot answer "is this still fresh?" — unlike the
+ * yyyy-mm-dd helpers above, this one is local-time and takes a full timestamp.
+ */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return formatDate(iso.slice(0, 10));
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}

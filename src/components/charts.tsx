@@ -11,6 +11,7 @@ import {
 import { formatMonthShort } from "@/lib/date";
 import { formatCompact, formatMoney } from "@/lib/money";
 import type { Currency } from "@/lib/types";
+import { SegmentedControl } from "./ui";
 
 /* ---------- shared plumbing ---------- */
 
@@ -112,28 +113,18 @@ export function PeriodTabs({
   onChange: (months: number) => void;
   options?: ReadonlyArray<{ months: number; label: string }>;
 }) {
+  // the same control as every other single choice in the app, in its compact
+  // size — it used to light the active tab up in place, with none of the
+  // travelling thumb or focus ring the rest of the radiogroups have
   return (
-    <div className="flex rounded-full border border-hairline bg-ghost p-0.5" role="radiogroup" aria-label="Period">
-      {options.map((p) => {
-        const active = p.months === value;
-        return (
-          <button
-            key={p.months}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(p.months)}
-            className={`rounded-full px-2.5 py-1.5 text-xs font-semibold transition-colors duration-150 ${
-              active
-                ? "bg-(--card-strong) text-ink-1 shadow-[inset_0_1px_0_var(--card-highlight),0_1px_3px_rgba(4,12,24,0.12)]"
-                : "text-ink-3 hover:text-ink-1"
-            }`}
-          >
-            {p.label}
-          </button>
-        );
-      })}
-    </div>
+    <SegmentedControl
+      size="sm"
+      label="Period"
+      className="shrink-0"
+      options={options.map((p) => ({ value: String(p.months), label: p.label }))}
+      value={String(value)}
+      onChange={(months) => onChange(Number(months))}
+    />
   );
 }
 

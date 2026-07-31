@@ -67,7 +67,7 @@ function CardLink({ href }: { href: string }) {
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1 rounded-full border border-hairline bg-ghost px-3 py-1.5 text-xs font-semibold text-accent transition-colors hover:border-[color-mix(in_oklab,var(--accent)_40%,var(--hairline))] hover:bg-ghost-2"
+      className="inline-flex items-center gap-1 rounded-full border border-hairline bg-ghost px-3 py-1.5 text-xs font-semibold text-accent transition-colors hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-ghost-2"
     >
       All
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
