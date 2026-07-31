@@ -177,9 +177,17 @@ async function upsert(
   columns: string[],
   rows: unknown[][],
 ): Promise<void> {
-  if (rows.length === 0) return;
+  // Postgres refuses an ON CONFLICT batch that touches the same key twice
+  // ("cannot affect row a second time") and that error rolls back the whole
+  // save, losing every edit in the payload. A repeated key is a client bug,
+  // never a reason to drop the dataset on the floor: keep the last row for it,
+  // which is the one the client would have won with anyway.
+  const byKey = new Map<unknown, unknown[]>();
+  for (const row of rows) byKey.set(row[0], row);
+  const deduped = [...byKey.values()];
+  if (deduped.length === 0) return;
   const values: unknown[] = [];
-  const tuples = rows.map(
+  const tuples = deduped.map(
     (row) => `(${row.map((v) => `$${values.push(v)}`).join(", ")})`,
   );
   const updates = columns

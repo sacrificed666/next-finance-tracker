@@ -5,6 +5,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { formatMonthShort } from "@/lib/date";
@@ -112,7 +113,7 @@ export function PeriodTabs({
   options?: ReadonlyArray<{ months: number; label: string }>;
 }) {
   return (
-    <div className="flex rounded-full bg-ghost p-0.5" role="radiogroup" aria-label="Period">
+    <div className="flex rounded-full border border-hairline bg-ghost p-0.5" role="radiogroup" aria-label="Period">
       {options.map((p) => {
         const active = p.months === value;
         return (
@@ -122,8 +123,10 @@ export function PeriodTabs({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(p.months)}
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors duration-150 ${
-              active ? "glass-strong text-ink-1" : "text-ink-3 hover:text-ink-1"
+            className={`rounded-full px-2.5 py-1.5 text-xs font-semibold transition-colors duration-150 ${
+              active
+                ? "bg-(--card-strong) text-ink-1 shadow-[inset_0_1px_0_var(--card-highlight),0_1px_3px_rgba(4,12,24,0.12)]"
+                : "text-ink-3 hover:text-ink-1"
             }`}
           >
             {p.label}
@@ -157,14 +160,24 @@ export function ChartLegend({
 
 /* ---------- sparkline (stat tiles) ---------- */
 
+type Tone = "income" | "expense" | "accent";
+
+const TONE_COLOR: Record<Tone, string> = {
+  income: "var(--income)",
+  expense: "var(--expense)",
+  accent: "var(--accent)",
+};
+
 export function Sparkline({
   values,
   height = 28,
   width = 72,
+  tone = "accent",
 }: {
   values: number[];
   height?: number;
   width?: number;
+  tone?: Tone;
 }) {
   if (values.length < 2) return null;
   const min = Math.min(...values);
@@ -177,15 +190,65 @@ export function Sparkline({
   return (
     <svg width={width} height={height} aria-hidden className="shrink-0">
       <path d={d} fill="none" stroke="var(--ink-3)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" opacity={0.6} />
-      <circle cx={px(last)} cy={py(values[last])} r={3} fill="var(--accent)" stroke="var(--card-strong)" strokeWidth={2} />
+      <circle cx={px(last)} cy={py(values[last])} r={3} fill={TONE_COLOR[tone]} stroke="var(--card-strong)" strokeWidth={2} />
     </svg>
   );
 }
 
+/**
+ * The trend behind a stat tile: a filled area pinned to the bottom edge,
+ * measured to whatever width the tile ends up with. It sits under the number
+ * instead of beside it, so a long value can never be squeezed into two lines
+ * by the chart next to it.
+ */
+function SparkArea({ values, tone, height }: { values: number[]; tone: Tone; height: number }) {
+  const [ref, width] = useMeasure<HTMLDivElement>();
+  const color = TONE_COLOR[tone];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const px = (i: number) => (i / (values.length - 1)) * width;
+  const py = (v: number) => height - 3 - ((v - min) / span) * (height - 8);
+  const line = values.map((v, i) => `${i === 0 ? "M" : "L"}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join("");
+  const id = `spark-${tone}`;
+  return (
+    <div ref={ref} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0" style={{ height }}>
+      {width > 0 && values.length > 1 && (
+        <svg width={width} height={height} className="block">
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <path d={`${line}L${width},${height}L0,${height}Z`} fill={`url(#${id})`} className="chart-fade" />
+          <path
+            d={line}
+            fill="none"
+            stroke={color}
+            strokeWidth={1.75}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeOpacity={0.85}
+            className="chart-line"
+            style={{ "--len": width * 2 } as CSSProperties}
+          />
+        </svg>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One headline figure. Every tile has the same skeleton — label, value, one
+ * line of context — so a row of them scans as a row rather than four
+ * differently-shaped cards.
+ */
 export function StatTile({
   label,
   value,
   delta,
+  hint,
   spark,
   tone,
   className = "",
@@ -193,28 +256,37 @@ export function StatTile({
   label: string;
   value: string;
   delta?: { text: string; good: boolean };
+  /** neutral context line, shown when there is no delta */
+  hint?: string;
   spark?: number[];
   tone?: "income" | "expense";
   className?: string;
 }) {
+  const sparkTone: Tone = tone ?? "accent";
   return (
-    <div className={`glass flex flex-col justify-between rounded-card p-4 ${className}`}>
+    <div
+      className={`glass glass-hover relative flex min-h-31 flex-col overflow-hidden rounded-card p-4 ${className}`}
+    >
       <p className="card-title">{label}</p>
-      <div className="mt-2 flex items-end justify-between gap-2">
+      <p
+        className={`tnum mt-2 whitespace-nowrap text-[1.65rem] font-bold leading-none tracking-tight ${
+          tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-ink-1"
+        }`}
+      >
+        {value}
+      </p>
+      {delta ? (
         <p
-          className={`text-2xl font-bold leading-tight tracking-tight ${
-            tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-ink-1"
+          className={`relative z-1 mt-1.5 text-xs font-medium ${
+            delta.good ? "text-income" : "text-expense"
           }`}
         >
-          {value}
-        </p>
-        {spark && spark.length > 1 && <Sparkline values={spark} />}
-      </div>
-      {delta && (
-        <p className={`mt-1.5 text-xs font-medium ${delta.good ? "text-income" : "text-expense"}`}>
           {delta.text}
         </p>
-      )}
+      ) : hint ? (
+        <p className="relative z-1 mt-1.5 text-xs text-ink-3">{hint}</p>
+      ) : null}
+      {spark && spark.length > 1 && <SparkArea values={spark} tone={sparkTone} height={40} />}
     </div>
   );
 }
@@ -248,7 +320,7 @@ export function MonthlyColumns({
   const y = (v: number) => pad.top + plotH - (v / top) * plotH;
 
   const band = data.length > 0 ? plotW / data.length : 0;
-  const barW = Math.min(24, Math.max(4, (band - 10) / 2));
+  const barW = Math.min(24, Math.max(6, (band - 8) / 2));
   // thin x-axis labels on narrow containers (mobile) so short month names
   // don't collide; always keep the most recent (rightmost) month labelled
   const labelStep = Math.max(1, Math.ceil(28 / Math.max(1, band)));
@@ -257,8 +329,8 @@ export function MonthlyColumns({
     <div>
       <ChartLegend
         items={[
-          { label: "Income", color: "var(--series-1)" },
-          { label: "Expenses", color: "var(--series-6)" },
+          { label: "Income", color: "var(--series-2)" },
+          { label: "Expenses", color: "var(--series-1)" },
         ]}
       />
       <div ref={ref} className="relative mt-2" style={{ height }}>
@@ -284,8 +356,8 @@ export function MonthlyColumns({
               const dim = hover !== null && hover !== i;
               return (
                 <g key={d.month} opacity={dim ? 0.45 : 1} style={{ transition: "opacity 120ms" }}>
-                  <Column x={cx - barW - 1} w={barW} y0={y(0)} y1={y(d.income)} color="var(--series-1)" />
-                  <Column x={cx + 1} w={barW} y0={y(0)} y1={y(d.expense)} color="var(--series-6)" />
+                  <Column x={cx - barW - 1} w={barW} y0={y(0)} y1={y(d.income)} color="var(--series-2)" index={i} />
+                  <Column x={cx + 1} w={barW} y0={y(0)} y1={y(d.expense)} color="var(--series-1)" index={i} />
                   {(data.length - 1 - i) % labelStep === 0 && (
                     <text x={cx} y={height - 6} textAnchor="middle" fontSize={10.5} fill="var(--ink-3)">
                       {formatMonthShort(d.month)}
@@ -312,8 +384,8 @@ export function MonthlyColumns({
         {hover !== null && data[hover] && (
           <Tooltip x={pad.left + band * hover + band / 2} y={pad.top} containerWidth={width}>
             <p className="mb-1 font-semibold text-ink-1">{formatMonthShort(data[hover].month)}</p>
-            <TooltipRow color="var(--series-1)" label="Income" value={formatMoney(data[hover].income, currency, { compact: true })} />
-            <TooltipRow color="var(--series-6)" label="Expenses" value={formatMoney(data[hover].expense, currency, { compact: true })} />
+            <TooltipRow color="var(--series-2)" label="Income" value={formatMoney(data[hover].income, currency, { compact: true })} />
+            <TooltipRow color="var(--series-1)" label="Expenses" value={formatMoney(data[hover].expense, currency, { compact: true })} />
             <TooltipRow label="Net" value={formatMoney(data[hover].income - data[hover].expense, currency, { compact: true, sign: true })} />
           </Tooltip>
         )}
@@ -322,7 +394,22 @@ export function MonthlyColumns({
   );
 }
 
-function Column({ x, w, y0, y1, color }: { x: number; w: number; y0: number; y1: number; color: string }) {
+function Column({
+  x,
+  w,
+  y0,
+  y1,
+  color,
+  index = 0,
+}: {
+  x: number;
+  w: number;
+  y0: number;
+  y1: number;
+  color: string;
+  /** position in the series — staggers the grow-in so the row sweeps */
+  index?: number;
+}) {
   const h = Math.max(0, y0 - y1);
   if (h < 0.5) return null;
   const r = Math.min(4, w / 2, h); // rounded data-end, square baseline
@@ -330,6 +417,8 @@ function Column({ x, w, y0, y1, color }: { x: number; w: number; y0: number; y1:
     <path
       d={`M${x},${y0} L${x},${y1 + r} Q${x},${y1} ${x + r},${y1} L${x + w - r},${y1} Q${x + w},${y1} ${x + w},${y1 + r} L${x + w},${y0} Z`}
       fill={color}
+      className="chart-bar"
+      style={{ "--i": index } as CSSProperties}
     />
   );
 }
@@ -440,6 +529,7 @@ export function Donut({
         style={{ touchAction: "none" }}
       >
         <circle cx={cx} cy={cx} r={radius} fill="none" stroke="var(--fill-ghost)" strokeWidth={stroke} />
+        <g className="chart-ring">
         {arcs.map(({ seg, dashArray, dashOffset }) => {
           const dim = hover !== null && hover !== seg.id;
           return (
@@ -460,6 +550,7 @@ export function Donut({
             />
           );
         })}
+        </g>
         <text x={cx} y={cx - 6} textAnchor="middle" fontSize={11} fontWeight={650} fill="var(--ink-3)" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
           {focused ? focused.label : (centerLabel ?? "Total")}
         </text>
@@ -522,13 +613,15 @@ export function CategoryBreakdown({
   return (
     <div>
       <div className="flex h-3.5 w-full gap-0.5 overflow-hidden rounded-full" role="img" aria-label="Expense breakdown by category">
-        {bars.map((seg) => (
+        {bars.map((seg, i) => (
           <div
             key={seg.id}
+            className="bar-slice"
             style={{
               width: `${(seg.value / total) * 100}%`,
               background: seg.colorSlot === 0 ? "var(--ink-3)" : SERIES_VAR(seg.colorSlot),
-            }}
+              "--i": i,
+            } as CSSProperties}
             title={`${seg.label}: ${formatMoney(seg.value, currency, { compact: true })}`}
           />
         ))}
@@ -615,12 +708,17 @@ export function StackedArea({
 
   if (n < 2) return null;
 
+  // a label needs ~38px of its own; on a narrow card that means showing every
+  // second or third tick rather than letting years run into each other
+  const perLabel = plotW / Math.max(1, (n - 1) / xTickEvery);
+  const labelEvery = xTickEvery * Math.max(1, Math.ceil(38 / Math.max(1, perLabel)));
+
   return (
     <div>
       <ChartLegend
         items={[
-          { label: seriesA, color: "var(--series-1)" },
-          { label: seriesB, color: "var(--series-5)" },
+          { label: seriesA, color: "var(--series-2)" },
+          { label: seriesB, color: "var(--series-1)" },
         ]}
       />
       <div ref={ref} className="relative mt-2" style={{ height }}>
@@ -635,21 +733,39 @@ export function StackedArea({
               </g>
             ))}
             {points.map((p, i) =>
-              i % xTickEvery === 0 ? (
+              i % labelEvery === 0 ? (
                 <text key={p.label} x={x(i)} y={height - 6} textAnchor="middle" fontSize={10.5} fill="var(--ink-3)">
                   {xTickFormat(p.label)}
                 </text>
               ) : null,
             )}
-            <path d={areaA} fill="var(--series-1)" opacity={0.1} />
-            <path d={areaB} fill="var(--series-5)" opacity={0.1} />
-            <path d={lineA} fill="none" stroke="var(--series-1)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-            <path d={lineTotal} fill="none" stroke="var(--series-5)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            <path d={areaA} fill="var(--series-2)" fillOpacity={0.12} className="chart-fade" />
+            <path d={areaB} fill="var(--series-1)" fillOpacity={0.12} className="chart-fade" />
+            <path
+              d={lineA}
+              fill="none"
+              stroke="var(--series-2)"
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              className="chart-line"
+              style={{ "--len": plotW * 2.2 } as CSSProperties}
+            />
+            <path
+              d={lineTotal}
+              fill="none"
+              stroke="var(--series-1)"
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              className="chart-line"
+              style={{ "--len": plotW * 2.2 } as CSSProperties}
+            />
             {hover !== null && (
               <g>
                 <line x1={x(hover)} x2={x(hover)} y1={pad.top} y2={pad.top + plotH} stroke="var(--ink-3)" strokeWidth={1} opacity={0.5} />
-                <circle cx={x(hover)} cy={y(points[hover].a)} r={4} fill="var(--series-1)" stroke="var(--card-strong)" strokeWidth={2} />
-                <circle cx={x(hover)} cy={y(points[hover].a + points[hover].b)} r={4} fill="var(--series-5)" stroke="var(--card-strong)" strokeWidth={2} />
+                <circle cx={x(hover)} cy={y(points[hover].a)} r={4} fill="var(--series-2)" stroke="var(--card-strong)" strokeWidth={2} />
+                <circle cx={x(hover)} cy={y(points[hover].a + points[hover].b)} r={4} fill="var(--series-1)" stroke="var(--card-strong)" strokeWidth={2} />
               </g>
             )}
             <rect
@@ -666,8 +782,8 @@ export function StackedArea({
         {hover !== null && points[hover] && (
           <Tooltip x={x(hover)} y={pad.top} containerWidth={width}>
             <p className="mb-1 font-semibold text-ink-1">{points[hover].label}</p>
-            <TooltipRow color="var(--series-5)" label={seriesB} value={formatMoney(points[hover].b, currency, { compact: true })} />
-            <TooltipRow color="var(--series-1)" label={seriesA} value={formatMoney(points[hover].a, currency, { compact: true })} />
+            <TooltipRow color="var(--series-1)" label={seriesB} value={formatMoney(points[hover].b, currency, { compact: true })} />
+            <TooltipRow color="var(--series-2)" label={seriesA} value={formatMoney(points[hover].a, currency, { compact: true })} />
             <TooltipRow label="Total" value={formatMoney(points[hover].a + points[hover].b, currency, { compact: true })} />
           </Tooltip>
         )}

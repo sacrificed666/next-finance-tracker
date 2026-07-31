@@ -6,77 +6,112 @@
 :root {
   color-scheme: light;
 
-  /* surfaces & ink */
-  --bg: #eef1f8;
-  --card: rgba(255, 255, 255, 0.42);
-  --card-strong: rgba(255, 255, 255, 0.7);
-  --card-border: rgba(255, 255, 255, 0.65);
+  /* Surfaces stay neutral and genuinely light — the colour belongs to the
+     accents and the data, not to the paper they sit on. */
+  --bg: #f6f7f9;
+  --card: rgba(255, 255, 255, 0.82);
+  --card-strong: rgba(255, 255, 255, 0.95);
+  --card-border: rgba(13, 16, 23, 0.07);
   --card-highlight: rgba(255, 255, 255, 0.9);
-  --card-shadow: 0 10px 40px rgba(30, 41, 72, 0.12);
-  --ink-1: #0b0c10;
-  --ink-2: #4a5060;
-  --ink-3: #7e8494;
-  --hairline: rgba(11, 12, 16, 0.09);
-  --fill-ghost: rgba(11, 12, 16, 0.05);
-  --fill-ghost-2: rgba(11, 12, 16, 0.09);
+  --card-shadow: 0 6px 24px rgba(15, 20, 35, 0.07);
+  --ink-1: #14161c;
+  --ink-2: #4b515f;
+  --ink-3: #737a88;
+  --hairline: rgba(20, 22, 28, 0.1);
+  --fill-ghost: rgba(20, 22, 28, 0.045);
+  --fill-ghost-2: rgba(20, 22, 28, 0.085);
+  /* one tinted fill for hover and selection, so every surface reacts in the
+     brand colour instead of going grey */
+  --fill-tint: rgba(184, 12, 60, 0.07);
+  --fill-tint-2: rgba(184, 12, 60, 0.12);
 
-  /* semantic */
-  --accent: #0a7aff;
-  --accent-2: #7c4dff;
-  --accent-grad: linear-gradient(135deg, #0a7aff, #7c4dff);
-  --accent-soft: rgba(10, 122, 255, 0.12);
-  --income: #1e9e50;
-  --expense: #e03131;
-  --warning: #c77800;
+  /* Brand: one saturated raspberry, used at three depths of the same hue —
+     no second accent colour anywhere, so the chrome reads as one material.
+     Stepped for 6.4:1 as text; white labels clear 6:1 on both gradient stops. */
+  --accent: #b80c3c;
+  --accent-2: #8f0026;
+  --accent-3: #e0245a;
+  --accent-grad: linear-gradient(135deg, #c2103f, #8f0026);
+  --accent-soft: rgba(184, 12, 60, 0.1);
+  --on-accent: #ffffff;
+  --wash-strong: rgba(194, 16, 63, 0.1);
+  --wash-soft: rgba(143, 0, 38, 0.06);
+  --vignette: rgba(20, 22, 28, 0.05);
+  --glow-a: rgba(194, 16, 63, 0.28);
+  --glow-b: rgba(143, 0, 38, 0.2);
+  --income: #0b7a54;
+  --expense: #d01e3c;
+  --warning: #a16207;
 
-  /* chart series (validated categorical palette, light mode) */
-  --series-1: #2a78d6;
-  --series-2: #1baf7a;
-  --series-3: #eda100;
-  --series-4: #008300;
-  --series-5: #4a3aa7;
-  --series-6: #e34948;
-  --series-7: #e87ba4;
-  --series-8: #eb6834;
-  --gridline: #e1e0d9;
-  --chart-surface: #fcfcfb;
+  /* Chart series — raspberry leads. Teal is deliberately absent: paired with
+     raspberry it read as watermelon. Chosen by search over hue and order;
+     worst adjacent CVD ΔE 8.9 light / 7.9 dark, normal-vision ≥ 17.2 on these
+     surfaces. The dark figure sits in the 6–8 floor band, which is legal here
+     because every series is directly labelled (icon + name + value) and the
+     marks carry a 2px gap — never rely on hue alone. Raspberry and emerald may
+     never be a pair (ΔE 2.7 — the red/green collapse). Re-order only with the
+     validator. */
+  --series-1: #c2103f; /* raspberry */
+  --series-2: #2563eb; /* blue */
+  --series-3: #b45309; /* amber */
+  --series-4: #047857; /* emerald */
+  --series-5: #5b21b6; /* violet */
+  --series-6: #ea580c; /* orange */
+  --series-7: #0369a1; /* sky */
+  --series-8: #4d7c0f; /* lime */
+  --gridline: #e6e8ec;
+  --chart-surface: #fbfbfc;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #05070d;
-  --card: rgba(22, 27, 42, 0.46);
-  --card-strong: rgba(28, 33, 48, 0.78);
-  --card-border: rgba(255, 255, 255, 0.11);
-  --card-highlight: rgba(255, 255, 255, 0.16);
-  --card-shadow: 0 14px 48px rgba(0, 0, 0, 0.5);
-  --ink-1: #f5f6fa;
-  --ink-2: #a6acbd;
-  --ink-3: #6d7488;
-  --hairline: rgba(245, 246, 250, 0.1);
-  --fill-ghost: rgba(245, 246, 250, 0.06);
-  --fill-ghost-2: rgba(245, 246, 250, 0.11);
+  /* The page is no longer a void: it sits a step above black and the cards sit
+     a clear step above the page, so the layering is visible without shadows
+     doing all the work. */
+  /* Panels are a warm charcoal, not a blue-grey: under a raspberry accent the
+     cool cast read as a different design system fighting the brand. */
+  --bg: #121013;
+  --card: rgba(31, 28, 33, 0.92);
+  --card-strong: rgba(38, 34, 40, 0.96);
+  --card-border: rgba(255, 240, 245, 0.09);
+  --card-highlight: rgba(255, 250, 252, 0.06);
+  --card-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  --ink-1: #f4f0f2;
+  --ink-2: #b3aab0;
+  --ink-3: #857c84;
+  --hairline: rgba(255, 240, 245, 0.11);
+  --fill-ghost: rgba(255, 240, 245, 0.055);
+  --fill-ghost-2: rgba(255, 240, 245, 0.1);
+  --fill-tint: rgba(255, 77, 109, 0.1);
+  --fill-tint-2: rgba(255, 77, 109, 0.16);
 
-  --accent: #4d9fff;
-  --accent-2: #9b7bff;
-  --accent-grad: linear-gradient(135deg, #3b8dff, #8b5cf6);
-  --accent-soft: rgba(77, 159, 255, 0.16);
-  --income: #30d158;
-  --expense: #ff6259;
-  --warning: #ffb340;
+  --accent: #ff4d6d;
+  --accent-2: #c2103f;
+  --accent-3: #ff849b;
+  --accent-grad: linear-gradient(135deg, #e0245a, #a3002f);
+  --accent-soft: rgba(255, 77, 109, 0.15);
+  --on-accent: #ffffff;
+  --wash-strong: rgba(224, 36, 90, 0.13);
+  --wash-soft: rgba(163, 0, 47, 0.09);
+  --vignette: rgba(0, 0, 0, 0.28);
+  --glow-a: rgba(224, 36, 90, 0.32);
+  --glow-b: rgba(163, 0, 47, 0.24);
+  --income: #2fd68f;
+  --expense: #ff5b7a;
+  --warning: #f0b03c;
 
-  /* chart series, dark-surface steps */
-  --series-1: #3987e5;
-  --series-2: #199e70;
-  --series-3: #c98500;
-  --series-4: #008300;
-  --series-5: #9085e9;
-  --series-6: #e66767;
-  --series-7: #d55181;
-  --series-8: #d95926;
-  --gridline: #2c2c2a;
-  --chart-surface: #1a1a19;
+  /* same eight, stepped for the dark surface (not an automatic flip) */
+  --series-1: #e8496a; /* raspberry */
+  --series-2: #4f8fe6; /* blue */
+  --series-3: #b37f26; /* amber */
+  --series-4: #28a877; /* emerald */
+  --series-5: #8b6fd8; /* violet */
+  --series-6: #d16d38; /* orange */
+  --series-7: #3f9bd0; /* sky */
+  --series-8: #6f9c2a; /* lime */
+  --gridline: #2d272f;
+  --chart-surface: #1f1c21;
 }
 
 @theme inline {
@@ -93,6 +128,10 @@
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
   --color-accent-soft: var(--accent-soft);
+  --color-tint: var(--fill-tint);
+  --color-tint-2: var(--fill-tint-2);
+  --color-accent-3: var(--accent-3);
+  --color-on-accent: var(--on-accent);
   --color-income: var(--income);
   --color-expense: var(--expense);
   --color-warning: var(--warning);
@@ -140,52 +179,30 @@ body {
   inset: 0;
   z-index: -1;
   overflow: hidden;
-  background: linear-gradient(180deg, #eef1f8, #e6eaf4);
-}
-
-[data-theme="dark"] .app-backdrop {
-  background: linear-gradient(180deg, #05070d, #090c14);
-}
-
-.app-backdrop::before,
-.app-backdrop::after {
-  content: "";
-  position: absolute;
-  width: 68vmax;
-  height: 68vmax;
-  border-radius: 50%;
-  filter: blur(70px);
-  will-change: transform;
+  /* A neutral page with one raspberry wash anchored behind the header, plus a
+     faint one bottom-right for depth. Two drifting blobs in different hues
+     read as decoration; this reads as light falling on the page. */
+  background:
+    radial-gradient(120% 75% at 12% -12%, var(--wash-strong), transparent 58%),
+    radial-gradient(85% 55% at 105% 105%, var(--wash-soft), transparent 62%),
+    /* a whisper of a vignette so the cards sit *on* the page */
+    radial-gradient(140% 120% at 50% 40%, transparent 55%, var(--vignette)),
+    var(--bg);
 }
 
 .app-backdrop::before {
-  top: -28vmax;
-  left: -14vmax;
-  background:
-    radial-gradient(closest-side at 38% 42%, rgba(10, 122, 255, 0.34), transparent 70%),
-    radial-gradient(closest-side at 68% 68%, rgba(124, 77, 255, 0.26), transparent 70%);
-  animation: drift-a 46s ease-in-out infinite alternate;
-}
-
-.app-backdrop::after {
-  right: -20vmax;
-  bottom: -30vmax;
-  background:
-    radial-gradient(closest-side at 55% 45%, rgba(18, 188, 138, 0.26), transparent 70%),
-    radial-gradient(closest-side at 30% 70%, rgba(255, 108, 164, 0.18), transparent 70%);
-  animation: drift-b 54s ease-in-out infinite alternate;
-}
-
-[data-theme="dark"] .app-backdrop::before {
-  background:
-    radial-gradient(closest-side at 38% 42%, rgba(48, 116, 255, 0.4), transparent 70%),
-    radial-gradient(closest-side at 68% 68%, rgba(126, 74, 255, 0.3), transparent 70%);
-}
-
-[data-theme="dark"] .app-backdrop::after {
-  background:
-    radial-gradient(closest-side at 55% 45%, rgba(12, 156, 116, 0.26), transparent 70%),
-    radial-gradient(closest-side at 30% 70%, rgba(214, 74, 138, 0.16), transparent 70%);
+  content: "";
+  position: absolute;
+  top: -30vmax;
+  left: -18vmax;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  filter: blur(90px);
+  background: radial-gradient(closest-side at 50% 50%, var(--glow-a), transparent 70%);
+  opacity: 0.55;
+  animation: drift-a 52s ease-in-out infinite alternate;
+  will-change: transform;
 }
 
 @keyframes drift-a {
@@ -197,14 +214,6 @@ body {
   }
 }
 
-@keyframes drift-b {
-  from {
-    transform: translate3d(0, 0, 0) scale(1.1);
-  }
-  to {
-    transform: translate3d(-9vmax, -7vmax, 0) scale(0.95);
-  }
-}
 
 /* ------------------------------------------------ */
 /* liquid glass panels: refraction edge + inner glow */
@@ -250,11 +259,9 @@ body {
   inset: -12% 0;
   z-index: -1;
   border-radius: inherit;
-  background: radial-gradient(
-    60% 80% at 28% 0%,
-    color-mix(in oklab, var(--accent) 30%, transparent),
-    transparent 70%
-  );
+  background:
+    radial-gradient(55% 75% at 22% 0%, var(--glow-a), transparent 70%),
+    radial-gradient(50% 70% at 78% 10%, var(--glow-b), transparent 70%);
   filter: blur(28px);
   pointer-events: none;
 }
@@ -276,39 +283,209 @@ body {
 .btn-gradient {
   position: relative;
   background: var(--accent-grad);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow:
-    0 3px 12px color-mix(in oklab, var(--accent) 42%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    0 4px 16px var(--glow-a),
+    0 2px 24px var(--glow-b),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 .btn-gradient:hover {
   box-shadow:
-    0 6px 20px color-mix(in oklab, var(--accent) 50%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+    0 6px 22px var(--glow-a),
+    0 4px 32px var(--glow-b),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* ───────────────────── depth & pointer feedback ───────────────────── */
+
+/* Cards that lead somewhere or hold a control lift slightly under the
+   pointer and warm their edge toward the accent, so "this responds" is
+   readable before the click. Hover-capable pointers only — on touch the
+   lift would stick after a tap. */
+@media (hover: hover) {
+  .glass-hover {
+    transition:
+      translate 240ms cubic-bezier(0.22, 0.68, 0.24, 1),
+      box-shadow 240ms ease;
+  }
+  /* The lift rides on `translate`, not `transform`: the entrance animation
+     fills `transform` forwards, and a filled animation outranks a plain
+     declaration — on `transform` the card would never actually move. */
+  .glass-hover:hover {
+    translate: 0 -2px;
+    /* depth only — no coloured outline. A card should feel picked up, not
+       highlighted. */
+    box-shadow:
+      inset 0 1px 0 var(--card-highlight),
+      0 14px 34px rgba(20, 12, 28, 0.1),
+      var(--card-shadow);
+  }
+}
+
+/* a slow light sweep across gradient surfaces on hover */
+.btn-gradient {
+  overflow: hidden;
+  isolation: isolate;
+}
+.btn-gradient::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 34%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 66%
+  );
+  transform: translateX(-130%);
+  transition: transform 720ms cubic-bezier(0.22, 0.68, 0.24, 1);
+}
+@media (hover: hover) {
+  .btn-gradient:hover::after {
+    transform: translateX(130%);
+  }
+}
+
+/* ─────────────────────────── chart entrances ─────────────────────────── */
+/* Marks arrive from their own baseline — bars grow out of the axis, lines
+   draw left to right — so the eye follows the data in rather than finding
+   it already there. Stagger comes from an inline --i on each mark. */
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+.chart-bar {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: bar-grow 560ms cubic-bezier(0.22, 0.68, 0.24, 1) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+@keyframes line-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.chart-line {
+  stroke-dasharray: var(--len, 1200);
+  stroke-dashoffset: var(--len, 1200);
+  animation: line-draw 1s cubic-bezier(0.22, 0.68, 0.24, 1) both;
+}
+@keyframes chart-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.chart-fade {
+  animation: chart-fade 700ms ease both;
+  animation-delay: var(--delay, 320ms);
+}
+/* stacked-bar segments unroll from the left, one after the other */
+@keyframes slice-in {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.bar-slice {
+  transform-origin: left;
+  animation: slice-in 520ms cubic-bezier(0.22, 0.68, 0.24, 1) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+@keyframes ring-sweep {
+  from {
+    transform: rotate(-90deg) scale(0.94);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+}
+.chart-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ring-sweep 700ms cubic-bezier(0.22, 0.68, 0.24, 1) both;
 }
 
 /* dashboard-style card section label */
+/* Card section label. Was 11px in the faintest ink, which is where "too small
+   and too low contrast" started; a step up on both counts. */
 .card-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
-/* the single hover treatment for clickable list rows across the app.
-   uses ghost-2 (not ghost) so bg-ghost icon chips stay visible on hover. */
+/* ─────────────────────── one hover language ─────────────────────── */
+/* Every hoverable surface answers the same way: a wash of the brand colour
+   and a touch more ink. Nothing goes grey, nothing jumps. */
 .row-tap {
   border-radius: 1rem;
-  transition: background-color 150ms ease;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
 }
 @media (hover: hover) {
   .row-tap:hover {
-    background-color: var(--fill-ghost-2);
+    background-color: var(--fill-tint);
   }
 }
 .row-tap:active {
-  background-color: var(--fill-ghost-2);
+  background-color: var(--fill-tint-2);
+}
+
+/* icon-only affordances: circular, ghost at rest, tinted under the pointer */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--ink-3);
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+}
+@media (hover: hover) {
+  .icon-btn:hover {
+    background-color: var(--fill-tint);
+    color: var(--accent);
+  }
+  .icon-btn-danger:hover {
+    background-color: color-mix(in oklab, var(--expense) 14%, transparent);
+    color: var(--expense);
+  }
+}
+.icon-btn:active {
+  transform: scale(0.9);
+}
+.icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+/* table rows: the same wash, without the rounded-row look */
+.table-row {
+  transition: background-color 160ms ease;
+}
+@media (hover: hover) {
+  .table-row:hover {
+    background-color: var(--fill-tint);
+  }
 }
 
 /* number columns that must align */
@@ -325,6 +502,43 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+}
+
+/* iOS Safari paints its own rounded box and inner shadow on text fields, and
+   ignores part of the styling until the native appearance is switched off.
+   Range, checkbox and radio keep theirs — they are styled separately below. */
+input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"]),
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* native bits the browser draws for itself — pickers, checkboxes, spinners */
+:root {
+  accent-color: var(--accent);
+}
+
+::-webkit-calendar-picker-indicator {
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+::-webkit-calendar-picker-indicator:hover {
+  opacity: 0.9;
+}
+[data-theme="dark"] ::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.6);
+}
+
+/* autofill repaints the field with the browser's own colours, which reads as
+   "the styling vanished"; pin ink and surface back to the app's */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink-1);
+  -webkit-box-shadow: 0 0 0 1000px color-mix(in oklab, var(--fill-ghost), var(--bg)) inset;
+  caret-color: var(--ink-1);
+  transition: background-color 100000s ease-in-out 0s;
 }
 
 input::placeholder,
@@ -383,14 +597,15 @@ input[type="range"].slider::-webkit-slider-thumb {
   width: 20px;
   border-radius: 999px;
   background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  /* ringed in the accent so the grab point is unmistakable */
+  border: 2px solid var(--accent);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
   transition: transform 120ms ease;
 }
 input[type="range"].slider::-moz-range-thumb {
   height: 20px;
   width: 20px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 2px solid var(--accent);
   border-radius: 999px;
   background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
@@ -435,9 +650,17 @@ input[type="range"].slider:focus-visible::-webkit-slider-thumb {
   background: transparent;
 }
 
-/* keep native select dropdowns readable in either theme */
-select {
-  color-scheme: light dark;
+/* The popup a native <select> opens is drawn by the OS, and `light dark` told
+   it to follow the *system* preference — so an app in dark mode on a light
+   system opened a light list with the app's light-on-dark ink, which was
+   unreadable. Inheriting the root's own scheme keeps the two in step, and the
+   explicit option colours cover the platforms that honour them. */
+/* No `color-scheme` override on the select itself: the property inherits, so
+   the popup follows the root's scheme (which tracks the app theme). Setting it
+   explicitly reset it to `normal` and handed the popup back to the OS. */
+option {
+  background-color: var(--card-strong);
+  color: var(--ink-1);
 }
 
 /* ──────────────────────────── animations ──────────────────────────── */
@@ -453,14 +676,19 @@ select {
     transform: none;
   }
 }
+/* `backwards`, not `both`: a forwards-filled animation keeps owning the
+   properties it touched, which outranks any later declaration — with `both`
+   the entrance would permanently pin `transform` and every hover lift on a
+   staggered card would silently do nothing. The end keyframe equals the
+   element's natural state anyway, so nothing changes visually. */
 .animate-rise {
-  animation: rise 0.4s cubic-bezier(0.22, 0.68, 0.24, 1) both;
+  animation: rise 0.4s cubic-bezier(0.22, 0.68, 0.24, 1) backwards;
   animation-delay: var(--rise-delay, 0ms);
 }
 
 /* stagger direct children of a grid/stack for a gentle cascade on mount */
 .stagger > * {
-  animation: rise 0.42s cubic-bezier(0.22, 0.68, 0.24, 1) both;
+  animation: rise 0.42s cubic-bezier(0.22, 0.68, 0.24, 1) backwards;
 }
 .stagger > *:nth-child(1) { animation-delay: 0ms; }
 .stagger > *:nth-child(2) { animation-delay: 40ms; }

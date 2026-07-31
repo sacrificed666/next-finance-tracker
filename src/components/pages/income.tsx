@@ -28,6 +28,7 @@ import {
   currentMonth,
   formatDateShort,
   formatMonth,
+  formatMonthShort,
   monthOf,
   todayISO,
 } from "@/lib/date";
@@ -116,12 +117,18 @@ export function IncomePage() {
   const withIncome = series.filter((m) => m.income > 0).slice(-6);
   const avg6 =
     withIncome.reduce((s, m) => s + m.income, 0) / Math.max(1, withIncome.length);
-  const ytd = series
-    .filter((m) => m.month.slice(0, 4) === nowMonth.slice(0, 4))
-    .reduce((s, m) => s + m.income, 0);
+  const ytdMonths = series.filter((m) => m.month.slice(0, 4) === nowMonth.slice(0, 4));
+  const ytd = ytdMonths.reduce((s, m) => s + m.income, 0);
+  const monthsSoFar = Math.max(1, ytdMonths.length);
+  // the strongest month in the window, for context under the average
+  const bestMonth = series.reduce<(typeof series)[number] | null>(
+    (best, m) => (m.income > 0 && (!best || m.income > best.income) ? m : best),
+    null,
+  );
 
   const trailingStart = addMonths(nowMonth, -11);
   const byCategory = incomeByCategory(state.transactions, trailingStart, nowMonth, settings);
+  const last12Total = [...byCategory.values()].reduce((s, v) => s + v, 0);
   const catSegments: BreakdownSegment[] = [...byCategory.entries()].map(
     ([categoryId, value]) => {
       const cat = catById.get(categoryId);
@@ -297,23 +304,34 @@ export function IncomePage() {
         action={<Button onClick={openAdd}>+ Add income</Button>}
       />
 
-      <div className="stagger grid grid-cols-1 gap-4 xl:grid-cols-12">
+      <div className="stagger grid grid-cols-2 items-start gap-3 sm:gap-4 xl:grid-cols-12">
         <StatTile
           className="xl:col-span-4"
           label="This month"
           value={formatMoney(thisMonth, base, { compact: true })}
           tone="income"
           spark={series.map((m) => m.income)}
+          delta={{
+            text: `${formatMoney(thisMonth - avg6, base, { compact: true, sign: true })} vs your 6-month average`,
+            good: thisMonth >= avg6,
+          }}
         />
         <StatTile
           className="xl:col-span-4"
           label="Average (6 mo)"
           value={formatMoney(avg6, base, { compact: true })}
+          spark={series.slice(-6).map((m) => m.income)}
+          hint={
+            bestMonth
+              ? `best so far: ${formatMoney(bestMonth.income, base, { compact: true })} in ${formatMonthShort(bestMonth.month)}`
+              : undefined
+          }
         />
         <StatTile
-          className="xl:col-span-4"
+          className="col-span-2 xl:col-span-4"
           label={`${nowMonth.slice(0, 4)} year to date`}
           value={formatMoney(ytd, base, { compact: true })}
+          hint={`${formatMoney(ytd / monthsSoFar, base, { compact: true })}/mo across ${monthsSoFar} month${monthsSoFar === 1 ? "" : "s"}`}
         />
 
         <GlassCard
@@ -321,7 +339,7 @@ export function IncomePage() {
           subtitle="What came in each month"
           icon="📊"
           action={<PeriodTabs value={chartMonths} onChange={setChartMonths} />}
-          className="xl:col-span-7"
+          className="col-span-2 xl:col-span-7"
         >
           {hasIncome ? (
             <MonthlyColumns
@@ -342,10 +360,21 @@ export function IncomePage() {
           title="By source"
           subtitle="Last 12 months"
           icon="🥧"
-          className="xl:col-span-5"
+          className="col-span-2 xl:col-span-5"
         >
           {catSegments.length > 0 ? (
-            <CategoryBreakdown segments={catSegments} currency={base} maxSegments={7} />
+            <>
+              <div className="mb-3.5 flex items-end justify-between gap-3">
+                <p className="tnum whitespace-nowrap text-2xl font-bold leading-none text-ink-1">
+                  {formatMoney(last12Total, base, { compact: true })}
+                </p>
+                <p className="text-xs text-ink-3">
+                  {catSegments.length} source{catSegments.length === 1 ? "" : "s"} ·{" "}
+                  {formatMoney(last12Total / 12, base, { compact: true })}/mo on average
+                </p>
+              </div>
+              <CategoryBreakdown segments={catSegments} currency={base} maxSegments={7} />
+            </>
           ) : (
             <EmptyState
               icon="🥧"
@@ -355,7 +384,7 @@ export function IncomePage() {
           )}
         </GlassCard>
 
-        <GlassCard title="All income" subtitle="Newest first" icon="🧾" className="xl:col-span-12">
+        <GlassCard title="All income" subtitle="Newest first" icon="🧾" className="col-span-2 xl:col-span-12">
           {!hasIncome ? (
             <EmptyState
               icon="💸"
@@ -405,13 +434,22 @@ export function IncomePage() {
                                   {tx.note || cat?.name || "Income"}
                                 </span>
                                 <span className="block truncate text-xs text-ink-3">
-                                  {cat?.name ?? "Income"}
-                                  {tx.breakdown
-                                    ? ` · ${breakdownSummary(tx.breakdown, tx.currency)}`
-                                    : ""}
-                                  {tx.tax
-                                    ? ` · net of ${formatMoney(tx.tax.gross - tx.amount, tx.currency)} tax`
-                                    : ""}
+                                  {[
+                                    // the title already shows the category when
+                                    // there is no note — don't say it twice
+                                    tx.note ? (cat?.name ?? "Income") : null,
+                                    tx.breakdown
+                                      ? breakdownSummary(tx.breakdown, tx.currency)
+                                      : null,
+                                    tx.tax
+                                      ? `net of ${formatMoney(tx.tax.gross - tx.amount, tx.currency)} tax`
+                                      : null,
+                                    !tx.note && !tx.breakdown && !tx.tax
+                                      ? formatMonth(monthOf(tx.date))
+                                      : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
                                 </span>
                               </span>
                               <span className="shrink-0 text-right">

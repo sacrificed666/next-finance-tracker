@@ -10,6 +10,7 @@ import {
   Field,
   GlassCard,
   Money,
+  OptionChips,
   PageHeader,
   ProgressMeter,
   SegmentedControl,
@@ -162,15 +163,26 @@ export function BalancePage() {
   const [debtDeleteId, setDebtDeleteId] = useState<string | null>(null);
 
   /* ---------- investments totals ---------- */
+  // `earnedInYear` is what the same positions add over the next twelve months
+  // if nothing changes — the figure that answers "so what?" next to a balance
+  const oneYearOut = dateInMonth(addMonths(monthOf(today), 12), Number(today.slice(8, 10)));
   const invTotals = state.investments.reduce(
     (acc, inv) => {
       const snap = investmentAt(inv, today);
+      const ahead = investmentAt(inv, oneYearOut);
+      const earned = snap.accrued + snap.paidOut;
       acc.invested += convert(snap.invested, inv.currency, base, settings.rates);
       acc.value += convert(snap.value, inv.currency, base, settings.rates);
-      acc.earned += convert(snap.accrued + snap.paidOut, inv.currency, base, settings.rates);
+      acc.earned += convert(earned, inv.currency, base, settings.rates);
+      acc.earnedInYear += convert(
+        ahead.accrued + ahead.paidOut - earned,
+        inv.currency,
+        base,
+        settings.rates,
+      );
       return acc;
     },
-    { invested: 0, value: 0, earned: 0 },
+    { invested: 0, value: 0, earned: 0, earnedInYear: 0 },
   );
 
   /* ---------- account handlers ---------- */
@@ -551,14 +563,50 @@ export function BalancePage() {
             <div className="mt-2">
               <TripleMoney amount={worth.total} currency={base} settings={settings} size="lg" />
             </div>
-            <div className="mt-3 space-y-1 border-t border-hairline pt-3 text-sm">
-              <p className="text-ink-2">
-                Accounts {formatMoney(worth.savings, base, { compact: true })} · Investments{" "}
-                {formatMoney(worth.investments, base, { compact: true })}
-              </p>
+            <div className="mt-4 space-y-2.5 border-t border-hairline pt-3.5 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2 text-ink-2">
+                  <span aria-hidden className="size-2.5 rounded-sm bg-series-2" />
+                  Accounts
+                </span>
+                <span className="tnum font-semibold text-ink-1">
+                  {formatMoney(worth.savings, base, { compact: true })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2 text-ink-2">
+                  <span aria-hidden className="size-2.5 rounded-sm bg-series-1" />
+                  Investments
+                </span>
+                <span className="tnum font-semibold text-ink-1">
+                  {formatMoney(worth.investments, base, { compact: true })}
+                </span>
+              </div>
+              {worth.assets > 0 && (
+                <div className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden>
+                  <div
+                    className="bar-slice bg-series-2"
+                    style={{ width: `${(worth.savings / worth.assets) * 100}%` }}
+                  />
+                  <div
+                    className="bar-slice bg-series-1"
+                    style={{ width: `${(worth.investments / worth.assets) * 100}%` }}
+                  />
+                </div>
+              )}
               {worth.debts > 0 && (
-                <p className="text-expense">
-                  Debts −{formatMoney(worth.debts, base, { compact: true })}
+                <div className="flex items-center justify-between gap-3 border-t border-hairline pt-2.5">
+                  <span className="text-ink-2">Debts</span>
+                  <span className="tnum font-semibold text-expense">
+                    −{formatMoney(worth.debts, base, { compact: true })}
+                  </span>
+                </div>
+              )}
+              {worth.debts > 0 && worth.assets > 0 && (
+                <p className="text-xs text-ink-3">
+                  Debt is {formatPercent((worth.debts / worth.assets) * 100, 0)} of what you
+                  own — {formatMoney(worth.assets - worth.debts, base, { compact: true })} is
+                  really yours.
                 </p>
               )}
             </div>
@@ -759,23 +807,37 @@ export function BalancePage() {
             {/* investments */}
             {state.investments.length > 0 && (
               <>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
                   <StatTile
                     label="Invested"
                     value={formatMoney(invTotals.invested, base, { compact: true })}
+                    hint={`across ${state.investments.length} position${state.investments.length === 1 ? "" : "s"}`}
                   />
                   <StatTile
                     label="Current value"
                     value={formatMoney(invTotals.value, base, { compact: true })}
+                    hint={
+                      invTotals.invested > 0
+                        ? `${formatPercent((invTotals.value / invTotals.invested - 1) * 100)} on what you put in`
+                        : undefined
+                    }
                   />
                   <StatTile
+                    className="col-span-2 md:col-span-1"
                     label="Earned"
                     value={formatMoney(invTotals.earned, base, { compact: true, sign: true })}
                     tone={invTotals.earned > 0 ? "income" : undefined}
+                    hint={`${formatMoney(invTotals.earnedInYear, base, { compact: true, sign: true })} expected over the next year`}
                   />
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                {/* one position gets the full width instead of leaving a hole
+                    beside it; from two on they pair up */}
+                <div
+                  className={`grid gap-3 sm:gap-4 ${
+                    state.investments.length > 1 ? "xl:grid-cols-2" : ""
+                  }`}
+                >
                   {state.investments.map((inv) => {
                     const snap = investmentAt(inv, today);
                     const inYear = investmentAt(
@@ -870,15 +932,18 @@ export function BalancePage() {
                   })}
                 </div>
 
-                <GlassCard title="How interest is calculated" subtitle="Reinvest vs payout" icon="ℹ️">
-                  <p className="text-sm leading-relaxed text-ink-2">
+                <details className="glass rounded-card px-5 py-3.5">
+                  <summary className="cursor-pointer list-none text-sm font-semibold text-ink-2 transition-colors hover:text-ink-1">
+                    ℹ️ How interest is calculated — reinvest vs payout
+                  </summary>
+                  <p className="mt-2.5 text-sm leading-relaxed text-ink-2">
                     Reinvest means compound interest: accrued interest joins the principal at the
                     chosen frequency and keeps earning, and monthly top-ups compound from the month
                     they land. Payout means simple interest: interest on the invested amount is paid
                     out to you, so the position itself does not grow (the forecast adds payouts to
                     your savings instead).
                   </p>
-                </GlassCard>
+                </details>
               </>
             )}
           </>
@@ -909,23 +974,13 @@ export function BalancePage() {
           </Field>
           <div>
             <span className="mb-1.5 block text-[13px] font-medium text-ink-2">Icon</span>
-            <div className="flex flex-wrap gap-2">
-              {ICON_CHOICES.map((icon) => (
-                <button
-                  key={icon}
-                  type="button"
-                  aria-pressed={accForm.icon === icon}
-                  onClick={() => setAccForm({ ...accForm, icon })}
-                  className={`flex size-10 items-center justify-center rounded-full text-xl transition-colors ${
-                    accForm.icon === icon
-                      ? "bg-accent-soft ring-2 ring-accent"
-                      : "bg-ghost hover:bg-ghost-2"
-                  }`}
-                >
-                  {icon}
-                </button>
-              ))}
-            </div>
+            <OptionChips
+                label="Icon"
+                size="lg"
+                options={ICON_CHOICES.map((icon) => ({ value: icon, label: icon }))}
+                value={accForm.icon}
+                onChange={(icon) => setAccForm({ ...accForm, icon })}
+              />
           </div>
           <Field label="Currency">
             <SegmentedControl

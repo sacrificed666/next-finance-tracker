@@ -189,6 +189,52 @@ export function useStore(): StoreApi {
   return api;
 }
 
+/** a recurring rule or a subscription — both post one transaction per month */
+export type ScheduleKind = "recurring" | "subscription";
+
+/**
+ * Deterministic id of the transaction a schedule posts for one month, so a
+ * posting exists at most once: re-running materialization, importing a backup
+ * or overlapping saves all land on the same row instead of a second copy.
+ */
+function postingId(kind: ScheduleKind, ownerId: string, month: string): string {
+  return `${kind === "recurring" ? "rec" : "sub"}:${ownerId}:${month}`;
+}
+
+/**
+ * Whether `tx` was posted by the given rule or subscription. The link column
+ * decides; the id prefix is checked too, because editing a posting used to
+ * strip the link while keeping the id, leaving rows that belong to a schedule
+ * without saying so.
+ */
+export function isPostingOf(tx: Transaction, kind: ScheduleKind, ownerId: string): boolean {
+  const link = kind === "recurring" ? tx.recurringId : tx.subscriptionId;
+  return link === ownerId || tx.id.startsWith(postingId(kind, ownerId, ""));
+}
+
+/**
+ * Delete a recurring rule or a subscription together with every transaction it
+ * posted — past, current and planned months alike. A cancelled subscription
+ * should leave nothing behind in any month; use the active switch instead to
+ * stop it going forward while keeping what it already charged.
+ */
+export function deleteSchedule(
+  state: AppState,
+  kind: ScheduleKind,
+  id: string,
+): AppState {
+  return remateralizeRecurring({
+    ...state,
+    recurring:
+      kind === "recurring" ? state.recurring.filter((r) => r.id !== id) : state.recurring,
+    subscriptions:
+      kind === "subscription"
+        ? state.subscriptions.filter((s) => s.id !== id)
+        : state.subscriptions,
+    transactions: state.transactions.filter((t) => !isPostingOf(t, kind, id)),
+  });
+}
+
 /**
  * Post transactions for recurring rules and active subscriptions that are
  * due, from where each left off up to the planning horizon (a year ahead) so
@@ -203,6 +249,9 @@ export function materializeRecurring(state: AppState): AppState {
   // subscription posts once, not twice at the boundary
   const horizon = addMonths(currentMonth(), PLANNING_HORIZON_MONTHS - 1);
   const newTx: Transaction[] = [];
+  // ids already in the ledger — a posting is never emitted twice, not even
+  // when its row lost the link back to its schedule (see `postingId`)
+  const posted = new Set(state.transactions.map((t) => t.id));
   let changed = false;
 
   const recurring = state.recurring.map((rule) => {
@@ -210,11 +259,11 @@ export function materializeRecurring(state: AppState): AppState {
     if (due.length === 0) return rule;
     changed = true;
     for (const m of due) {
+      const id = postingId("recurring", rule.id, m);
+      if (posted.has(id)) continue;
+      posted.add(id);
       newTx.push({
-        // deterministic id: one posting per (rule, month). Re-running
-        // materialization, importing a backup, or overlapping saves can never
-        // create a second copy — the id is the same, so an upsert dedups it.
-        id: `rec:${rule.id}:${m}`,
+        id,
         type: rule.type,
         amount: rule.amount,
         currency: rule.currency,
@@ -241,9 +290,11 @@ export function materializeRecurring(state: AppState): AppState {
     const perMonth = sub.period === "yearly" ? sub.price / 12 : sub.price;
     changed = true;
     for (const m of due) {
+      const id = postingId("subscription", sub.id, m);
+      if (posted.has(id)) continue;
+      posted.add(id);
       newTx.push({
-        // deterministic id: one charge per (subscription, month) — see above
-        id: `sub:${sub.id}:${m}`,
+        id,
         type: "expense",
         amount: perMonth,
         currency: sub.currency,

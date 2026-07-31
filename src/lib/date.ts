@@ -64,7 +64,7 @@ export function wholeMonthsBetween(fromISO: string, toISO: string): number {
   return Math.max(0, months);
 }
 
-const MONTHS = [
+export const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
@@ -77,7 +77,7 @@ const MONTHS_SHORT = [
 /** "July 2026" */
 export function formatMonth(month: string): string {
   const [y, m] = month.split("-").map(Number);
-  return `${MONTHS[m - 1]} ${y}`;
+  return `${MONTH_NAMES[m - 1]} ${y}`;
 }
 
 /** "Jul" */

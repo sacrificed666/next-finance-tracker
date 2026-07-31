@@ -20,7 +20,7 @@ import {
   subscriptionsMonthlyTotal,
 } from "@/lib/finmath";
 import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
-import { remateralizeRecurring, uid, useStore } from "@/lib/store";
+import { deleteSchedule, remateralizeRecurring, uid, useStore } from "@/lib/store";
 import type {
   Budget,
   Currency,
@@ -37,7 +37,9 @@ import {
   EmptyState,
   Field,
   GlassCard,
+  MonthInput,
   Money,
+  OptionChips,
   PageHeader,
   ProgressMeter,
   SegmentedControl,
@@ -181,6 +183,7 @@ export function TransactionsPage() {
     else byDay.set(tx.date, [tx]);
   }
   const days = [...byDay.keys()].sort().reverse();
+  const monthTxCount = [...byDay.values()].reduce((n, list) => n + list.length, 0);
 
   const expenseCats = state.categories.filter((c) => c.kind === "expense");
   const budgetedIds = new Set(state.budgets.map((b) => b.categoryId));
@@ -300,8 +303,18 @@ export function TransactionsPage() {
       ...s,
       transactions: txForm.id
         ? s.transactions.map((t) =>
-            // replace rather than merge so switching type leaves no stale fields
-            t.id === txForm.id ? { id: t.id, ...patch } : t,
+            // replace rather than merge so switching type leaves no stale
+            // fields — except the link to the rule or subscription that posted
+            // the row, which must survive: it is what keeps the schedule from
+            // posting the same month a second time
+            t.id === txForm.id
+              ? {
+                  id: t.id,
+                  recurringId: t.recurringId,
+                  subscriptionId: t.subscriptionId,
+                  ...patch,
+                }
+              : t,
           )
         : [...s.transactions, { id: uid(), ...patch }],
     }));
@@ -390,13 +403,8 @@ export function TransactionsPage() {
   const deleteRec = () => {
     const id = recForm?.id;
     if (!id) return;
-    // remove the rule and its planned future postings; past ones stay in history
-    update((s) =>
-      remateralizeRecurring({
-        ...s,
-        recurring: s.recurring.filter((r) => r.id !== id),
-      }),
-    );
+    // the rule and every month it posted go together — nothing is left behind
+    update((s) => deleteSchedule(s, "recurring", id));
     setRecForm(null);
   };
 
@@ -484,14 +492,9 @@ export function TransactionsPage() {
   const deleteSub = () => {
     const id = subForm?.id;
     if (!id) return;
-    // drop the sub, then rebuild future postings (its planned months disappear,
-    // already-posted history stays)
-    update((s) =>
-      remateralizeRecurring({
-        ...s,
-        subscriptions: s.subscriptions.filter((sub) => sub.id !== id),
-      }),
-    );
+    // the subscription and every charge it posted go together — to keep the
+    // charges so far, switch it off instead of deleting it
+    update((s) => deleteSchedule(s, "subscription", id));
     setSubForm(null);
   };
 
@@ -570,49 +573,84 @@ export function TransactionsPage() {
             type="button"
             aria-label="Previous month"
             onClick={() => setMonth(addMonths(month, -1))}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ghost text-lg text-ink-1 transition-colors hover:bg-ghost-2"
+            className="icon-btn size-10 shrink-0 border border-hairline bg-ghost text-ink-2 shadow-[inset_0_1px_0_var(--card-highlight)]"
           >
-            ‹
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m14 6-6 6 6 6" />
+            </svg>
           </button>
-          <div className="flex flex-1 items-center justify-center gap-2">
-            <span className="text-[15px] font-semibold text-ink-1">
-              {formatMonth(month)}
+          {/* the strip used to be a wide empty bar with a month name in it —
+              it now carries where you are and how the month closed */}
+          <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+            <span className="flex items-center gap-2 text-[15px] font-semibold text-ink-1">
+              <span className="truncate">{formatMonth(month)}</span>
+              {month === nowMonth && (
+                <span className="hidden rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent sm:inline">
+                  this month
+                </span>
+              )}
             </span>
-            {month !== nowMonth && (
-              <Button
-                variant="plain"
-                className="px-2.5 py-1 text-xs"
-                onClick={() => setMonth(nowMonth)}
-              >
-                Today
-              </Button>
-            )}
+            <span className="tnum text-xs text-ink-3">
+              {monthTxCount} entr{monthTxCount === 1 ? "y" : "ies"} ·{" "}
+              <span className={totals.net >= 0 ? "text-income" : "text-expense"}>
+                {formatMoney(totals.net, base, { compact: true, sign: true })}
+              </span>
+            </span>
           </div>
+          {month !== nowMonth && (
+            <Button
+              variant="ghost"
+              className="shrink-0 px-3 text-xs"
+              onClick={() => setMonth(nowMonth)}
+            >
+              Today
+            </Button>
+          )}
           <button
             type="button"
             aria-label="Next month"
             onClick={() => setMonth(addMonths(month, 1))}
             disabled={!canGoNext}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ghost text-lg text-ink-1 transition-colors hover:bg-ghost-2 disabled:opacity-40"
+            className="icon-btn size-10 shrink-0 border border-hairline bg-ghost text-ink-2 shadow-[inset_0_1px_0_var(--card-highlight)] disabled:opacity-40"
           >
-            ›
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m10 6 6 6-6 6" />
+            </svg>
           </button>
         </div>
 
         {/* month summary */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatTile label="Income" value={formatMoney(totals.income, base)} tone="income" />
-          <StatTile label="Expenses" value={formatMoney(totals.expense, base)} tone="expense" />
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
           <StatTile
+            label="Income"
+            value={formatMoney(totals.income, base, { compact: true })}
+            tone="income"
+            spark={flowSeries.map((m) => m.income)}
+          />
+          <StatTile
+            label="Expenses"
+            value={formatMoney(totals.expense, base, { compact: true })}
+            tone="expense"
+            spark={flowSeries.map((m) => m.expense)}
+            hint={
+              totals.income > 0
+                ? `${formatPercent((totals.expense / totals.income) * 100, 0)} of what came in`
+                : undefined
+            }
+          />
+          <StatTile
+            className="col-span-2 md:col-span-1"
             label="Net"
-            value={formatMoney(totals.net, base, { sign: true })}
+            value={formatMoney(totals.net, base, { sign: true, compact: true })}
             tone={totals.net < 0 ? "expense" : "income"}
+            spark={flowSeries.map((m) => m.income - m.expense)}
+            hint={`${formatMoney(totals.expense / new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate(), base, { compact: true })} spent per day on average`}
           />
         </div>
 
         {/* charts */}
         {hasAnyTx && (
-          <div className="grid items-stretch gap-4 lg:grid-cols-2">
+          <div className="grid items-stretch gap-3 sm:gap-4 lg:grid-cols-2">
             <GlassCard title="Where it went" subtitle={formatMonth(month)} icon="🍩" className="flex flex-col">
               {spendSegments.length > 0 ? (
                 <div className="flex flex-1 flex-col justify-center">
@@ -645,7 +683,7 @@ export function TransactionsPage() {
           </div>
         )}
 
-        <div className="grid items-start gap-4 xl:grid-cols-5">
+        <div className="grid items-start gap-3 sm:gap-4 xl:grid-cols-5">
         {/* transaction list */}
         <div className="space-y-4 xl:col-span-3">
         {days.length === 0 ? (
@@ -666,7 +704,7 @@ export function TransactionsPage() {
                 <h3 className="mb-2 flex items-center gap-2 px-1 text-xs font-medium text-ink-3">
                   {formatDate(day)}
                   {planned && (
-                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent">
                       Planned
                     </span>
                   )}
@@ -1187,22 +1225,21 @@ export function TransactionsPage() {
               onChange={(e) => setRecForm({ ...recForm, day: e.target.value })}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="From">
-              <TextInput
-                type="month"
-                value={recForm.startMonth}
-                onChange={(e) => setRecForm({ ...recForm, startMonth: e.target.value })}
-              />
-            </Field>
-            <Field label="Until (optional)">
-              <TextInput
-                type="month"
-                value={recForm.endMonth}
-                onChange={(e) => setRecForm({ ...recForm, endMonth: e.target.value })}
-              />
-            </Field>
-          </div>
+          <Field label="From">
+            <MonthInput
+              name="From"
+              value={recForm.startMonth}
+              onChange={(startMonth) => setRecForm({ ...recForm, startMonth })}
+            />
+          </Field>
+          <Field label="Until (optional)" hint="Leave empty to keep it running">
+            <MonthInput
+              name="Until"
+              allowEmpty
+              value={recForm.endMonth}
+              onChange={(endMonth) => setRecForm({ ...recForm, endMonth })}
+            />
+          </Field>
           <Button className="w-full" onClick={saveRec} disabled={!recValid}>
             Save
           </Button>
@@ -1234,23 +1271,13 @@ export function TransactionsPage() {
           </Field>
           <div>
             <span className="mb-1.5 block text-[13px] font-medium text-ink-2">Icon</span>
-            <div className="flex flex-wrap gap-2">
-              {ICON_CHOICES.map((icon) => (
-                <button
-                  key={icon}
-                  type="button"
-                  aria-pressed={subForm.icon === icon}
-                  onClick={() => setSubForm({ ...subForm, icon })}
-                  className={`flex size-9 items-center justify-center rounded-full text-lg transition-colors ${
-                    subForm.icon === icon
-                      ? "bg-accent-soft ring-2 ring-accent"
-                      : "bg-ghost hover:bg-ghost-2"
-                  }`}
-                >
-                  {icon}
-                </button>
-              ))}
-            </div>
+            <OptionChips
+                label="Icon"
+                size="lg"
+                options={ICON_CHOICES.map((icon) => ({ value: icon, label: icon }))}
+                value={subForm.icon}
+                onChange={(icon) => setSubForm({ ...subForm, icon })}
+              />
           </div>
           <Field label="Billing period">
             <SegmentedControl
@@ -1380,14 +1407,14 @@ export function TransactionsPage() {
         onClose={() => setConfirmRecDelete(false)}
         onConfirm={deleteRec}
         title="Delete this rule?"
-        message="Only the rule is deleted — transactions it already posted stay in the history."
+        message="The rule and every transaction it posted are removed, in past and future months alike. This cannot be undone."
       />
       <ConfirmDialog
         open={confirmSubDelete}
         onClose={() => setConfirmSubDelete(false)}
         onConfirm={deleteSub}
         title="Delete this subscription?"
-        message="Only the subscription is deleted — expenses it already posted stay in the history."
+        message="The subscription and every charge it posted are removed, in past and future months alike. To keep those charges, switch it off instead."
       />
       <ConfirmDialog
         open={confirmBudgetDelete}

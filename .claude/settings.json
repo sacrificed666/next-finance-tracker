@@ -39,7 +39,29 @@
       "Bash(cp favicon-preview3.png favicon-text.png)",
       "Bash(grep -n 'GlassCard title\\\\|GlassCard$\\\\|title={`\\\\|title=\"' src/components/pages/forecast.tsx)",
       "Bash(python3 -c \"import sys,json;d=json.load\\(sys.stdin\\);print\\('tx',len\\(d['transactions']\\),'savings',len\\(d['savings']\\),'investments',[i['name'] for i in d['investments']],'subs',len\\(d['subscriptions']\\),'budgets',len\\(d['budgets']\\),'debts',len\\(d['debts']\\)\\)\")",
-      "Bash(node shot5.mjs)"
+      "Bash(node shot5.mjs)",
+      "Bash(curl -s http://localhost:3000/api/state -o /tmp/claude-1000/-workspaces-next-finance-tracker/623ca2a9-9c6a-45c3-a7a8-baf9cc18f8e0/scratchpad/state.json -w '%{http_code}\\\\n')",
+      "Bash(node -e ' *)",
+      "Bash(node repro.ts)",
+      "Bash(sed -i 's#\"../../../../workspaces/next-finance-tracker/src/lib/#\"/workspaces/next-finance-tracker/src/lib/#g' repro.ts)",
+      "Bash(cd /tmp/claude-1000/-workspaces-next-finance-tracker/623ca2a9-9c6a-45c3-a7a8-baf9cc18f8e0/scratchpad && sed -i 's/^console.log\\(\"PUT ->\", await put\\(s\\)\\);/console.log\\(\"PUT -> \\(dry run\\)\"\\);/' repro.ts && node repro.ts 2>&1 | grep -v -i warning | tail -25)",
+      "Bash(timeout 90 npm i playwright-core --silent --no-audit --no-fund)",
+      "Bash(timeout 180 node ui-check.mjs)",
+      "Bash(timeout 900 make stage-build)",
+      "Bash(timeout 180 node shots.mjs)",
+      "Bash(timeout 300 make stage-up)",
+      "Bash(POSTGRES_PORT=5433 APP_PORT=3001 timeout 300 make stage-up)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/settings)",
+      "Bash(BASE=http://localhost:3001 TAG=stage timeout 180 node shots.mjs)",
+      "Bash(timeout 300 npx playwright-core install webkit firefox)",
+      "Bash(timeout 120 node -e ' *)",
+      "Bash(sudo -n true)",
+      "Bash(timeout 480 sudo npx playwright-core install-deps webkit firefox)",
+      "Bash(timeout 240 node cross.mjs)",
+      "Bash(timeout 300 npx playwright-core install chromium)",
+      "Bash(sed -i 's#const CHROME = .*#const CHROME = undefined;#; s#{ executablePath: CHROME }#{}#' cross.mjs)",
+      "Bash(timeout 200 node -e ' *)",
+      "Bash(timeout 300 node verify-ui.mjs)"
     ]
   }
 }

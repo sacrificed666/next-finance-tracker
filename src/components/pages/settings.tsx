@@ -6,6 +6,7 @@ import {
   ConfirmDialog,
   Field,
   GlassCard,
+  OptionChips,
   PageHeader,
   SegmentedControl,
   Sheet,
@@ -274,8 +275,9 @@ export function SettingsPage() {
         title="Settings"
         subtitle="Currencies, taxes, categories and your data — all in one place"
       />
-      <div className="stagger grid min-w-0 items-start gap-4 xl:grid-cols-2">
-        <div className="min-w-0 space-y-4">
+      {/* CSS columns balance the cards by height on their own — hand-packed
+          columns always left one side short */}
+      <div className="stagger min-w-0 xl:columns-2 xl:gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
         <GlassCard title="General" subtitle="Currency and appearance" icon="⚙️">
           <div className="min-w-0 space-y-4">
             <Field label="Base currency" hint="Totals and charts are shown in it">
@@ -376,60 +378,6 @@ export function SettingsPage() {
           </p>
         </GlassCard>
 
-        </div>
-
-        <div className="min-w-0 space-y-4">
-        <GlassCard
-          title="Categories"
-          subtitle={`${state.categories.length} total · tap to edit`}
-          icon="🏷️"
-          action={
-            <Button variant="ghost" onClick={openAddCategory}>
-              + Add
-            </Button>
-          }
-        >
-          <SegmentedControl options={kindOptions} value={kindTab} onChange={setKindTab} />
-          <ul className="mt-4 space-y-0.5">
-            {visibleCategories.length === 0 && (
-              <li className="py-6 text-center text-sm text-ink-2">
-                No categories of this kind yet.
-              </li>
-            )}
-            {visibleCategories.map((cat) => (
-              <li
-                key={cat.id}
-                className="group flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-ghost"
-              >
-                <span
-                  aria-hidden
-                  className="flex size-9 shrink-0 items-center justify-center rounded-full text-lg"
-                  style={{
-                    backgroundColor: `color-mix(in oklab, var(--series-${cat.colorSlot}) 20%, transparent)`,
-                  }}
-                >
-                  {cat.icon}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">
-                  {cat.name}
-                </span>
-                <div className="flex shrink-0 items-center opacity-60 transition-opacity group-hover:opacity-100">
-                  <IconAction label={`Edit ${cat.name}`} onClick={() => openEditCategory(cat)}>
-                    ✏️
-                  </IconAction>
-                  <IconAction
-                    label={`Delete ${cat.name}`}
-                    danger
-                    onClick={() => requestDeleteCategory(cat.id)}
-                  >
-                    🗑️
-                  </IconAction>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </GlassCard>
-
         <GlassCard title="Data" subtitle="Backup, restore, reset" icon="💾">
           <div className="divide-y divide-hairline">
             <DataRow
@@ -483,7 +431,58 @@ export function SettingsPage() {
             to convert between currencies.
           </p>
         </GlassCard>
-        </div>
+
+        <GlassCard
+          title="Categories"
+          subtitle={`${state.categories.length} total · tap to edit`}
+          icon="🏷️"
+          action={
+            <Button variant="ghost" onClick={openAddCategory}>
+              + Add
+            </Button>
+          }
+        >
+          <SegmentedControl options={kindOptions} value={kindTab} onChange={setKindTab} />
+          <ul className="mt-4 space-y-0.5">
+            {visibleCategories.length === 0 && (
+              <li className="py-6 text-center text-sm text-ink-2">
+                No categories of this kind yet.
+              </li>
+            )}
+            {visibleCategories.map((cat) => (
+              <li
+                key={cat.id}
+                className="group flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-ghost"
+              >
+                <span
+                  aria-hidden
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full text-lg"
+                  style={{
+                    backgroundColor: `color-mix(in oklab, var(--series-${cat.colorSlot}) 20%, transparent)`,
+                  }}
+                >
+                  {cat.icon}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">
+                  {cat.name}
+                </span>
+                <div className="flex shrink-0 items-center opacity-60 transition-opacity group-hover:opacity-100">
+                  <IconAction
+                    label={`Edit ${cat.name}`}
+                    icon="edit"
+                    onClick={() => openEditCategory(cat)}
+                  />
+                  <IconAction
+                    label={`Delete ${cat.name}`}
+                    icon="delete"
+                    danger
+                    onClick={() => requestDeleteCategory(cat.id)}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </GlassCard>
       </div>
 
       {/* category add/edit */}
@@ -508,21 +507,12 @@ export function SettingsPage() {
           />
         </Field>
         <Field label="Icon">
-          <div className="grid grid-cols-7 gap-2 sm:grid-cols-9">
-            {ICON_CHOICES.map((icon) => (
-              <button
-                key={icon}
-                type="button"
-                onClick={() => setCatForm({ ...catForm, icon })}
-                aria-pressed={catForm.icon === icon}
-                className={`flex size-9 items-center justify-center rounded-full text-lg transition-colors ${
-                  catForm.icon === icon ? "bg-accent-soft ring-2 ring-accent" : "bg-ghost hover:bg-ghost-2"
-                }`}
-              >
-                {icon}
-              </button>
-            ))}
-          </div>
+          <OptionChips
+            label="Icon"
+            options={ICON_CHOICES.map((icon) => ({ value: icon, label: icon }))}
+            value={catForm.icon}
+            onChange={(icon) => setCatForm({ ...catForm, icon })}
+          />
         </Field>
         <Field label="Color">
           <div className="flex flex-wrap gap-2">
@@ -533,11 +523,19 @@ export function SettingsPage() {
                 onClick={() => setCatForm({ ...catForm, colorSlot: slot })}
                 aria-label={`Color ${slot}`}
                 aria-pressed={catForm.colorSlot === slot}
-                className={`size-8 rounded-full transition-transform hover:scale-110 active:scale-95 ${
-                  catForm.colorSlot === slot ? "ring-2 ring-offset-2 ring-offset-bg ring-ink-1" : ""
+                className={`flex size-9 items-center justify-center rounded-full text-white outline-none transition-transform duration-150 hover:scale-110 focus-visible:ring-4 focus-visible:ring-accent-soft active:scale-95 ${
+                  catForm.colorSlot === slot
+                    ? "ring-2 ring-ink-1 ring-offset-2 ring-offset-(--card-strong)"
+                    : ""
                 }`}
                 style={{ backgroundColor: `var(--series-${slot})` }}
-              />
+              >
+                {catForm.colorSlot === slot && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="m5 13 4 4L19 7" />
+                  </svg>
+                )}
+              </button>
             ))}
           </div>
         </Field>
@@ -582,27 +580,48 @@ export function SettingsPage() {
   );
 }
 
+const ACTION_ICONS = {
+  edit: "M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z",
+  delete: "M4 7h16M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7M6.5 7l.8 12a2 2 0 0 0 2 1.9h5.4a2 2 0 0 0 2-1.9l.8-12",
+} as const;
+
+/**
+ * The row actions used to be bare emoji, which read as decoration rather than
+ * as buttons. Same footprint, but a stroked icon in a real target with the
+ * app's hover language on it.
+ */
 function IconAction({
   label,
   onClick,
+  icon,
   danger,
-  children,
 }: {
   label: string;
   onClick: () => void;
+  icon: keyof typeof ACTION_ICONS;
   danger?: boolean;
-  children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       aria-label={label}
+      title={label}
       onClick={onClick}
-      className={`flex size-8 items-center justify-center rounded-full text-sm transition-colors hover:bg-ghost-2 active:scale-90 ${
-        danger ? "hover:bg-expense/15" : ""
-      }`}
+      className={`icon-btn size-9 ${danger ? "icon-btn-danger" : ""}`}
     >
-      {children}
+      <svg
+        width="17"
+        height="17"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.9}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d={ACTION_ICONS[icon]} />
+      </svg>
     </button>
   );
 }
@@ -611,7 +630,7 @@ function AtAGlance({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-field bg-ghost px-2 py-3">
       <p className="tnum text-xl font-bold text-ink-1">{value}</p>
-      <p className="mt-0.5 text-[11px] text-ink-3">{label}</p>
+      <p className="mt-0.5 text-xs text-ink-3">{label}</p>
     </div>
   );
 }

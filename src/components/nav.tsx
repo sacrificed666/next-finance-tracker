@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { todayISO } from "@/lib/date";
 import { netWorth } from "@/lib/finmath";
 import { formatMoney } from "@/lib/money";
 import { useStore, type SyncStatus } from "@/lib/store";
+import type { ThemePref } from "@/lib/types";
 
 interface NavItem {
   href: string;
@@ -81,7 +83,7 @@ function SyncDot({ sync }: { sync: SyncStatus }) {
           ? "Could not save — your last changes are only in this tab"
           : "Saving…"
       }
-      className={`hidden items-center gap-1.5 rounded-full py-1 pl-2 pr-2.5 text-[11px] font-semibold sm:inline-flex ${
+      className={`hidden items-center gap-1.5 rounded-full py-1 pl-2 pr-2.5 text-xs font-semibold sm:inline-flex ${
         failed ? "bg-expense/12 text-expense" : "bg-ghost text-ink-2"
       }`}
     >
@@ -96,28 +98,101 @@ function SyncDot({ sync }: { sync: SyncStatus }) {
   );
 }
 
-function useTheme() {
-  const { state, update } = useStore();
-  const theme = state.settings.theme;
-  const toggle = () =>
-    update((s) => ({
-      ...s,
-      settings: { ...s.settings, theme: theme === "dark" ? "light" : "dark" },
-    }));
-  return { theme, toggle };
-}
+const THEME_CHOICES: Array<{
+  value: ThemePref;
+  /** accessible name */
+  label: string;
+  /** what fits beside the icon when the control has room */
+  short: string;
+  icon: ReactNode;
+}> = [
+  {
+    value: "system",
+    label: "Match the system theme",
+    short: "Auto",
+    icon: (
+      <>
+        <rect x="3" y="4" width="18" height="13" rx="2.2" />
+        <path d="M9 20.5h6M12 17.5v3" />
+      </>
+    ),
+  },
+  {
+    value: "light",
+    label: "Light theme",
+    short: "Light",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="4.1" />
+        <path d="M12 2.6v2M12 19.4v2M4.5 4.5l1.4 1.4M18.1 18.1l1.4 1.4M2.6 12h2M19.4 12h2M4.5 19.5l1.4-1.4M18.1 5.9l1.4-1.4" />
+      </>
+    ),
+  },
+  {
+    value: "dark",
+    label: "Dark theme",
+    short: "Dark",
+    icon: <path d="M20.5 14.3A8.5 8.5 0 1 1 9.7 3.5a6.6 6.6 0 0 0 10.8 10.8Z" />,
+  },
+];
 
-function ThemeToggle({ className = "" }: { className?: string }) {
-  const { theme, toggle } = useTheme();
+/**
+ * Theme as a three-way choice rather than a flip — the preference itself is
+ * three-valued, and a toggle could never show that "system" was picked. The
+ * selected thumb is one element that slides between the three positions, so
+ * the control reads as a switch instead of three separate buttons.
+ */
+function ThemeChoice({ compact = false }: { compact?: boolean }) {
+  const { state, update } = useStore();
+  const current = state.settings.theme;
+  const index = Math.max(0, THEME_CHOICES.findIndex((c) => c.value === current));
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-      className={`flex size-9 shrink-0 items-center justify-center rounded-full bg-ghost text-base transition-colors hover:bg-ghost-2 active:scale-95 ${className}`}
+    <div
+      role="radiogroup"
+      aria-label="Theme"
+      className={`relative flex shrink-0 rounded-full bg-ghost p-1 ${compact ? "" : "w-full"}`}
     >
-      {theme === "dark" ? "☀️" : "🌙"}
-    </button>
+      <span
+        aria-hidden
+        className="absolute inset-y-1 rounded-full bg-(--card-strong) shadow-[inset_0_1px_0_var(--card-highlight),0_1px_4px_rgba(4,12,24,0.14)] transition-[left] duration-300 ease-[cubic-bezier(0.22,0.68,0.24,1)]"
+        style={{ width: "calc((100% - 0.5rem) / 3)", left: `calc(0.25rem + ${index} * (100% - 0.5rem) / 3)` }}
+      />
+      {THEME_CHOICES.map((choice) => {
+        const active = choice.value === current;
+        return (
+          <button
+            key={choice.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-label={choice.label}
+            title={choice.label}
+            onClick={() =>
+              update((s) => ({ ...s, settings: { ...s.settings, theme: choice.value } }))
+            }
+            className={`relative z-1 flex flex-1 items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-semibold outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-accent-soft ${
+              active ? "text-accent" : "text-ink-3 hover:text-ink-1"
+            } ${compact ? "size-8 p-0" : ""}`}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={active ? 2.1 : 1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+              className="shrink-0"
+            >
+              {choice.icon}
+            </svg>
+            {!compact && <span>{choice.short}</span>}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -133,14 +208,14 @@ function Brand() {
     >
       <span
         aria-hidden
-        className="btn-gradient flex size-9 items-center justify-center rounded-xl text-base font-black text-white shadow-md"
+        className="btn-gradient flex size-9 items-center justify-center rounded-xl text-base font-black shadow-md"
       >
         ₴
       </span>
       <span className="min-w-0 leading-tight">
         <span className="block text-sm font-bold tracking-tight text-ink-1">Finances</span>
         {hydrated && (
-          <span className="tnum block text-[11px] text-ink-3">
+          <span className="tnum block text-xs text-ink-3">
             {formatMoney(worth.total, state.settings.baseCurrency, { compact: true })}
           </span>
         )}
@@ -165,10 +240,10 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-all duration-150 ${
+                className={`flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-semibold transition-all duration-150 ${
                   active
-                    ? "btn-gradient shadow-md"
-                    : "text-ink-2 hover:bg-ghost hover:text-ink-1"
+                    ? "btn-gradient"
+                    : "text-ink-2 hover:bg-tint hover:text-ink-1"
                 }`}
               >
                 {item.icon(active)}
@@ -178,9 +253,9 @@ export function Sidebar() {
           })}
         </nav>
 
-        <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
+        <div className="mt-3 space-y-2 border-t border-hairline pt-3">
           <SyncDot sync={sync} />
-          <ThemeToggle className="ml-auto" />
+          <ThemeChoice />
         </div>
       </div>
     </aside>
@@ -196,7 +271,7 @@ export function MobileTopBar() {
         <Brand />
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <SyncDot sync={sync} />
-          <ThemeToggle />
+          <ThemeChoice compact />
         </div>
       </div>
     </header>
@@ -215,11 +290,11 @@ export function TabBar() {
             href={item.href}
             aria-label={item.label}
             className={`flex flex-col items-center gap-0.5 rounded-full px-2 py-1 transition-colors duration-150 ${
-              active ? "text-accent" : "text-ink-3"
+              active ? "text-accent [text-shadow:0_0_12px_var(--glow-a)]" : "text-ink-3"
             }`}
           >
             {item.icon(active)}
-            <span className="text-[10px] font-medium">{item.label}</span>
+            <span className="text-[11px] font-semibold">{item.label}</span>
           </Link>
         );
       })}
