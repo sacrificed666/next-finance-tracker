@@ -1,73 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useRef } from "react";
 import { usePathname } from "next/navigation";
 import { todayISO } from "@/lib/date";
 import { netWorth } from "@/lib/finmath";
 import { formatMoney } from "@/lib/money";
 import { useStore, type SyncStatus } from "@/lib/store";
+import { useRadioGroupKeys } from "./ui";
+import { Icon, type IconName } from "./icons";
 import type { ThemePref } from "@/lib/types";
 
 interface NavItem {
   href: string;
   label: string;
-  icon: (active: boolean) => React.ReactNode;
-}
-
-function Stroke({ d, active, size = 20 }: { d: string; active: boolean; size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={active ? 2.2 : 1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d={d} />
-    </svg>
-  );
+  /**
+   * What fits under a 20px icon in a sixth of a phone. "Dashboard" at 11px is
+   * ~58px of text; six tabs of that plus their padding need about 450px of
+   * intrinsic width, and the bar has 361px to give on a 393px phone — so the
+   * labels were spilling out past the ends of the rounded bar on every handset
+   * made. The full name still goes to the sidebar and to the accessible name.
+   */
+  short: string;
+  icon: IconName;
 }
 
 const NAV: NavItem[] = [
-  {
-    href: "/",
-    label: "Dashboard",
-    icon: (a) => <Stroke active={a} d="M3 10.5 12 3l9 7.5M5 9.5V21h5v-6h4v6h5V9.5" />,
-  },
-  {
-    href: "/transactions",
-    label: "Expenses",
-    icon: (a) => <Stroke active={a} d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3-3m-3 3 3 3" />,
-  },
-  {
-    href: "/income",
-    label: "Income",
-    icon: (a) => <Stroke active={a} d="M12 3v14m0 0 5-5m-5 5-5-5M4 21h16" />,
-  },
-  {
-    href: "/balance",
-    label: "Balance",
-    icon: (a) => (
-      <Stroke active={a} d="M4 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Zm0 3h16M8 6V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v1" />
-    ),
-  },
-  {
-    href: "/forecast",
-    label: "Forecast",
-    icon: (a) => <Stroke active={a} d="M4 20V10m5.33 10V4m5.34 16v-9M20 20v-5" />,
-  },
-  {
-    href: "/settings",
-    label: "Settings",
-    icon: (a) => (
-      <Stroke active={a} d="M4 7h9m4 0h3M4 17h3m4 0h9M15 7a2 2 0 1 0 0-.01M9 17a2 2 0 1 0 0-.01" />
-    ),
-  },
+  { href: "/", label: "Dashboard", short: "Home", icon: "home" },
+  { href: "/transactions", label: "Expenses", short: "Spend", icon: "swapArrows" },
+  { href: "/income", label: "Income", short: "Income", icon: "arrowDown" },
+  { href: "/balance", label: "Balance", short: "Balance", icon: "wallet" },
+  { href: "/forecast", label: "Forecast", short: "Plan", icon: "bars" },
+  { href: "/settings", label: "Settings", short: "More", icon: "gear" },
 ];
 
 /** floating glass command bar — the app's only chrome on desktop */
@@ -75,25 +39,29 @@ const NAV: NavItem[] = [
 /** a quiet status dot: pulsing while saving, red on failure, hidden when idle */
 function SyncDot({ sync }: { sync: SyncStatus }) {
   if (sync === "idle") return null;
-  const failed = sync === "error";
+  // "conflict" is louder than a failed write: the data on the server is newer
+  // than what this tab holds, so nothing here will be saved until it reloads
+  const bad = sync === "error" || sync === "conflict";
+  const label =
+    sync === "conflict" ? "Out of date" : sync === "error" ? "Not saved" : "Saving";
+  const title =
+    sync === "conflict"
+      ? "Another tab saved after this one loaded — reload to catch up"
+      : sync === "error"
+        ? "Could not save — your last changes are only in this tab"
+        : "Saving…";
   return (
     <span
-      title={
-        failed
-          ? "Could not save — your last changes are only in this tab"
-          : "Saving…"
-      }
+      title={title}
       className={`hidden items-center gap-1.5 rounded-full py-1 pl-2 pr-2.5 text-xs font-semibold sm:inline-flex ${
-        failed ? "bg-expense/12 text-expense" : "bg-ghost text-ink-2"
+        bad ? "bg-expense/12 text-expense" : "bg-ghost text-ink-2"
       }`}
     >
       <span
         aria-hidden
-        className={`size-1.5 rounded-full ${
-          failed ? "bg-expense" : "animate-pulse bg-income"
-        }`}
+        className={`size-1.5 rounded-full ${bad ? "bg-expense" : "animate-pulse bg-income"}`}
       />
-      {failed ? "Not saved" : "Saving"}
+      {label}
     </span>
   );
 }
@@ -104,36 +72,11 @@ const THEME_CHOICES: Array<{
   label: string;
   /** what fits beside the icon when the control has room */
   short: string;
-  icon: ReactNode;
+  icon: IconName;
 }> = [
-  {
-    value: "system",
-    label: "Match the system theme",
-    short: "Auto",
-    icon: (
-      <>
-        <rect x="3" y="4" width="18" height="13" rx="2.2" />
-        <path d="M9 20.5h6M12 17.5v3" />
-      </>
-    ),
-  },
-  {
-    value: "light",
-    label: "Light theme",
-    short: "Light",
-    icon: (
-      <>
-        <circle cx="12" cy="12" r="4.1" />
-        <path d="M12 2.6v2M12 19.4v2M4.5 4.5l1.4 1.4M18.1 18.1l1.4 1.4M2.6 12h2M19.4 12h2M4.5 19.5l1.4-1.4M18.1 5.9l1.4-1.4" />
-      </>
-    ),
-  },
-  {
-    value: "dark",
-    label: "Dark theme",
-    short: "Dark",
-    icon: <path d="M20.5 14.3A8.5 8.5 0 1 1 9.7 3.5a6.6 6.6 0 0 0 10.8 10.8Z" />,
-  },
+  { value: "system", label: "Match the system theme", short: "Auto", icon: "monitor" },
+  { value: "light", label: "Light theme", short: "Light", icon: "sun" },
+  { value: "dark", label: "Dark theme", short: "Dark", icon: "moon" },
 ];
 
 /**
@@ -146,8 +89,19 @@ function ThemeChoice({ compact = false }: { compact?: boolean }) {
   const { state, update } = useStore();
   const current = state.settings.theme;
   const index = Math.max(0, THEME_CHOICES.findIndex((c) => c.value === current));
+  const setTheme = (theme: ThemePref) =>
+    update((s) => ({ ...s, settings: { ...s.settings, theme } }));
+  const groupRef = useRef<HTMLDivElement>(null);
+  const onKeyDown = useRadioGroupKeys(
+    groupRef,
+    THEME_CHOICES.map((c) => c.value),
+    current,
+    setTheme,
+  );
   return (
     <div
+      ref={groupRef}
+      onKeyDown={onKeyDown}
       role="radiogroup"
       aria-label="Theme"
       className={`relative flex shrink-0 rounded-full bg-ghost p-1 ${compact ? "" : "w-full"}`}
@@ -165,29 +119,15 @@ function ThemeChoice({ compact = false }: { compact?: boolean }) {
             type="button"
             role="radio"
             aria-checked={active}
+            tabIndex={active ? 0 : -1}
             aria-label={choice.label}
             title={choice.label}
-            onClick={() =>
-              update((s) => ({ ...s, settings: { ...s.settings, theme: choice.value } }))
-            }
+            onClick={() => setTheme(choice.value)}
             className={`relative z-1 flex flex-1 items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-semibold outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-accent-soft ${
               active ? "text-ink-1" : "text-ink-3 hover:text-ink-1"
             } ${compact ? "size-8 p-0" : ""}`}
           >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={active ? 2.1 : 1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-              className="shrink-0"
-            >
-              {choice.icon}
-            </svg>
+            <Icon name={choice.icon} size={15} strokeWidth={active ? 2.1 : 1.8} />
             {!compact && <span>{choice.short}</span>}
           </button>
         );
@@ -203,12 +143,12 @@ function Brand() {
   return (
     <Link
       href="/"
-      className="row-tap flex shrink-0 items-center gap-3 rounded-2xl p-2"
+      className="row-tap flex shrink-0 items-center gap-3 p-2"
       aria-label="Dashboard"
     >
       <span
         aria-hidden
-        className="btn-gradient flex size-9 items-center justify-center rounded-xl text-base font-black shadow-md"
+        className="btn-gradient flex size-9 items-center justify-center rounded-chip text-base font-black shadow-md"
       >
         ₴
       </span>
@@ -230,7 +170,7 @@ export function Sidebar() {
   const { sync } = useStore();
   return (
     <aside className="fixed inset-y-4 left-4 z-40 hidden w-56 md:flex">
-      <div className="glass-strong flex h-full w-full flex-col rounded-3xl p-3">
+      <div className="glass-strong flex h-full w-full flex-col rounded-card p-3">
         <Brand />
 
         <nav className="mt-4 flex flex-1 flex-col gap-1">
@@ -240,13 +180,16 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-semibold transition-all duration-150 ${
+                // the active item was marked in colour alone; `aria-current` is
+                // what says "you are here" to anything that cannot see it
+                aria-current={active ? "page" : undefined}
+                className={`flex items-center gap-3 rounded-field px-3.5 py-2.5 text-sm font-semibold transition-all duration-150 ${
                   active
                     ? "btn-gradient"
                     : "text-ink-2 hover:bg-fill-hover hover:text-ink-1"
                 }`}
               >
-                {item.icon(active)}
+                <Icon name={item.icon} size={20} strokeWidth={active ? 2.2 : 1.8} />
                 <span>{item.label}</span>
               </Link>
             );
@@ -281,7 +224,7 @@ export function MobileTopBar() {
 export function TabBar() {
   const pathname = usePathname();
   return (
-    <nav className="glass-strong fixed inset-x-3 bottom-3 z-40 flex justify-around rounded-full px-1 py-1.5 md:hidden">
+    <nav className="glass-strong fixed inset-x-3 bottom-3 z-40 flex rounded-full px-1 py-1.5 md:hidden">
       {NAV.map((item) => {
         const active = pathname === item.href;
         return (
@@ -289,12 +232,19 @@ export function TabBar() {
             key={item.href}
             href={item.href}
             aria-label={item.label}
-            className={`flex flex-col items-center gap-0.5 rounded-full px-2 py-1 transition-colors duration-150 ${
+            aria-current={active ? "page" : undefined}
+            // `flex-1 basis-0 min-w-0` rather than `justify-around`: equal sixths
+            // that are allowed to shrink, so the bar can never be wider than the
+            // phone no matter what the labels say. `justify-around` distributes
+            // free space and simply overflows when there is none.
+            className={`flex min-w-0 flex-1 basis-0 flex-col items-center gap-0.5 rounded-full px-1 py-1 transition-colors duration-150 ${
               active ? "text-accent [text-shadow:0_0_12px_var(--glow-a)]" : "text-ink-3"
             }`}
           >
-            {item.icon(active)}
-            <span className="text-[11px] font-semibold">{item.label}</span>
+            <Icon name={item.icon} size={20} strokeWidth={active ? 2.2 : 1.8} />
+            <span className="w-full truncate text-center text-[11px] font-semibold">
+              {item.short}
+            </span>
           </Link>
         );
       })}

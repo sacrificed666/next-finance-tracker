@@ -136,11 +136,15 @@ CREATE TABLE IF NOT EXISTS investments (
     principal            double precision NOT NULL,
     annual_rate_pct      double precision NOT NULL,
     start_date           date NOT NULL,
+    -- maturity; NULL for an open-ended holding that never stops earning
+    end_date             date,
     compounding          text NOT NULL CHECK (compounding IN ('reinvest', 'payout')),
     compounding_freq     text NOT NULL CHECK (compounding_freq IN ('monthly', 'quarterly', 'annually')),
     monthly_contribution double precision,
     note                 text
 );
+
+ALTER TABLE investments ADD COLUMN IF NOT EXISTS end_date date;
 
 -- ────────────────────────────────── budgets ─────────────────────────────────
 CREATE TABLE IF NOT EXISTS budgets (

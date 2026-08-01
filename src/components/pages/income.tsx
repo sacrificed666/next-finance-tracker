@@ -13,6 +13,7 @@ import {
   ConfirmDialog,
   EmptyState,
   Field,
+  FieldSet,
   GlassCard,
   PageHeader,
   SegmentedControl,
@@ -22,7 +23,8 @@ import {
   TextInput,
   TripleMoney,
 } from "@/components/ui";
-import { CURRENCIES } from "@/lib/constants";
+import { Icon } from "@/components/icons";
+import { CURRENCIES, CURRENCY_SYMBOL } from "@/lib/constants";
 import {
   addMonths,
   currentMonth,
@@ -51,6 +53,8 @@ interface IncomeForm {
   currency: Currency;
   date: string;
   note: string;
+  /** account the money landed in ("" = unassigned, moves no balance) */
+  accountId: string;
   /** apply ФОП tax to the gross figure below */
   applyTax: boolean;
   // amount mode (holds the gross when tax is applied)
@@ -90,17 +94,28 @@ export function IncomePage() {
 
   const incomeCategories = state.categories.filter((c) => c.kind === "income");
   const catById = new Map(state.categories.map((c) => [c.id, c]));
+  const accountById = new Map(state.savings.map((a) => [a.id, a]));
   const firstIncomeCat = incomeCategories[0]?.id ?? "";
 
   const [form, setForm] = useState<IncomeForm | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   /* ---------- income transactions ---------- */
 
   const incomeTx = state.transactions.filter((t) => t.type === "income");
+  /*
+   * A salary rule posts a year ahead, so "newest first" opened on twelve
+   * months of next year's pay before a single thing that had actually arrived.
+   * The list defaults to what has landed; the rest is one tap away.
+   */
+  const today = todayISO();
+  const plannedCount = incomeTx.filter((t) => t.date > today).length;
+  const [scope, setScope] = useState<"received" | "planned" | "all">("received");
+  const visibleTx = incomeTx.filter((t) =>
+    scope === "all" ? true : scope === "planned" ? t.date > today : t.date <= today,
+  );
   const byMonth = new Map<string, Transaction[]>();
-  for (const tx of incomeTx) {
+  for (const tx of visibleTx) {
     const m = monthOf(tx.date);
     const list = byMonth.get(m);
     if (list) list.push(tx);
@@ -142,6 +157,25 @@ export function IncomePage() {
     },
   );
 
+  /*
+   * Which money it arrived in, over the same twelve months. The breakdown above
+   * says who paid; in an app built around ₴ / $ / € this says in what — and it
+   * is the only place the native totals appear outside the individual rows.
+   */
+  const byCurrency = CURRENCIES.map((currency) => {
+    const rows = incomeTx.filter(
+      (t) => t.currency === currency && t.date <= today && monthOf(t.date) >= trailingStart,
+    );
+    const native = rows.reduce((sum, t) => sum + t.amount, 0);
+    return {
+      currency,
+      native,
+      base: convert(native, currency, base, settings.rates),
+      count: rows.length,
+    };
+  }).filter((c) => c.native > 0);
+  const byCurrencyTotal = byCurrency.reduce((s, c) => s + c.base, 0);
+
   /* ---------- form handlers ---------- */
 
   const openAdd = () =>
@@ -152,6 +186,7 @@ export function IncomePage() {
       currency: base,
       date: todayISO(),
       note: "",
+      accountId: state.savings[0]?.id ?? "",
       applyTax: false,
       amount: "",
       days: "",
@@ -172,6 +207,7 @@ export function IncomePage() {
       currency: tx.currency,
       date: tx.date,
       note: tx.note ?? "",
+      accountId: tx.accountId ?? "",
       applyTax: tx.tax != null,
       amount: amountField,
       days: b ? String(b.days) : "",
@@ -180,13 +216,9 @@ export function IncomePage() {
       compensations: b?.compensations ? String(b.compensations) : "",
       cutoffs: b?.cutoffs ? String(b.cutoffs) : "",
     });
-    setError(null);
   };
 
-  const closeSheet = () => {
-    setForm(null);
-    setError(null);
-  };
+  const closeSheet = () => setForm(null);
 
   // live gross of whatever is being entered
   const gross = (() => {
@@ -207,48 +239,51 @@ export function IncomePage() {
       ? taxedNet(gross, form.currency, settings.tax, settings)
       : gross;
 
-  const submit = () => {
-    if (!form) return;
-    if (!form.categoryId) {
-      setError("Pick a category.");
-      return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date)) {
-      setError("Pick a date.");
-      return;
-    }
-
-    let breakdown: IncomeBreakdown | undefined;
+  /**
+   * Why Save is off, derived from the form rather than discovered on click.
+   * The three form pages each had their own answer to this: Expenses disabled
+   * Save and said why, Income and Balance let you press it and then printed a
+   * red line at the bottom of a panel that scrolls — so on a long form the
+   * button appeared to do nothing at all. One idiom now, and it is this one.
+   */
+  const problem: string | null = (() => {
+    if (!form) return null;
+    if (!form.categoryId) return "Pick a category.";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date)) return "Pick a date.";
     if (form.mode === "contract") {
       const days = parseOptional(form.days);
-      const dailyRate = parseOptional(form.dailyRate);
-      const premium = parseOptional(form.premium);
-      const compensations = parseOptional(form.compensations);
-      const cutoffs = parseOptional(form.cutoffs);
-      if (!Number.isFinite(days) || days < 0 || days > 31) {
-        setError("Working days must be between 0 and 31.");
-        return;
-      }
+      if (!Number.isFinite(days) || days < 0 || days > 31)
+        return "Working days must be between 0 and 31.";
       if (
-        [dailyRate, premium, compensations, cutoffs].some(
-          (n) => !Number.isFinite(n) || n < 0,
-        )
-      ) {
-        setError("Rate, premium, compensations and cut-offs must be non-negative.");
-        return;
-      }
-      breakdown = { days, dailyRate, premium, compensations, cutoffs };
+        [form.dailyRate, form.premium, form.compensations, form.cutoffs]
+          .map(parseOptional)
+          .some((n) => !Number.isFinite(n) || n < 0)
+      )
+        return "Rate, premium, compensations and cut-offs must be non-negative.";
     }
+    if (!Number.isFinite(gross) || gross <= 0)
+      return "Enter an amount greater than zero.";
+    if (!Number.isFinite(net) || net <= 0)
+      return "After tax this comes out at zero or less — check the amount.";
+    return null;
+  })();
+  const valid = form !== null && problem === null;
 
-    const grossTotal =
-      form.mode === "contract" && breakdown
-        ? breakdownTotal(breakdown)
-        : parseAmount(form.amount);
-    if (!Number.isFinite(grossTotal) || grossTotal <= 0) {
-      setError("The income amount must be greater than zero.");
-      return;
-    }
+  const submit = () => {
+    if (!form || !valid) return;
 
+    const breakdown: IncomeBreakdown | undefined =
+      form.mode === "contract"
+        ? {
+            days: parseOptional(form.days),
+            dailyRate: parseOptional(form.dailyRate),
+            premium: parseOptional(form.premium),
+            compensations: parseOptional(form.compensations),
+            cutoffs: parseOptional(form.cutoffs),
+          }
+        : undefined;
+
+    const grossTotal = breakdown ? breakdownTotal(breakdown) : parseAmount(form.amount);
     const tax = form.applyTax
       ? {
           ratePct: settings.tax.ratePct,
@@ -259,10 +294,6 @@ export function IncomePage() {
     const netTotal = tax
       ? taxedNet(grossTotal, form.currency, settings.tax, settings)
       : grossTotal;
-    if (!Number.isFinite(netTotal) || netTotal <= 0) {
-      setError("After tax the income is zero or negative — check the amount.");
-      return;
-    }
 
     const patch = {
       type: "income" as const,
@@ -271,6 +302,7 @@ export function IncomePage() {
       categoryId: form.categoryId,
       date: form.date,
       note: form.note.trim() || undefined,
+      accountId: form.accountId || undefined,
       breakdown,
       tax,
     };
@@ -287,10 +319,13 @@ export function IncomePage() {
   const deleteIncome = () => {
     const id = form?.id;
     if (!id) return;
-    update((s) => ({
-      ...s,
-      transactions: s.transactions.filter((t) => t.id !== id),
-    }));
+    update(
+      (s) => ({
+        ...s,
+        transactions: s.transactions.filter((t) => t.id !== id),
+      }),
+      "Income deleted",
+    );
     closeSheet();
   };
 
@@ -304,7 +339,7 @@ export function IncomePage() {
         action={<Button onClick={openAdd}>+ Add income</Button>}
       />
 
-      <div className="stagger grid grid-cols-2 items-start gap-3 sm:gap-4 xl:grid-cols-12">
+      <div className="stagger grid grid-cols-2 items-start gap-4 sm:gap-5 xl:grid-cols-12">
         <StatTile
           className="xl:col-span-4"
           label="This month"
@@ -337,9 +372,9 @@ export function IncomePage() {
         <GlassCard
           title="Income by month"
           subtitle="What came in each month"
-          icon="📊"
+          icon={<Icon name="chart" />}
           action={<PeriodTabs value={chartMonths} onChange={setChartMonths} />}
-          className="col-span-2 xl:col-span-7"
+          className="col-span-2 xl:col-span-12"
         >
           {hasIncome ? (
             <MonthlyColumns
@@ -348,7 +383,7 @@ export function IncomePage() {
             />
           ) : (
             <EmptyState
-              icon="📊"
+              icon={<Icon name="chart" />}
               title="No income recorded yet"
               hint="Add your first income and the chart fills in."
               action={<Button onClick={openAdd}>+ Add income</Button>}
@@ -357,37 +392,39 @@ export function IncomePage() {
         </GlassCard>
 
         <GlassCard
-          title="By source"
-          subtitle="Last 12 months"
-          icon="🥧"
-          className="col-span-2 xl:col-span-5"
+          title="All income"
+          subtitle={
+            scope === "planned"
+              ? "Booked ahead by recurring rules"
+              : scope === "all"
+                ? "Received and planned, newest first"
+                : "Newest first"
+          }
+          icon={<Icon name="receipt" />}
+          action={
+            plannedCount > 0 ? (
+              <SegmentedControl
+                size="sm"
+                label="Which income to show"
+                options={[
+                  { value: "received", label: "Received" },
+                  { value: "planned", label: `Planned (${plannedCount})` },
+                  { value: "all", label: "All" },
+                ]}
+                value={scope}
+                onChange={setScope}
+              />
+            ) : undefined
+          }
+          // Eight columns, not twelve: at full width a row was an icon, a
+          // word and an amount separated by half a metre of nothing. It leads
+          // its row in the markup too — `order` used to put it there visually
+          // while the tab key still went to the two summary cards first.
+          className="col-span-2 xl:col-span-8"
         >
-          {catSegments.length > 0 ? (
-            <>
-              <div className="mb-3.5 flex items-end justify-between gap-3">
-                <p className="tnum whitespace-nowrap text-2xl font-bold leading-none text-ink-1">
-                  {formatMoney(last12Total, base, { compact: true })}
-                </p>
-                <p className="text-xs text-ink-3">
-                  {catSegments.length} source{catSegments.length === 1 ? "" : "s"} ·{" "}
-                  {formatMoney(last12Total / 12, base, { compact: true })}/mo on average
-                </p>
-              </div>
-              <CategoryBreakdown segments={catSegments} currency={base} maxSegments={7} />
-            </>
-          ) : (
-            <EmptyState
-              icon="🥧"
-              title="Nothing to break down yet"
-              hint="Once you log a few incomes, you’ll see where your money comes from."
-            />
-          )}
-        </GlassCard>
-
-        <GlassCard title="All income" subtitle="Newest first" icon="🧾" className="col-span-2 xl:col-span-12">
           {!hasIncome ? (
             <EmptyState
-              icon="💸"
+              icon={<Icon name="banknote" />}
               title="No income yet"
               hint="Log a salary, a freelance gig, interest, a gift, or something you sold — a simple amount is enough, or use the day-rate calculator for contract work."
               action={<Button onClick={openAdd}>+ Add income</Button>}
@@ -406,26 +443,41 @@ export function IncomePage() {
                 return (
                   <section key={month}>
                     <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
-                      <h3 className="text-[13px] font-semibold text-ink-1">
+                      <h3 className="label font-semibold text-ink-1">
                         {formatMonth(month)}
                       </h3>
-                      <span className="tnum text-[13px] font-semibold text-income">
+                      <span className="tnum label font-semibold text-income">
                         {formatMoney(subtotal, base, { sign: true })}
                       </span>
                     </div>
                     <ul className="space-y-0.5">
                       {rows.map((tx) => {
                         const cat = catById.get(tx.categoryId);
+                        const account = tx.accountId
+                          ? accountById.get(tx.accountId)
+                          : undefined;
+                        // everything worth saying about the row that its title
+                        // does not already say; the month is the last resort
+                        // when a bare amount would otherwise stand alone
+                        const details = [
+                          tx.note ? (cat?.name ?? "Income") : null,
+                          account?.name ?? null,
+                          tx.breakdown ? breakdownSummary(tx.breakdown, tx.currency) : null,
+                          tx.tax
+                            ? `net of ${formatMoney(tx.tax.gross - tx.amount, tx.currency)} tax`
+                            : null,
+                        ].filter(Boolean);
+                        if (details.length === 0) details.push(formatMonth(monthOf(tx.date)));
                         return (
                           <li key={tx.id}>
                             <button
                               type="button"
                               onClick={() => openEdit(tx)}
-                              className="row-tap flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                              className="row-tap flex w-full items-center gap-3 px-2 py-2 text-left"
                             >
                               <span
                                 aria-hidden
-                                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-ghost text-lg"
+                                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ghost text-base"
                               >
                                 {cat?.icon ?? "💰"}
                               </span>
@@ -434,22 +486,7 @@ export function IncomePage() {
                                   {tx.note || cat?.name || "Income"}
                                 </span>
                                 <span className="block truncate text-xs text-ink-3">
-                                  {[
-                                    // the title already shows the category when
-                                    // there is no note — don't say it twice
-                                    tx.note ? (cat?.name ?? "Income") : null,
-                                    tx.breakdown
-                                      ? breakdownSummary(tx.breakdown, tx.currency)
-                                      : null,
-                                    tx.tax
-                                      ? `net of ${formatMoney(tx.tax.gross - tx.amount, tx.currency)} tax`
-                                      : null,
-                                    !tx.note && !tx.breakdown && !tx.tax
-                                      ? formatMonth(monthOf(tx.date))
-                                      : null,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
+                                  {details.join(" · ")}
                                 </span>
                               </span>
                               <span className="shrink-0 text-right">
@@ -480,15 +517,100 @@ export function IncomePage() {
             </div>
           )}
         </GlassCard>
+
+        {/* the side column: both summaries stack beside the ledger rather than
+            each starting a row of its own with empty page next to it */}
+        <div className="col-span-2 flex flex-col gap-4 self-start sm:gap-5 xl:col-span-4">
+        <GlassCard
+          title="By source"
+          subtitle="Last 12 months"
+          icon={<Icon name="pie" />}
+        >
+          {catSegments.length > 0 ? (
+            <>
+              <div className="mb-3.5 flex items-end justify-between gap-3">
+                <p className="num-md whitespace-nowrap text-ink-1">
+                  {formatMoney(last12Total, base, { compact: true })}
+                </p>
+                <p className="text-xs text-ink-3">
+                  {catSegments.length} source{catSegments.length === 1 ? "" : "s"} ·{" "}
+                  {formatMoney(last12Total / 12, base, { compact: true })}/mo on average
+                </p>
+              </div>
+              <CategoryBreakdown segments={catSegments} currency={base} maxSegments={7} />
+            </>
+          ) : (
+            <EmptyState
+              icon={<Icon name="pie" />}
+              title="Nothing to break down yet"
+              hint="Once you log a few incomes, you’ll see where your money comes from."
+            />
+          )}
+        </GlassCard>
+
+        {byCurrency.length > 0 && (
+          <GlassCard
+            title="By currency"
+            subtitle="Last 12 months, as received"
+            icon={<Icon name="exchange" />}
+          >
+            <ul className="space-y-3">
+              {byCurrency.map((c) => (
+                <li key={c.currency}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm font-medium text-ink-1">{c.currency}</span>
+                    <span className="tnum text-sm font-semibold text-ink-1">
+                      {formatMoney(c.native, c.currency, { compact: true })}
+                    </span>
+                  </div>
+                  <div
+                    className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-ghost"
+                    role="img"
+                    aria-label={`${c.currency}: ${formatPercent((c.base / Math.max(1, byCurrencyTotal)) * 100, 0)}`}
+                  >
+                    <div
+                      className="bar-slice h-full rounded-full bg-income"
+                      style={{ width: `${(c.base / Math.max(1, byCurrencyTotal)) * 100}%` }}
+                    />
+                  </div>
+                  <p className="tnum mt-1 text-xs text-ink-3">
+                    {c.currency === base
+                      ? `${c.count} ${c.count === 1 ? "entry" : "entries"}`
+                      : `≈ ${formatMoney(c.base, base, { compact: true })} · ${c.count} ${c.count === 1 ? "entry" : "entries"}`}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </GlassCard>
+        )}
+        </div>
       </div>
 
       {form && (
         <Sheet
           open
           onClose={closeSheet}
+          onSubmit={submit}
+          problem={problem}
           title={form.id ? "Edit income" : "New income"}
+          footer={
+            <>
+              {form.id && (
+                <Button variant="danger" className="mr-auto" onClick={() => setConfirmDelete(true)}>
+                  Delete
+                </Button>
+              )}
+              <Button variant="ghost" onClick={closeSheet}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!valid}>
+                Save
+              </Button>
+            </>
+          }
         >
           <SegmentedControl
+            label="How the amount is entered"
             options={MODE_OPTIONS}
             value={form.mode}
             onChange={(mode) => setForm({ ...form, mode })}
@@ -513,18 +635,20 @@ export function IncomePage() {
             </Select>
           </Field>
 
-          <Field label="Currency">
+          <FieldSet label="Currency">
             <SegmentedControl
+              label="Currency"
               options={CURRENCIES.map((c) => ({ value: c, label: c }))}
               value={form.currency}
               onChange={(currency) => setForm({ ...form, currency })}
             />
-          </Field>
+          </FieldSet>
 
           {form.mode === "amount" ? (
             <Field label="Amount">
               <TextInput
                 inputMode="decimal"
+                prefix={CURRENCY_SYMBOL[form.currency]}
                 value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
                 placeholder="0"
@@ -544,13 +668,17 @@ export function IncomePage() {
                 <Field label="Daily rate">
                   <TextInput
                     inputMode="decimal"
+                    prefix={CURRENCY_SYMBOL[form.currency]}
                     value={form.dailyRate}
                     onChange={(e) => setForm({ ...form, dailyRate: e.target.value })}
                     placeholder="56"
                   />
                 </Field>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              {/* three number fields abreast on a 320px phone leaves ~60px of
+                  typing room each and wraps "Compensations" onto two lines, so
+                  the row comes out ragged; they pair up from `sm` instead */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <Field label="Premium">
                   <TextInput
                     inputMode="decimal"
@@ -595,9 +723,33 @@ export function IncomePage() {
             />
           </Field>
 
-          <div className="flex items-start justify-between gap-3 rounded-2xl bg-ghost px-4 py-3">
+          {/* income that names no account is a figure in a report; income that
+              names one is money that actually arrived somewhere, and the
+              balance on Balance moves with it */}
+          <Field
+            label="Landed in"
+            hint={
+              state.savings.length === 0
+                ? "Add an account on Balance to have income move a real balance"
+                : "Which account the money arrived in"
+            }
+          >
+            <Select
+              value={form.accountId}
+              onChange={(e) => setForm({ ...form, accountId: e.target.value })}
+            >
+              <option value="">— not assigned —</option>
+              {state.savings.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.icon} {a.name} ({a.currency})
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <div className="flex items-start justify-between gap-3 rounded-field bg-ghost px-4 py-3">
             <div className="min-w-0">
-              <p className="text-[15px] font-medium text-ink-1">Apply ФОП tax</p>
+              <p className="body-strong">Apply ФОП tax</p>
               <p className="mt-0.5 text-xs text-ink-3">
                 −{formatPercent(settings.tax.ratePct)} −{formatMoney(settings.tax.fixedUAH, "UAH")} from the gross
               </p>
@@ -610,7 +762,7 @@ export function IncomePage() {
           </div>
 
           {Number.isFinite(net) && net > 0 && (
-            <div className="rounded-2xl bg-ghost p-4">
+            <div className="rounded-field bg-ghost p-4">
               {form.applyTax && Number.isFinite(gross) && (
                 <div className="mb-3 space-y-1 border-b border-hairline pb-3 text-sm">
                   <div className="flex justify-between gap-3">
@@ -627,21 +779,11 @@ export function IncomePage() {
                   </div>
                 </div>
               )}
-              <p className="mb-1 text-[13px] font-medium text-ink-2">
+              <p className="mb-1 label">
                 {form.applyTax ? "Net take-home" : "In every currency"}
               </p>
               <TripleMoney amount={net} currency={form.currency} settings={settings} />
             </div>
-          )}
-
-          {error && <p className="text-sm text-expense">{error}</p>}
-          <Button className="w-full" onClick={submit}>
-            Save
-          </Button>
-          {form.id && (
-            <Button variant="danger" className="w-full" onClick={() => setConfirmDelete(true)}>
-              Delete income
-            </Button>
           )}
         </Sheet>
       )}

@@ -8,11 +8,43 @@ import type { AppState } from "./types";
 /* ────────────────────────────── loading ────────────────────────────── */
 
 /**
+ * A dataset together with the revision it was read at. A save replaces the
+ * whole dataset, so a client that writes back a snapshot older than what is
+ * stored would silently delete everything recorded since — two open tabs are
+ * enough. The revision is `settings.updated_at`, which every save bumps.
+ */
+export interface StateEnvelope {
+  state: AppState;
+  /** opaque revision token; "" before anything has ever been written */
+  revision: string;
+}
+
+/** the stored dataset moved on since the client last read it */
+export class StateConflictError extends Error {
+  constructor() {
+    super(
+      "This dataset changed somewhere else — another tab or device saved after you loaded it. Reload to pick up the newer version.",
+    );
+    this.name = "StateConflictError";
+  }
+}
+
+async function currentRevision(client: PoolClient): Promise<string> {
+  // FOR UPDATE: the check and the write that follows have to be one step, or
+  // two saves landing together both read the same revision and both pass
+  const res = await client.query(
+    `SELECT to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS revision
+       FROM settings WHERE id = 1 FOR UPDATE`,
+  );
+  return res.rows[0]?.revision ?? "";
+}
+
+/**
  * Assembles the whole AppState from the normalized tables. An empty database
  * yields an empty state, which `normalizeState` then fills with the default
  * categories and settings.
  */
-export async function loadState(): Promise<AppState> {
+export async function loadState(): Promise<StateEnvelope> {
   await ensureSchema();
   const pool = getPool();
 
@@ -21,7 +53,8 @@ export async function loadState(): Promise<AppState> {
       pool.query(
         `SELECT base_currency, theme, tax_rate_pct, tax_fixed_uah, rate_usd, rate_eur,
                 rates_meta, rates_source,
-                to_char(rates_updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MSZ') AS rates_updated_at
+                to_char(rates_updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MSZ') AS rates_updated_at,
+                to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS revision
            FROM settings WHERE id = 1`,
       ),
       pool.query(`SELECT id, name, icon, color_slot, kind FROM categories ORDER BY kind, name`),
@@ -50,6 +83,7 @@ export async function loadState(): Promise<AppState> {
       pool.query(
         `SELECT id, name, currency, principal, annual_rate_pct,
                 to_char(start_date, 'YYYY-MM-DD') AS start_date,
+                to_char(end_date, 'YYYY-MM-DD') AS end_date,
                 compounding, compounding_freq, monthly_contribution, note
            FROM investments ORDER BY name`,
       ),
@@ -63,7 +97,7 @@ export async function loadState(): Promise<AppState> {
 
   const s = settings.rows[0];
 
-  return normalizeState({
+  const state = normalizeState({
     version: 1,
     transactions: transactions.rows.map((r) => ({
       id: r.id,
@@ -132,6 +166,7 @@ export async function loadState(): Promise<AppState> {
       principal: r.principal,
       annualRatePct: r.annual_rate_pct,
       startDate: r.start_date,
+      endDate: r.end_date ?? undefined,
       compounding: r.compounding,
       compoundingFreq: r.compounding_freq,
       monthlyContribution: r.monthly_contribution ?? undefined,
@@ -166,6 +201,8 @@ export async function loadState(): Promise<AppState> {
         }
       : undefined,
   });
+
+  return { state, revision: s?.revision ?? "" };
 }
 
 /* ────────────────────────────── saving ────────────────────────────── */
@@ -215,12 +252,30 @@ async function deleteMissing(
  * Persists the whole state in one transaction: every row is upserted and any
  * row the client no longer has is deleted. Categories are written before their
  * dependants and deleted after them, so referential order always holds.
+ *
+ * `expectedRevision` is what the client believes it is overwriting. Because the
+ * payload is the entire dataset, a stale writer does not merely lose its own
+ * edit — it deletes every row added since it loaded. When the caller names a
+ * revision that no longer matches, nothing is written and the transaction rolls
+ * back. Pass `null` to write unconditionally.
+ *
+ * Returns the revision the dataset now has.
  */
-export async function saveState(incoming: AppState): Promise<void> {
+export async function saveState(
+  incoming: AppState,
+  expectedRevision: string | null = null,
+): Promise<string> {
   await ensureSchema();
   const state = normalizeState(incoming);
 
-  await withTransaction(async (client) => {
+  return withTransaction(async (client) => {
+    if (expectedRevision !== null) {
+      const stored = await currentRevision(client);
+      // an empty stored revision means nothing has ever been saved, so there is
+      // nothing to be stale against
+      if (stored !== "" && stored !== expectedRevision) throw new StateConflictError();
+    }
+
     await upsert(
       client,
       "categories",
@@ -274,9 +329,9 @@ export async function saveState(incoming: AppState): Promise<void> {
     await upsert(
       client,
       "investments",
-      ["id", "name", "currency", "principal", "annual_rate_pct", "start_date", "compounding", "compounding_freq", "monthly_contribution", "note"],
+      ["id", "name", "currency", "principal", "annual_rate_pct", "start_date", "end_date", "compounding", "compounding_freq", "monthly_contribution", "note"],
       state.investments.map((i) => [
-        i.id, i.name, i.currency, i.principal, i.annualRatePct, i.startDate,
+        i.id, i.name, i.currency, i.principal, i.annualRatePct, i.startDate, i.endDate ?? null,
         i.compounding, i.compoundingFreq, i.monthlyContribution ?? null, i.note ?? null,
       ]),
     );
@@ -309,10 +364,13 @@ export async function saveState(incoming: AppState): Promise<void> {
     await deleteMissing(client, "categories", "id", state.categories.map((c) => c.id));
 
     const st = state.settings;
-    await client.query(
+    // clock_timestamp(), not now(): now() is the *transaction* start time, so
+    // two saves beginning in the same instant would stamp the same revision and
+    // the second could no longer be told apart from the first
+    const written = await client.query(
       `INSERT INTO settings (id, base_currency, theme, tax_rate_pct, tax_fixed_uah,
                              rate_usd, rate_eur, rates_meta, rates_updated_at, rates_source, updated_at)
-       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, clock_timestamp())
        ON CONFLICT (id) DO UPDATE SET
          base_currency = EXCLUDED.base_currency,
          theme = EXCLUDED.theme,
@@ -323,7 +381,8 @@ export async function saveState(incoming: AppState): Promise<void> {
          rates_meta = EXCLUDED.rates_meta,
          rates_updated_at = EXCLUDED.rates_updated_at,
          rates_source = EXCLUDED.rates_source,
-         updated_at = now()`,
+         updated_at = clock_timestamp()
+       RETURNING to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS revision`,
       [
         st.baseCurrency,
         st.theme,
@@ -336,5 +395,6 @@ export async function saveState(incoming: AppState): Promise<void> {
         st.ratesSource,
       ],
     );
+    return written.rows[0].revision as string;
   });
 }

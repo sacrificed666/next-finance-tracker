@@ -2,16 +2,19 @@
 
 import {
   useCallback,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
+import Link from "next/link";
 import { formatMonthShort } from "@/lib/date";
-import { formatCompact, formatMoney } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 import type { Currency } from "@/lib/types";
 import { SegmentedControl } from "./ui";
+import { Icon } from "./icons";
 
 /* ---------- shared plumbing ---------- */
 
@@ -42,6 +45,28 @@ function niceTicks(max: number, count = 4): number[] {
   return ticks;
 }
 
+/**
+ * One unit for the whole axis, chosen from its top tick.
+ *
+ * `formatCompact` switches to "K" at ten thousand, which is right for a tile
+ * standing on its own and wrong for a column of ticks: an axis topping out at
+ * 15 000 came out as `0 / 5,000 / 10K / 15K` — two number formats stacked on
+ * one line of enquiry. Pick the unit once, then apply it to every tick.
+ */
+function axisFormatter(top: number): (v: number) => string {
+  const div = top >= 1_000_000 ? 1_000_000 : top >= 1_000 ? 1_000 : 1;
+  const suffix = div === 1_000_000 ? "M" : div === 1_000 ? "K" : "";
+  return (v) => {
+    if (v === 0) return "0";
+    const scaled = v / div;
+    // one decimal only where the step actually needs it
+    const text = Math.abs(scaled) < 10 && !Number.isInteger(scaled)
+      ? scaled.toFixed(1)
+      : String(Math.round(scaled));
+    return text + suffix;
+  };
+}
+
 const SERIES_VAR = (slot: number) => `var(--series-${((slot - 1) % 8) + 1})`;
 
 function Tooltip({
@@ -58,7 +83,7 @@ function Tooltip({
   const flip = x > containerWidth - 150;
   return (
     <div
-      className="glass-strong pointer-events-none absolute z-10 min-w-32 rounded-2xl px-3 py-2 text-xs"
+      className="glass-strong pointer-events-none absolute z-10 min-w-32 rounded-field px-3 py-2 text-xs"
       style={{
         left: flip ? undefined : x + 12,
         right: flip ? containerWidth - x + 12 : undefined,
@@ -125,6 +150,55 @@ export function PeriodTabs({
       value={String(value)}
       onChange={(months) => onChange(Number(months))}
     />
+  );
+}
+
+/**
+ * The numbers behind a chart, for anything that cannot see it.
+ *
+ * The breakdowns on this page double as their own text equivalent — every slice
+ * is a labelled row with its amount. The two time-series charts had no such
+ * thing: a `role="img"` and one `aria-label` saying the chart existed, and not
+ * a single value anywhere. Visually hidden, so it costs the sighted layout
+ * nothing.
+ */
+function ChartTable({
+  caption,
+  columns,
+  rows,
+}: {
+  caption: string;
+  columns: string[];
+  rows: Array<{ key: string; cells: string[] }>;
+}) {
+  return (
+    <table className="sr-only">
+      <caption>{caption}</caption>
+      <thead>
+        <tr>
+          {columns.map((c) => (
+            <th key={c} scope="col">
+              {c}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.key}>
+            {r.cells.map((cell, i) =>
+              i === 0 ? (
+                <th key={columns[i]} scope="row">
+                  {cell}
+                </th>
+              ) : (
+                <td key={columns[i]}>{cell}</td>
+              ),
+            )}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -201,7 +275,12 @@ function SparkArea({ values, tone, height }: { values: number[]; tone: Tone; hei
   const px = (i: number) => (i / (values.length - 1)) * width;
   const py = (v: number) => height - 3 - ((v - min) / span) * (height - 8);
   const line = values.map((v, i) => `${i === 0 ? "M" : "L"}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join("");
-  const id = `spark-${tone}`;
+  // Per instance, not per tone: four tiles in a row all defined `spark-accent`,
+  // and `url(#spark-accent)` resolves to whichever one is first in the document
+  // — unmount that tile and the rest lose their fill. Stripped of punctuation
+  // because React's generated ids carry delimiters that do not belong in a URL
+  // fragment.
+  const id = `spark-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <div ref={ref} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0" style={{ height }}>
       {width > 0 && values.length > 1 && (
@@ -242,31 +321,42 @@ export function StatTile({
   hint,
   spark,
   tone,
+  href,
   className = "",
 }: {
   label: string;
   value: string;
   delta?: { text: string; good: boolean };
-  /** neutral context line, shown when there is no delta */
+  /** neutral context line, under the delta when there is one */
   hint?: string;
   spark?: number[];
   tone?: "income" | "expense";
+  /** where the figure comes from; makes the tile a link */
+  href?: string;
   className?: string;
 }) {
   const sparkTone: Tone = tone ?? "accent";
-  return (
-    <div
-      className={`glass glass-hover relative flex min-h-31 flex-col overflow-hidden rounded-card p-4 ${className}`}
-    >
+  // the lift is reserved for tiles that lead somewhere — every tile used to
+  // rise under the pointer and then do nothing when clicked
+  // the sparkline is a 40px band pinned to the bottom edge, so the text block
+  // has to end above it — a second context line used to be drawn straight
+  // across the curve
+  const shell = `glass ${href ? "glass-hover" : ""} relative flex min-h-31 flex-col overflow-hidden rounded-card p-4 ${
+    spark && spark.length > 1 ? "pb-11" : ""
+  } ${className}`;
+  const body = (
+    <>
       <p className="card-title">{label}</p>
       <p
-        className={`tnum mt-2 whitespace-nowrap text-[1.65rem] font-bold leading-none tracking-tight ${
+        className={`num-md mt-2 whitespace-nowrap ${
           tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-ink-1"
         }`}
       >
         {value}
       </p>
-      {delta ? (
+      {/* both lines when both are given: the hint used to be dropped whenever a
+          delta existed, which is exactly when a tile has most to explain */}
+      {delta && (
         <p
           className={`relative z-1 mt-1.5 text-xs font-medium ${
             delta.good ? "text-income" : "text-expense"
@@ -274,11 +364,21 @@ export function StatTile({
         >
           {delta.text}
         </p>
-      ) : hint ? (
-        <p className="relative z-1 mt-1.5 text-xs text-ink-3">{hint}</p>
-      ) : null}
+      )}
+      {hint && (
+        <p className={`relative z-1 text-xs text-ink-3 ${delta ? "mt-0.5" : "mt-1.5"}`}>
+          {hint}
+        </p>
+      )}
       {spark && spark.length > 1 && <SparkArea values={spark} tone={sparkTone} height={40} />}
-    </div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className={shell}>
+      {body}
+    </Link>
+  ) : (
+    <div className={shell}>{body}</div>
   );
 }
 
@@ -308,10 +408,17 @@ export function MonthlyColumns({
   const max = Math.max(1, ...data.map((d) => Math.max(d.income, d.expense)));
   const ticks = niceTicks(max);
   const top = ticks[ticks.length - 1];
+  const tickLabel = axisFormatter(top);
   const y = (v: number) => pad.top + plotH - (v / top) * plotH;
 
   const band = data.length > 0 ? plotW / data.length : 0;
-  const barW = Math.min(24, Math.max(6, (band - 8) / 2));
+  // A pair of bars plus the gap between them has to fit inside one band. The
+  // old floor of 6px did not care whether it did: at three years on a phone the
+  // band is ~7px wide, so two 6px bars and a 2px gap — 14px of ink — were being
+  // drawn in it, and every month bled into its neighbours until the chart was a
+  // solid slab. Bars can be hairlines if that is what the window costs.
+  const barW = Math.max(1.5, Math.min(24, (band - Math.min(4, band * 0.25)) / 2 - 1));
+  const barGap = Math.min(2, band * 0.06);
   // thin x-axis labels on narrow containers (mobile) so short month names
   // don't collide; always keep the most recent (rightmost) month labelled
   const labelStep = Math.max(1, Math.ceil(28 / Math.max(1, band)));
@@ -320,13 +427,28 @@ export function MonthlyColumns({
     <div>
       <ChartLegend
         items={[
-          { label: "Income", color: "var(--series-2)" },
-          { label: "Expenses", color: "var(--series-1)" },
+          { label: "Income", color: "var(--income)" },
+          { label: "Expenses", color: "var(--expense)" },
         ]}
+      />
+      <ChartTable
+        caption="Income and expenses by month"
+        columns={["Month", "Income", "Expenses", "Net"]}
+        rows={data.map((d) => ({
+          key: d.month,
+          cells: [
+            formatMonthShort(d.month),
+            formatMoney(d.income, currency, { compact: true }),
+            formatMoney(d.expense, currency, { compact: true }),
+            formatMoney(d.income - d.expense, currency, { compact: true, sign: true }),
+          ],
+        }))}
       />
       <div ref={ref} className="relative mt-2" style={{ height }}>
         {width > 0 && (
-          <svg width={width} height={height} role="img" aria-label="Income and expenses by month">
+          // the table above carries the data; the drawing is decoration to
+          // anything that cannot see it, and announcing both reads it twice
+          <svg width={width} height={height} aria-hidden>
             {ticks.map((t) => (
               <g key={t}>
                 <line
@@ -334,11 +456,11 @@ export function MonthlyColumns({
                   x2={width - pad.right}
                   y1={y(t)}
                   y2={y(t)}
-                  stroke="var(--hairline)"
+                  stroke="var(--gridline)"
                   strokeWidth={1}
                 />
-                <text x={pad.left - 6} y={y(t) + 3.5} textAnchor="end" fontSize={10.5} className="tnum" fill="var(--ink-3)">
-                  {formatCompact(t)}
+                <text x={pad.left - 6} y={y(t) + 3.5} textAnchor="end" fontSize={11} className="tnum" fill="var(--ink-3)">
+                  {tickLabel(t)}
                 </text>
               </g>
             ))}
@@ -347,10 +469,10 @@ export function MonthlyColumns({
               const dim = hover !== null && hover !== i;
               return (
                 <g key={d.month} opacity={dim ? 0.45 : 1} style={{ transition: "opacity 120ms" }}>
-                  <Column x={cx - barW - 1} w={barW} y0={y(0)} y1={y(d.income)} color="var(--series-2)" index={i} />
-                  <Column x={cx + 1} w={barW} y0={y(0)} y1={y(d.expense)} color="var(--series-1)" index={i} />
+                  <Column x={cx - barW - barGap / 2} w={barW} y0={y(0)} y1={y(d.income)} color="var(--income)" index={i} />
+                  <Column x={cx + barGap / 2} w={barW} y0={y(0)} y1={y(d.expense)} color="var(--expense)" index={i} />
                   {(data.length - 1 - i) % labelStep === 0 && (
-                    <text x={cx} y={height - 6} textAnchor="middle" fontSize={10.5} fill="var(--ink-3)">
+                    <text x={cx} y={height - 6} textAnchor="middle" fontSize={11} fill="var(--ink-3)">
                       {formatMonthShort(d.month)}
                     </text>
                   )}
@@ -375,8 +497,8 @@ export function MonthlyColumns({
         {hover !== null && data[hover] && (
           <Tooltip x={pad.left + band * hover + band / 2} y={pad.top} containerWidth={width}>
             <p className="mb-1 font-semibold text-ink-1">{formatMonthShort(data[hover].month)}</p>
-            <TooltipRow color="var(--series-2)" label="Income" value={formatMoney(data[hover].income, currency, { compact: true })} />
-            <TooltipRow color="var(--series-1)" label="Expenses" value={formatMoney(data[hover].expense, currency, { compact: true })} />
+            <TooltipRow color="var(--income)" label="Income" value={formatMoney(data[hover].income, currency, { compact: true })} />
+            <TooltipRow color="var(--expense)" label="Expenses" value={formatMoney(data[hover].expense, currency, { compact: true })} />
             <TooltipRow label="Net" value={formatMoney(data[hover].income - data[hover].expense, currency, { compact: true, sign: true })} />
           </Tooltip>
         )}
@@ -419,7 +541,8 @@ function Column({
 export interface BreakdownSegment {
   id: string;
   label: string;
-  icon: string;
+  /** the emoji the user picked for this category or account, or an app icon */
+  icon: ReactNode;
   value: number;
   colorSlot: number;
 }
@@ -434,7 +557,7 @@ export function Donut({
   centerLabel,
   size,
   stacked = false,
-  legendValues = true,
+  legend = true,
 }: {
   segments: BreakdownSegment[]; // sorted desc
   currency: Currency;
@@ -443,15 +566,47 @@ export function Donut({
   size?: number;
   /** legend below the ring (fills a narrow column) instead of beside it */
   stacked?: boolean;
-  /** show the per-slice amount in the legend (off keeps it compact: label + %) */
-  legendValues?: boolean;
+  /** off when the card already lists the same slices in more detail */
+  legend?: boolean;
 }) {
   const [hover, setHover] = useState<string | null>(null);
   const [ref, width] = useMeasure<HTMLDivElement>();
   const total = segments.reduce((s, seg) => s + seg.value, 0);
 
-  // stacked donuts grow to the card width (clamped); otherwise a fixed diameter
-  const dim = size ?? (stacked && width > 0 ? Math.max(150, Math.min(224, width)) : 168);
+  /*
+   * Ring beside the legend only when there *is* a legend and the card is
+   * actually wide enough for both.
+   *
+   * `width` is this container's own width rather than a `sm:` breakpoint,
+   * because the viewport says nothing about the column the donut landed in: in
+   * a two-up grid on a 1152px laptop the legend was squeezed to about 70px and
+   * every category read as "C 69%".
+   *
+   * The `legend` half of the condition is the part that was missing. The one
+   * caller that turns the legend off — currency allocation, which lists its own
+   * slices underneath in more detail — still got the two-column layout, with
+   * nothing to put in the second column: a 190px ring pinned to the left edge
+   * of a 460px card and a quarter of the card left blank. It only showed up
+   * from `xl`, where that card is finally wide enough to trip the threshold.
+   */
+  const sideBySide = legend && !stacked && width >= 360;
+  // Sharing the row, the ring takes a share of the width and leaves the rest to
+  // the legend; alone, it grows into the card. A fixed 220px ring in a 420px
+  // column left the labels 70px and stacking it instead made the card twice as
+  // tall as the chart beside it — scaling is what keeps both honest.
+  const dim =
+    size ??
+    (sideBySide
+      ? // 36%: the legend needs room for a real name plus a percentage and an
+        // amount — at 42% "Subscriptions" still came out as "Subscripti…"
+        Math.max(140, Math.min(220, Math.round(width * 0.36)))
+      : width > 0
+        ? // Alone in the card the ring is the card, so it takes most of the
+          // width rather than a token 224px cap left over from the days when a
+          // legend was stacked underneath it. 78% keeps a margin either side;
+          // the ceiling stops it turning into a dinner plate on a wide desktop.
+          Math.max(150, Math.min(288, Math.round(width * 0.78)))
+        : 168);
   const stroke = Math.max(14, dim * 0.14);
   const radius = (dim - stroke) / 2;
   const cx = dim / 2;
@@ -503,9 +658,9 @@ export function Donut({
     <div
       ref={ref}
       className={
-        stacked
-          ? "flex flex-col items-center gap-5"
-          : "flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6"
+        sideBySide
+          ? "flex flex-row items-center gap-6"
+          : "flex flex-col items-center gap-5"
       }
     >
       <svg
@@ -517,12 +672,18 @@ export function Donut({
         className="shrink-0"
         onPointerMove={hitTest}
         onPointerLeave={() => setHover(null)}
-        style={{ touchAction: "none" }}
+        // `pan-y`, not `none`: the ring is a full-width, ~200px-tall block in a
+        // phone-width card, and `none` made it a dead zone you could not scroll
+        // the page through. Vertical panning still belongs to the page;
+        // everything else is still ours to hit-test.
+        style={{ touchAction: "pan-y" }}
       >
         <circle cx={cx} cy={cx} r={radius} fill="none" stroke="var(--fill-ghost)" strokeWidth={stroke} />
         <g className="chart-ring">
         {arcs.map(({ seg, dashArray, dashOffset }) => {
-          const dim = hover !== null && hover !== seg.id;
+          // `dimmed`, not `dim`: the diameter above is called that, and a slice
+          // that shadowed it here was one edit away from a silent geometry bug
+          const dimmed = hover !== null && hover !== seg.id;
           return (
             <circle
               key={seg.id}
@@ -536,20 +697,21 @@ export function Donut({
               strokeDashoffset={dashOffset}
               strokeLinecap="round"
               transform={`rotate(-90 ${cx} ${cx})`}
-              opacity={dim ? 0.35 : 1}
+              opacity={dimmed ? 0.35 : 1}
               style={{ transition: "opacity 140ms ease", pointerEvents: "none" }}
             />
           );
         })}
         </g>
-        <text x={cx} y={cx - 6} textAnchor="middle" fontSize={11} fontWeight={650} fill="var(--ink-3)" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        <text x={cx} y={cx - dim * 0.035} textAnchor="middle" fontSize={Math.max(10, dim * 0.062)} fontWeight={650} fill="var(--ink-3)" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
           {focused ? focused.label : (centerLabel ?? "Total")}
         </text>
-        <text x={cx} y={cx + 14} textAnchor="middle" fontSize={17} fontWeight={700} className="tnum" fill="var(--ink-1)">
+        <text x={cx} y={cx + dim * 0.082} textAnchor="middle" fontSize={Math.max(15, dim * 0.098)} fontWeight={700} className="tnum" fill="var(--ink-1)">
           {formatMoney(focused ? focused.value : total, currency, { compact: true })}
         </text>
       </svg>
 
+      {legend && (
       <ul className="w-full min-w-0 space-y-2">
         {segments.map((seg) => (
           <li
@@ -567,14 +729,13 @@ export function Donut({
             <span className="tnum text-xs text-ink-3">
               {((seg.value / total) * 100).toFixed(0)}%
             </span>
-            {legendValues && (
-              <span className="tnum whitespace-nowrap font-semibold text-ink-1">
-                {formatMoney(seg.value, currency, { compact: true })}
-              </span>
-            )}
+            <span className="tnum whitespace-nowrap font-semibold text-ink-1">
+              {formatMoney(seg.value, currency, { compact: true })}
+            </span>
           </li>
         ))}
       </ul>
+      )}
     </div>
   );
 }
@@ -595,9 +756,21 @@ export function CategoryBreakdown({
   const shown = segments.slice(0, maxSegments);
   const rest = segments.slice(maxSegments);
   const restValue = rest.reduce((s, seg) => s + seg.value, 0);
-  const bars = restValue > 0
-    ? [...shown, { id: "__other", label: "Other", icon: "📦", value: restValue, colorSlot: 0 }]
-    : shown;
+  const bars: BreakdownSegment[] =
+    restValue > 0
+      ? [
+          ...shown,
+          {
+            id: "__other",
+            label: "Other",
+            // the app's own row, so it takes the app's own icon rather than a
+            // cardboard box that reads as one more category you chose
+            icon: <Icon name="ellipsis" size={14} strokeWidth={3} />,
+            value: restValue,
+            colorSlot: 0,
+          },
+        ]
+      : shown;
 
   if (total <= 0) return null;
 
@@ -676,6 +849,7 @@ export function StackedArea({
   const max = Math.max(1, ...points.map((p) => p.a + p.b));
   const ticks = niceTicks(max);
   const top = ticks[ticks.length - 1];
+  const tickLabel = axisFormatter(top);
   const x = (i: number) => pad.left + (n > 1 ? (i / (n - 1)) * plotW : 0);
   const y = (v: number) => pad.top + plotH - (v / top) * plotH;
 
@@ -708,34 +882,47 @@ export function StackedArea({
     <div>
       <ChartLegend
         items={[
-          { label: seriesA, color: "var(--series-2)" },
-          { label: seriesB, color: "var(--series-1)" },
+          { label: seriesA, color: "var(--series-1)" },
+          { label: seriesB, color: "var(--series-2)" },
         ]}
+      />
+      <ChartTable
+        caption={`${seriesA} and ${seriesB} over time`}
+        columns={["Point", seriesA, seriesB, "Total"]}
+        rows={points.map((p) => ({
+          key: p.label,
+          cells: [
+            xTickFormat(p.label),
+            formatMoney(p.a, currency, { compact: true }),
+            formatMoney(p.b, currency, { compact: true }),
+            formatMoney(p.a + p.b, currency, { compact: true }),
+          ],
+        }))}
       />
       <div ref={ref} className="relative mt-2" style={{ height }}>
         {width > 0 && (
-          <svg width={width} height={height} role="img" aria-label={`${seriesA} and ${seriesB} projection`}>
+          <svg width={width} height={height} aria-hidden>
             {ticks.map((t) => (
               <g key={t}>
-                <line x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} stroke="var(--hairline)" strokeWidth={1} />
-                <text x={pad.left - 6} y={y(t) + 3.5} textAnchor="end" fontSize={10.5} className="tnum" fill="var(--ink-3)">
-                  {formatCompact(t)}
+                <line x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} stroke="var(--gridline)" strokeWidth={1} />
+                <text x={pad.left - 6} y={y(t) + 3.5} textAnchor="end" fontSize={11} className="tnum" fill="var(--ink-3)">
+                  {tickLabel(t)}
                 </text>
               </g>
             ))}
             {points.map((p, i) =>
               i % labelEvery === 0 ? (
-                <text key={p.label} x={x(i)} y={height - 6} textAnchor="middle" fontSize={10.5} fill="var(--ink-3)">
+                <text key={p.label} x={x(i)} y={height - 6} textAnchor="middle" fontSize={11} fill="var(--ink-3)">
                   {xTickFormat(p.label)}
                 </text>
               ) : null,
             )}
-            <path d={areaA} fill="var(--series-2)" fillOpacity={0.12} className="chart-fade" />
-            <path d={areaB} fill="var(--series-1)" fillOpacity={0.12} className="chart-fade" />
+            <path d={areaA} fill="var(--series-1)" fillOpacity={0.12} className="chart-fade" />
+            <path d={areaB} fill="var(--series-2)" fillOpacity={0.12} className="chart-fade" />
             <path
               d={lineA}
               fill="none"
-              stroke="var(--series-2)"
+              stroke="var(--series-1)"
               strokeWidth={2}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -745,7 +932,7 @@ export function StackedArea({
             <path
               d={lineTotal}
               fill="none"
-              stroke="var(--series-1)"
+              stroke="var(--series-2)"
               strokeWidth={2}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -755,8 +942,8 @@ export function StackedArea({
             {hover !== null && (
               <g>
                 <line x1={x(hover)} x2={x(hover)} y1={pad.top} y2={pad.top + plotH} stroke="var(--ink-3)" strokeWidth={1} opacity={0.5} />
-                <circle cx={x(hover)} cy={y(points[hover].a)} r={4} fill="var(--series-2)" stroke="var(--card-strong)" strokeWidth={2} />
-                <circle cx={x(hover)} cy={y(points[hover].a + points[hover].b)} r={4} fill="var(--series-1)" stroke="var(--card-strong)" strokeWidth={2} />
+                <circle cx={x(hover)} cy={y(points[hover].a)} r={4} fill="var(--series-1)" stroke="var(--card-strong)" strokeWidth={2} />
+                <circle cx={x(hover)} cy={y(points[hover].a + points[hover].b)} r={4} fill="var(--series-2)" stroke="var(--card-strong)" strokeWidth={2} />
               </g>
             )}
             <rect
@@ -773,8 +960,8 @@ export function StackedArea({
         {hover !== null && points[hover] && (
           <Tooltip x={x(hover)} y={pad.top} containerWidth={width}>
             <p className="mb-1 font-semibold text-ink-1">{points[hover].label}</p>
-            <TooltipRow color="var(--series-1)" label={seriesB} value={formatMoney(points[hover].b, currency, { compact: true })} />
-            <TooltipRow color="var(--series-2)" label={seriesA} value={formatMoney(points[hover].a, currency, { compact: true })} />
+            <TooltipRow color="var(--series-2)" label={seriesB} value={formatMoney(points[hover].b, currency, { compact: true })} />
+            <TooltipRow color="var(--series-1)" label={seriesA} value={formatMoney(points[hover].a, currency, { compact: true })} />
             <TooltipRow label="Total" value={formatMoney(points[hover].a + points[hover].b, currency, { compact: true })} />
           </Tooltip>
         )}

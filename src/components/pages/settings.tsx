@@ -12,7 +12,9 @@ import {
   SegmentedControl,
   Sheet,
   TextInput,
+  useRadioGroupKeys,
 } from "@/components/ui";
+import { Icon, type IconName } from "@/components/icons";
 import { CURRENCIES, CURRENCY_SYMBOL, DEFAULT_STATE, ICON_CHOICES } from "@/lib/constants";
 import { formatDateTime, todayISO } from "@/lib/date";
 import { exportBackup, parseBackup } from "@/lib/backup";
@@ -53,7 +55,6 @@ export function SettingsPage() {
   const [catSheetOpen, setCatSheetOpen] = useState(false);
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [catForm, setCatForm] = useState<CategoryForm>(() => emptyCategoryForm(1));
-  const [catError, setCatError] = useState<string | null>(null);
   const [catDeleteId, setCatDeleteId] = useState<string | null>(null);
 
   const [importError, setImportError] = useState<string | null>(null);
@@ -128,29 +129,25 @@ export function SettingsPage() {
   const openAddCategory = () => {
     setEditingCatId(null);
     setCatForm(emptyCategoryForm(leastUsedSlot(kindTab)));
-    setCatError(null);
     setCatSheetOpen(true);
   };
 
   const openEditCategory = (cat: Category) => {
     setEditingCatId(cat.id);
     setCatForm({ name: cat.name, icon: cat.icon, colorSlot: cat.colorSlot });
-    setCatError(null);
     setCatSheetOpen(true);
   };
 
   const closeCatSheet = () => {
     setCatSheetOpen(false);
     setEditingCatId(null);
-    setCatError(null);
   };
+
+  const catProblem = catForm.name.trim() === "" ? "Name the category." : null;
 
   const submitCategory = () => {
     const name = catForm.name.trim();
-    if (!name) {
-      setCatError("Name the category.");
-      return;
-    }
+    if (!name) return;
     if (editingCatId) {
       update((s) => ({
         ...s,
@@ -202,14 +199,25 @@ export function SettingsPage() {
 
   const confirmDeleteCategory = () => {
     if (!catDeleteId) return;
-    update((s) => ({
-      ...s,
-      categories: s.categories.filter((c) => c.id !== catDeleteId),
-    }));
+    update(
+      (s) => ({
+        ...s,
+        categories: s.categories.filter((c) => c.id !== catDeleteId),
+      }),
+      "Category deleted",
+    );
     setCatDeleteId(null);
   };
 
   const deletingCat = state.categories.find((c) => c.id === catDeleteId);
+
+  const colorGroupRef = useRef<HTMLDivElement>(null);
+  const onColorKeyDown = useRadioGroupKeys(
+    colorGroupRef,
+    ["1", "2", "3", "4", "5", "6", "7", "8"],
+    String(catForm.colorSlot),
+    (slot) => setCatForm((f) => ({ ...f, colorSlot: Number(slot) })),
+  );
 
   /* ---------- data ---------- */
 
@@ -222,7 +230,9 @@ export function SettingsPage() {
     document.body.appendChild(a);
     a.click();
     a.remove();
-    URL.revokeObjectURL(url);
+    // revoked on the next turn, not inline: Safari reads the blob after the
+    // click returns, and pulling the URL out from under it downloads nothing
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   const onFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -243,7 +253,9 @@ export function SettingsPage() {
   const confirmImport = () => {
     if (!pendingImport) return;
     const { transactions, categories, savings, investments } = pendingImport;
-    replace(pendingImport);
+    // the one action in the app that discards everything at once, so it is also
+    // the one that most needs a way back before the write settles
+    replace(pendingImport, "Data replaced from file");
     setPendingImport(null);
     // a silent swap of the whole dataset leaves you guessing whether the file
     // was the one you meant — say what came in
@@ -255,7 +267,7 @@ export function SettingsPage() {
   };
 
   const confirmReset = () => {
-    replace({ ...DEFAULT_STATE });
+    replace({ ...DEFAULT_STATE }, "Everything reset");
     setResetOpen(false);
   };
 
@@ -269,8 +281,8 @@ export function SettingsPage() {
       />
       {/* CSS columns balance the cards by height on their own — hand-packed
           columns always left one side short */}
-      <div className="stagger min-w-0 xl:columns-2 xl:gap-4 *:mb-4 *:break-inside-avoid">
-        <GlassCard title="General" subtitle="Currency and appearance" icon="⚙️">
+      <div className="stagger min-w-0 xl:columns-2 xl:gap-5 *:mb-4 sm:*:mb-5 *:break-inside-avoid">
+        <GlassCard title="General" subtitle="Currency and appearance" icon={<Icon name="gear" />}>
           <div className="min-w-0 space-y-4">
             <FieldSet label="Base currency" hint="Totals and charts are shown in it">
               <SegmentedControl
@@ -295,7 +307,7 @@ export function SettingsPage() {
           </div>
         </GlassCard>
 
-        <GlassCard title="Exchange rates" subtitle="How ₴ / $ / € convert" icon="💱">
+        <GlassCard title="Exchange rates" subtitle="How ₴ / $ / € convert" icon={<Icon name="exchange" />}>
           {/* the two read-only tiles that used to sit here printed the same two
               numbers as the fields directly below them */}
           <div className="grid gap-4 sm:grid-cols-2">
@@ -327,7 +339,7 @@ export function SettingsPage() {
           {ratesError && <p className="mt-2 text-sm text-expense">{ratesError}</p>}
         </GlassCard>
 
-        <GlassCard title="Salary tax (ФОП)" subtitle="Deductions applied to income" icon="🧾">
+        <GlassCard title="Salary tax (ФОП)" subtitle="Deductions applied to income" icon={<Icon name="receipt" />}>
           <div className="grid gap-4 sm:grid-cols-2">
             <NumericSetting
               label="Tax rate"
@@ -354,7 +366,7 @@ export function SettingsPage() {
         <GlassCard
           title="Categories"
           subtitle={`${state.categories.length} total · tap a row to edit`}
-          icon="🏷️"
+          icon={<Icon name="tag" />}
           action={
             <Button variant="ghost" onClick={openAddCategory}>
               + Add
@@ -413,10 +425,9 @@ export function SettingsPage() {
                   </button>
                   <IconAction
                     label={`Delete ${cat.name}`}
-                    title={blocked ?? `Delete ${cat.name}`}
-                    icon="delete"
+                    reason={blocked}
+                    icon="trash"
                     danger
-                    disabled={blocked !== null}
                     onClick={() => setCatDeleteId(cat.id)}
                   />
                 </li>
@@ -425,7 +436,7 @@ export function SettingsPage() {
           </ul>
         </GlassCard>
 
-        <GlassCard title="Data" subtitle="Backup, restore, reset" icon="💾">
+        <GlassCard title="Data" subtitle="Backup, restore, reset" icon={<Icon name="database" />}>
           <div className="divide-y divide-hairline">
             <DataRow
               title="Export to file"
@@ -445,7 +456,7 @@ export function SettingsPage() {
           {importError && <p className="mt-3 text-sm text-expense">{importError}</p>}
           {importSummary && <p className="mt-3 text-sm text-income">{importSummary}</p>}
           {/* destructive action, set apart in its own danger zone */}
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-expense/20 bg-expense/8 px-4 py-3">
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-field border border-expense/20 bg-expense/8 px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-expense">Reset everything</p>
               <p className="text-xs text-ink-3">Deletes all data permanently</p>
@@ -463,7 +474,7 @@ export function SettingsPage() {
           />
         </GlassCard>
 
-        <GlassCard title="About" subtitle="What lives in your database" icon="ℹ️">
+        <GlassCard title="About" subtitle="What lives in your database" icon={<Icon name="info" />}>
           {/* "Categories" moved out — the card above already counts them, and
               "Holdings" lumped two different things into one number */}
           <div className="mb-4 grid grid-cols-3 gap-2 text-center">
@@ -485,13 +496,17 @@ export function SettingsPage() {
       <Sheet
         open={catSheetOpen}
         onClose={closeCatSheet}
+        onSubmit={submitCategory}
+        problem={catProblem}
         title={editingCatId ? "Edit category" : "New category"}
         footer={
           <>
             <Button variant="ghost" onClick={closeCatSheet}>
               Cancel
             </Button>
-            <Button onClick={submitCategory}>Save</Button>
+            <Button type="submit" disabled={catProblem !== null}>
+              Save
+            </Button>
           </>
         }
       >
@@ -514,9 +529,18 @@ export function SettingsPage() {
           {/* one choice out of eight: a radiogroup, like the chips above it.
               As eight independent toggle buttons it announced "pressed" on one
               swatch and said nothing about the other seven. */}
-          {/* eight columns across the full width, matching the icon grid it
-              sits under — as a wrap it stopped ~60px short of the right edge */}
-          <div role="radiogroup" aria-label="Color" className="grid grid-cols-8 gap-2">
+          {/* Columns that divide the width, the same rule the icon grid above
+              uses — a hard `grid-cols-8` gave each swatch 34px of column on a
+              360px phone to draw a 36px circle in, so the grid overflowed and
+              the sheet grew a horizontal scrollbar. */}
+          <div
+            ref={colorGroupRef}
+            onKeyDown={onColorKeyDown}
+            role="radiogroup"
+            aria-label="Color"
+            className="grid gap-2"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(2.25rem, 1fr))" }}
+          >
             {Array.from({ length: 8 }, (_, i) => i + 1).map((slot) => {
               const active = catForm.colorSlot === slot;
               return (
@@ -525,6 +549,7 @@ export function SettingsPage() {
                   type="button"
                   role="radio"
                   aria-checked={active}
+                  tabIndex={active ? 0 : -1}
                   aria-label={`Colour ${slot}`}
                   onClick={() => setCatForm({ ...catForm, colorSlot: slot })}
                   className={`flex size-9 items-center justify-center justify-self-center rounded-full text-white outline-none transition-[transform,box-shadow] duration-150 focus-visible:ring-4 focus-visible:ring-accent-soft active:scale-95 ${
@@ -534,17 +559,12 @@ export function SettingsPage() {
                   }`}
                   style={{ backgroundColor: `var(--series-${slot})` }}
                 >
-                  {active && (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="m5 13 4 4L19 7" />
-                    </svg>
-                  )}
+                  {active && <Icon name="check" size={14} strokeWidth={3.2} />}
                 </button>
               );
             })}
           </div>
         </FieldSet>
-        {catError && <p className="text-sm text-expense">{catError}</p>}
       </Sheet>
 
       <ConfirmDialog
@@ -569,63 +589,50 @@ export function SettingsPage() {
         onClose={() => setResetOpen(false)}
         onConfirm={confirmReset}
         title="Reset all data?"
-        message="All transactions, accounts and investments will be deleted permanently. This cannot be undone."
+        // the counts are the point: "all your data" is abstract until it says
+        // how many years of records are about to go
+        message={`${state.transactions.length} records, ${state.savings.length} accounts, ${state.investments.length} investments and ${state.debts.length} debts will be deleted from the database. Export a backup first if you might want any of it back.`}
         confirmLabel="Reset"
       />
     </>
   );
 }
 
-const ACTION_ICONS = {
-  edit: "M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z",
-  delete: "M4 7h16M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7M6.5 7l.8 12a2 2 0 0 0 2 1.9h5.4a2 2 0 0 0 2-1.9l.8-12",
-} as const;
-
 /**
  * The row actions used to be bare emoji, which read as decoration rather than
  * as buttons. Same footprint, but a stroked icon in a real target with the
  * app's hover language on it.
+ *
+ * A disabled button explains itself in its accessible name rather than only in
+ * a `title`: hover text is not announced and does not exist on touch, so "why
+ * can't I delete this?" had no answer on a phone.
  */
 function IconAction({
   label,
-  title,
+  reason,
   onClick,
   icon,
   danger,
-  disabled,
 }: {
   label: string;
-  /** hover text; defaults to the label, or explains why the action is off */
-  title?: string;
+  /** why the action is unavailable; its presence is what disables the button */
+  reason?: string | null;
   onClick: () => void;
-  icon: keyof typeof ACTION_ICONS;
+  icon: IconName;
   danger?: boolean;
-  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
-      aria-label={label}
-      title={title ?? label}
+      aria-label={reason ? `${label} — ${reason}` : label}
+      title={reason ?? label}
       onClick={onClick}
-      disabled={disabled}
-      className={`icon-btn size-9 shrink-0 disabled:cursor-not-allowed disabled:opacity-30 ${
+      disabled={reason != null}
+      className={`icon-btn size-9 shrink-0 text-ink-3 disabled:cursor-not-allowed disabled:opacity-30 ${
         danger ? "icon-btn-danger" : ""
       }`}
     >
-      <svg
-        width="17"
-        height="17"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.9}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <path d={ACTION_ICONS[icon]} />
-      </svg>
+      <Icon name={icon} size={17} strokeWidth={1.9} />
     </button>
   );
 }
@@ -694,7 +701,7 @@ function ratesOrigin(settings: AppState["settings"]): string {
 function AtAGlance({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-field bg-ghost px-2 py-3">
-      <p className="tnum text-xl font-bold text-ink-1">{value}</p>
+      <p className="num-sm text-ink-1">{value}</p>
       <p className="mt-0.5 text-xs text-ink-3">{label}</p>
     </div>
   );

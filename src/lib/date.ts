@@ -43,6 +43,20 @@ export function dateInMonth(month: string, day: number): string {
   return `${month}-${pad(Math.min(day, daysInMonth(month)))}`;
 }
 
+/** shift a yyyy-mm-dd date by n days (n may be negative) */
+export function addDays(dateISO: string, n: number): string {
+  const d = new Date(`${dateISO}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** whole days from `a` to `b` (b - a), both yyyy-mm-dd */
+export function daysBetween(a: string, b: string): number {
+  const from = new Date(`${a}T00:00:00`).getTime();
+  const to = new Date(`${b}T00:00:00`).getTime();
+  return Math.round((to - from) / 86_400_000);
+}
+
 /** fractional years between two ISO dates (365.25-day years) */
 export function yearsBetween(fromISO: string, toISO: string): number {
   const from = new Date(`${fromISO}T00:00:00`);

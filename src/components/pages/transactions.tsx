@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { CURRENCIES, ICON_CHOICES } from "@/lib/constants";
+import { CURRENCIES, CURRENCY_SYMBOL, ICON_CHOICES } from "@/lib/constants";
 import {
   addMonths,
   currentMonth,
   dateInMonth,
+  daysInMonth,
   formatDate,
+  formatDateShort,
   formatMonth,
   monthDiff,
   monthOf,
@@ -20,7 +22,14 @@ import {
   subscriptionsMonthlyTotal,
 } from "@/lib/finmath";
 import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
-import { deleteSchedule, remateralizeRecurring, syncSchedule, uid, useStore } from "@/lib/store";
+import {
+  deleteSchedule,
+  PLANNING_HORIZON_MONTHS,
+  remateralizeRecurring,
+  syncSchedule,
+  uid,
+  useStore,
+} from "@/lib/store";
 import type {
   Budget,
   Currency,
@@ -36,6 +45,7 @@ import {
   ConfirmDialog,
   EmptyState,
   Field,
+  FieldSet,
   GlassCard,
   MonthInput,
   Money,
@@ -49,12 +59,13 @@ import {
   TextInput,
 } from "@/components/ui";
 import {
-  Donut,
+  CategoryBreakdown,
   MonthlyColumns,
   PeriodTabs,
   StatTile,
   type BreakdownSegment,
 } from "@/components/charts";
+import { Icon } from "@/components/icons";
 
 const TX_TYPE_OPTIONS: Array<{ value: TxType; label: string }> = [
   { value: "expense", label: "Expense" },
@@ -108,20 +119,15 @@ interface SubscriptionForm {
   period: SubscriptionPeriod;
   accountId: string;
   day: string;
+  /** the month charges start posting from — a service you signed up to in
+   *  March should show its March charge, not start the month you typed it in */
+  startMonth: string;
 }
 
 const PERIOD_OPTIONS: Array<{ value: SubscriptionPeriod; label: string }> = [
   { value: "monthly", label: "Monthly" },
   { value: "yearly", label: "Yearly" },
 ];
-
-/** top `cap-1` categories as-is, the rest folded into one "Other" slice */
-function foldSegments(all: BreakdownSegment[], cap = 6): BreakdownSegment[] {
-  if (all.length <= cap) return all;
-  const head = all.slice(0, cap - 1);
-  const rest = all.slice(cap - 1).reduce((s, x) => s + x.value, 0);
-  return [...head, { id: "__other", label: "Other", icon: "•", value: rest, colorSlot: 8 }];
-}
 
 interface BudgetForm {
   /** categoryId of the budget being edited; null = new */
@@ -139,6 +145,10 @@ export function TransactionsPage() {
   const today = todayISO();
 
   const [month, setMonth] = useState(nowMonth);
+  /* ledger search: a query, a type filter, and whether to look past this month */
+  const [query, setQuery] = useState("");
+  const [ledgerType, setLedgerType] = useState<TxType | "all">("all");
+  const [searchAll, setSearchAll] = useState(false);
   const [txForm, setTxForm] = useState<TxForm | null>(null);
   const [confirmTxDelete, setConfirmTxDelete] = useState(false);
   const [recForm, setRecForm] = useState<RecurringForm | null>(null);
@@ -149,41 +159,96 @@ export function TransactionsPage() {
   const [confirmBudgetDelete, setConfirmBudgetDelete] = useState(false);
 
   const catById = new Map(state.categories.map((c) => [c.id, c]));
+  const accountById = new Map(state.savings.map((a) => [a.id, a]));
   const firstCategoryId = (kind: CategoryKind) =>
     state.categories.find((c) => c.kind === kind)?.id ?? "";
 
   /* ---------- selected month data ---------- */
 
-  const canGoNext = monthDiff(nowMonth, month) < 12;
+  // as far ahead as the schedules actually post: the horizon covers the current
+  // month plus the next eleven, so month + 12 was always a guaranteed blank page
+  const canGoNext = monthDiff(nowMonth, month) < PLANNING_HORIZON_MONTHS - 1;
   const totals = monthTotals(state.transactions, month, settings);
+  // the month before, so each tile can say which way things moved rather than
+  // printing a figure with nothing to measure it against
+  const prevTotals = monthTotals(state.transactions, addMonths(month, -1), settings);
+  const hasPrev = prevTotals.income > 0 || prevTotals.expense > 0;
+  const vsLast = (now: number, before: number, lowerIsBetter = false) =>
+    hasPrev
+      ? {
+          text: `${formatMoney(now - before, base, { compact: true, sign: true })} vs last month`,
+          good: lowerIsBetter ? now <= before : now >= before,
+        }
+      : undefined;
+  // rules and subscriptions post ahead, so part of an open month has not
+  // happened yet — the same split the dashboard tiles carry
+  const plannedIn = (type: "income" | "expense") =>
+    state.transactions
+      .filter((t) => t.type === type && monthOf(t.date) === month && t.date > today)
+      .reduce((sum, t) => sum + convert(t.amount, t.currency, base, settings.rates), 0);
+  const stillAhead = (total: number, ahead: number) =>
+    ahead > 0
+      ? `${formatMoney(total - ahead, base, { compact: true })} so far · ${formatMoney(ahead, base, { compact: true })} planned`
+      : undefined;
 
   /* ---------- charts ---------- */
   const [flowMonths, setFlowMonths] = useState(6);
   const flowSeries = monthlySeries(state.transactions, month, flowMonths, settings);
-  const spendEntries = [...expensesByCategory(state.transactions, month, settings).entries()];
-  const spendSegments = foldSegments(
-    spendEntries.map(([categoryId, value]) => {
-      const cat = catById.get(categoryId);
-      return {
-        id: categoryId,
-        label: cat?.name ?? "Uncategorized",
-        icon: cat?.icon ?? "❓",
-        value,
-        colorSlot: cat?.colorSlot ?? 3,
-      };
-    }),
-  );
+  // no local folding: CategoryBreakdown already rolls the tail into one "Other"
+  // row, and doing it twice meant a second, differently-labelled cut-off
+  const spendSegments: BreakdownSegment[] = [
+    ...expensesByCategory(state.transactions, month, settings).entries(),
+  ].map(([categoryId, value]) => {
+    const cat = catById.get(categoryId);
+    return {
+      id: categoryId,
+      label: cat?.name ?? "Uncategorized",
+      icon: cat?.icon ?? "❓",
+      value,
+      colorSlot: cat?.colorSlot ?? 3,
+    };
+  });
   const hasAnyTx = state.transactions.length > 0;
 
+  /* ---------- ledger scope ---------- */
+
+  /**
+   * A ledger you can only page through a month at a time answers "what did
+   * March cost" and nothing else — "where did that 4 000 go" needs a search.
+   * The query reads every field a row shows: note, category, either account,
+   * and the amount as typed.
+   */
+  const q = query.trim().toLowerCase();
+  const filtering = q !== "" || ledgerType !== "all";
+  const matchesFilter = (tx: Transaction) => {
+    if (ledgerType !== "all" && tx.type !== ledgerType) return false;
+    if (!q) return true;
+    const cat = catById.get(tx.categoryId);
+    const from = tx.accountId ? accountById.get(tx.accountId) : undefined;
+    const to = tx.toAccountId ? accountById.get(tx.toAccountId) : undefined;
+    return [tx.note, cat?.name, from?.name, to?.name, String(tx.amount), tx.currency].some(
+      (field) => field?.toLowerCase().includes(q),
+    );
+  };
+
+  const monthTx = state.transactions.filter((t) => monthOf(t.date) === month);
+  const monthTxCount = monthTx.length;
+  // searching the whole ledger is opt-in, so paging months stays the default
+  // reading and a query never silently drags rows in from other years
+  const spanningAll = searchAll && filtering;
+  const ledgerTx = (spanningAll ? state.transactions : monthTx).filter(matchesFilter);
+  const elsewhereCount =
+    filtering && !spanningAll
+      ? state.transactions.filter((t) => monthOf(t.date) !== month && matchesFilter(t)).length
+      : 0;
+
   const byDay = new Map<string, Transaction[]>();
-  for (const tx of state.transactions) {
-    if (monthOf(tx.date) !== month) continue;
+  for (const tx of ledgerTx) {
     const list = byDay.get(tx.date);
     if (list) list.push(tx);
     else byDay.set(tx.date, [tx]);
   }
   const days = [...byDay.keys()].sort().reverse();
-  const monthTxCount = [...byDay.values()].reduce((n, list) => n + list.length, 0);
 
   const expenseCats = state.categories.filter((c) => c.kind === "expense");
   const budgetedIds = new Set(state.budgets.map((b) => b.categoryId));
@@ -239,7 +304,13 @@ export function TransactionsPage() {
         }
       : { ...form, type, categoryId: firstCategoryId(type) };
 
-  const accountById = new Map(state.savings.map((a) => [a.id, a]));
+  // a transfer needs two places to move money between; with fewer the tab could
+  // be picked but never saved, and the Save button gave no reason why
+  const canTransfer = state.savings.length >= 2;
+  const txTypeOptions = canTransfer
+    ? TX_TYPE_OPTIONS
+    : TX_TYPE_OPTIONS.filter((o) => o.value !== "transfer");
+
   const fromAccount = txForm ? accountById.get(txForm.accountId) : undefined;
   const toAccount = txForm ? accountById.get(txForm.toAccountId) : undefined;
   const crossCurrency =
@@ -273,6 +344,26 @@ export function TransactionsPage() {
         txForm.accountId !== txForm.toAccountId &&
         (!crossCurrency || (Number.isFinite(txToAmount) && txToAmount > 0))
       : txForm.categoryId !== "");
+
+  /**
+   * Why Save is off. A disabled button with nothing beside it is a dead end:
+   * on a form with an amount, two accounts and a cross-currency second amount,
+   * "it just won't save" is not something you can debug by looking at it.
+   */
+  const txProblem: string | null =
+    txForm === null || txValid
+      ? null
+      : !Number.isFinite(txAmount) || txAmount <= 0
+        ? "Enter an amount greater than zero."
+        : !/^\d{4}-\d{2}-\d{2}$/.test(txForm.date)
+          ? "Pick a date."
+          : txForm.type !== "transfer"
+            ? "Pick a category."
+            : txForm.accountId === "" || txForm.toAccountId === ""
+              ? "Pick the account the money leaves and the one it lands in."
+              : txForm.accountId === txForm.toAccountId
+                ? "A transfer needs two different accounts."
+                : `Enter what actually arrived in ${toAccount?.name ?? "the destination"}.`;
 
   const saveTx = () => {
     if (!txForm || !txValid) return;
@@ -324,10 +415,13 @@ export function TransactionsPage() {
   const deleteTx = () => {
     const id = txForm?.id;
     if (!id) return;
-    update((s) => ({
-      ...s,
-      transactions: s.transactions.filter((t) => t.id !== id),
-    }));
+    update(
+      (s) => ({
+        ...s,
+        transactions: s.transactions.filter((t) => t.id !== id),
+      }),
+      "Transaction deleted",
+    );
     setTxForm(null);
   };
 
@@ -374,6 +468,17 @@ export function TransactionsPage() {
     /^\d{4}-\d{2}$/.test(recForm.startMonth) &&
     (recForm.endMonth === "" || recForm.endMonth >= recForm.startMonth);
 
+  const recProblem: string | null =
+    recForm === null || recValid
+      ? null
+      : !Number.isFinite(recAmount) || recAmount <= 0
+        ? "Enter an amount greater than zero."
+        : !Number.isInteger(recDay) || recDay < 1 || recDay > 31
+          ? "The day of the month has to be a whole number between 1 and 31."
+          : recForm.categoryId === ""
+            ? "Pick a category."
+            : "The end month cannot come before the start month.";
+
   const saveRec = () => {
     if (!recForm || !recValid) return;
     const patch = {
@@ -409,9 +514,17 @@ export function TransactionsPage() {
     const id = recForm?.id;
     if (!id) return;
     // the rule and every month it posted go together — nothing is left behind
-    update((s) => deleteSchedule(s, "recurring", id));
+    update((s) => deleteSchedule(s, "recurring", id), "Recurring rule deleted");
     setRecForm(null);
   };
+
+  /** how many ledger rows a schedule's delete would take with it */
+  const postedCount = (kind: "recurring" | "subscription", id: string | null) =>
+    id === null
+      ? 0
+      : state.transactions.filter((t) =>
+          kind === "recurring" ? t.recurringId === id : t.subscriptionId === id,
+        ).length;
 
   /* ---------- subscriptions ---------- */
 
@@ -430,6 +543,7 @@ export function TransactionsPage() {
       period: "monthly",
       accountId: state.savings[0]?.id ?? "",
       day: "1",
+      startMonth: nowMonth,
     });
 
   const openEditSub = (sub: Subscription) =>
@@ -442,6 +556,7 @@ export function TransactionsPage() {
       period: sub.period,
       accountId: sub.accountId ?? "",
       day: String(sub.dayOfMonth),
+      startMonth: sub.startMonth,
     });
 
   const subPrice = subForm ? parseAmount(subForm.price) : NaN;
@@ -453,7 +568,17 @@ export function TransactionsPage() {
     subPrice > 0 &&
     Number.isInteger(subDay) &&
     subDay >= 1 &&
-    subDay <= 31;
+    subDay <= 31 &&
+    /^\d{4}-\d{2}$/.test(subForm.startMonth);
+
+  const subProblem: string | null =
+    subForm === null || subValid
+      ? null
+      : subForm.name.trim() === ""
+        ? "Name the service."
+        : !Number.isFinite(subPrice) || subPrice <= 0
+          ? "Enter a price greater than zero."
+          : "The charge day has to be a whole number between 1 and 31.";
 
   const saveSub = () => {
     if (!subForm || !subValid) return;
@@ -465,9 +590,10 @@ export function TransactionsPage() {
       period: subForm.period,
       accountId: subForm.accountId || undefined,
       dayOfMonth: Math.min(31, Math.max(1, subDay)),
+      startMonth: subForm.startMonth,
     };
-    // a new price or billing day rewrites every charge this subscription has
-    // posted, not just the planned ones
+    // a new price, billing day or start month rewrites every charge this
+    // subscription has posted, not just the planned ones
     const id = subForm.id ?? uid();
     update((s) =>
       syncSchedule(
@@ -475,7 +601,7 @@ export function TransactionsPage() {
           ...s,
           subscriptions: subForm.id
             ? s.subscriptions.map((sub) => (sub.id === id ? { ...sub, ...patch } : sub))
-            : [...s.subscriptions, { id, ...patch, startMonth: nowMonth, active: true }],
+            : [...s.subscriptions, { id, ...patch, active: true }],
         },
         "subscription",
         id,
@@ -485,13 +611,15 @@ export function TransactionsPage() {
   };
 
   const toggleSub = (id: string, active: boolean) => {
-    update((s) =>
-      remateralizeRecurring({
-        ...s,
-        subscriptions: s.subscriptions.map((sub) =>
-          sub.id === id ? { ...sub, active } : sub,
-        ),
-      }),
+    update(
+      (s) =>
+        remateralizeRecurring({
+          ...s,
+          subscriptions: s.subscriptions.map((sub) =>
+            sub.id === id ? { ...sub, active } : sub,
+          ),
+        }),
+      active ? "Subscription switched on" : "Subscription switched off",
     );
   };
 
@@ -500,7 +628,7 @@ export function TransactionsPage() {
     if (!id) return;
     // the subscription and every charge it posted go together — to keep the
     // charges so far, switch it off instead of deleting it
-    update((s) => deleteSchedule(s, "subscription", id));
+    update((s) => deleteSchedule(s, "subscription", id), "Subscription deleted");
     setSubForm(null);
   };
 
@@ -532,6 +660,13 @@ export function TransactionsPage() {
     budgetLimit > 0 &&
     budgetForm.categoryId !== "";
 
+  const budgetProblem: string | null =
+    budgetForm === null || budgetValid
+      ? null
+      : budgetForm.categoryId === ""
+        ? "Pick a category."
+        : "Enter a monthly limit greater than zero.";
+
   const saveBudget = () => {
     if (!budgetForm || !budgetValid) return;
     const entry: Budget = {
@@ -556,10 +691,13 @@ export function TransactionsPage() {
   const deleteBudget = () => {
     const id = budgetForm?.editingId;
     if (!id) return;
-    update((s) => ({
-      ...s,
-      budgets: s.budgets.filter((b) => b.categoryId !== id),
-    }));
+    update(
+      (s) => ({
+        ...s,
+        budgets: s.budgets.filter((b) => b.categoryId !== id),
+      }),
+      "Budget deleted",
+    );
     setBudgetForm(null);
   };
 
@@ -572,7 +710,7 @@ export function TransactionsPage() {
         subtitle="Ledger, recurring payments, subscriptions and budgets"
         action={<Button onClick={openAddTx}>+ Add</Button>}
       />
-      <div className="stagger space-y-5">
+      <div className="stagger space-y-4 sm:space-y-5">
         {/* month switcher */}
         <div className="glass flex items-center gap-3 rounded-card px-4 py-3">
           <button
@@ -588,7 +726,7 @@ export function TransactionsPage() {
           {/* the strip used to be a wide empty bar with a month name in it —
               it now carries where you are and how the month closed */}
           <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
-            <span className="flex items-center gap-2 text-[15px] font-semibold text-ink-1">
+            <span className="body-strong flex items-center gap-2 font-semibold">
               <span className="truncate">{formatMonth(month)}</span>
               {month === nowMonth && (
                 <span className="hidden rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent sm:inline">
@@ -606,7 +744,8 @@ export function TransactionsPage() {
           {month !== nowMonth && (
             <Button
               variant="ghost"
-              className="shrink-0 px-3 text-xs"
+              size="sm"
+              className="shrink-0"
               onClick={() => setMonth(nowMonth)}
             >
               Today
@@ -626,22 +765,27 @@ export function TransactionsPage() {
         </div>
 
         {/* month summary */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
           <StatTile
             label="Income"
+            href="/income"
             value={formatMoney(totals.income, base, { compact: true })}
             tone="income"
             spark={flowSeries.map((m) => m.income)}
+            delta={vsLast(totals.income, prevTotals.income)}
+            hint={stillAhead(totals.income, plannedIn("income"))}
           />
           <StatTile
             label="Expenses"
             value={formatMoney(totals.expense, base, { compact: true })}
             tone="expense"
             spark={flowSeries.map((m) => m.expense)}
+            delta={vsLast(totals.expense, prevTotals.expense, true)}
             hint={
-              totals.income > 0
+              stillAhead(totals.expense, plannedIn("expense")) ??
+              (totals.income > 0
                 ? `${formatPercent((totals.expense / totals.income) * 100, 0)} of what came in`
-                : undefined
+                : undefined)
             }
           />
           <StatTile
@@ -650,21 +794,43 @@ export function TransactionsPage() {
             value={formatMoney(totals.net, base, { sign: true, compact: true })}
             tone={totals.net < 0 ? "expense" : "income"}
             spark={flowSeries.map((m) => m.income - m.expense)}
-            hint={`${formatMoney(totals.expense / new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate(), base, { compact: true })} spent per day on average`}
+            delta={vsLast(totals.net, prevTotals.net)}
+            hint={`${formatMoney(totals.expense / daysInMonth(month), base, { compact: true })} spent per day on average`}
           />
         </div>
 
         {/* charts */}
         {hasAnyTx && (
-          <div className="grid items-stretch gap-3 sm:gap-4 lg:grid-cols-2">
-            <GlassCard title="Where it went" subtitle={formatMonth(month)} icon="🍩" className="flex flex-col">
+          <div className="grid items-stretch gap-4 sm:gap-5 lg:grid-cols-2">
+            <GlassCard
+              title="Where it went"
+              subtitle={formatMonth(month)}
+              icon={<Icon name="pie" />}
+              className="flex flex-col"
+            >
               {spendSegments.length > 0 ? (
+                // The same breakdown the dashboard draws, rather than a donut of
+                // the same numbers: one question — where did the month go — had
+                // two different visual answers on two pages. The list wins on
+                // merit, not just consistency; it labels every slice, prints the
+                // amount beside it, and does not collapse to "C 69%" when the
+                // column gets narrow. The ring is kept for currency allocation,
+                // where three slices really are a part of one whole.
                 <div className="flex flex-1 flex-col justify-center">
-                  <Donut segments={spendSegments} currency={base} centerLabel="Spent" size={220} />
+                  <div className="mb-3.5 flex items-end justify-between gap-3">
+                    <p className="num-md whitespace-nowrap text-ink-1">
+                      {formatMoney(totals.expense, base, { compact: true })}
+                    </p>
+                    <p className="caption">
+                      {spendSegments.length} categor
+                      {spendSegments.length === 1 ? "y" : "ies"}
+                    </p>
+                  </div>
+                  <CategoryBreakdown segments={spendSegments} currency={base} />
                 </div>
               ) : (
                 <EmptyState
-                  icon="🧾"
+                  icon={<Icon name="receipt" />}
                   title="No spending this month"
                   hint="Expenses you log this month break down here by category."
                 />
@@ -673,7 +839,7 @@ export function TransactionsPage() {
             <GlassCard
               title="Cash flow"
               subtitle="Income vs expenses"
-              icon="📊"
+              icon={<Icon name="chart" />}
               action={<PeriodTabs value={flowMonths} onChange={setFlowMonths} />}
             >
               <MonthlyColumns
@@ -689,38 +855,170 @@ export function TransactionsPage() {
           </div>
         )}
 
-        <div className="grid items-start gap-3 sm:gap-4 xl:grid-cols-5">
+        <div className="grid items-start gap-4 sm:gap-5 xl:grid-cols-5">
         {/* transaction list */}
-        <div className="space-y-4 xl:col-span-3">
+        <div className="space-y-4 sm:space-y-5 xl:col-span-3">
+        {hasAnyTx && (
+          // a month-at-a-time ledger can only answer "what did March cost";
+          // finding one payment needs a query, so the two sit side by side
+          <div className="glass flex flex-wrap items-center gap-2 rounded-card px-3 py-2.5">
+            <div className="relative min-w-40 flex-1">
+              <span
+                aria-hidden
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round">
+                  <circle cx="11" cy="11" r="6.5" />
+                  <path d="m16 16 4.5 4.5" />
+                </svg>
+              </span>
+              <TextInput
+                type="search"
+                size="sm"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search notes, categories, accounts…"
+                aria-label="Search transactions"
+                className="pl-9.5"
+              />
+            </div>
+            <SegmentedControl
+              size="sm"
+              label="Kind of entry"
+              className="shrink-0"
+              options={[
+                { value: "all" as const, label: "All" },
+                { value: "expense" as const, label: "Out" },
+                { value: "income" as const, label: "In" },
+                { value: "transfer" as const, label: "⇄" },
+              ]}
+              value={ledgerType}
+              onChange={setLedgerType}
+            />
+            {filtering && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                onClick={() => {
+                  setQuery("");
+                  setLedgerType("all");
+                  setSearchAll(false);
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        )}
         {days.length === 0 ? (
           <GlassCard>
-            <EmptyState
-              icon="🧾"
-              title="No transactions this month"
-              hint="Add the first record and the history shows up here."
-              action={<Button onClick={openAddTx}>+ Add</Button>}
-            />
+            {filtering ? (
+              <EmptyState
+                icon={<Icon name="search" />}
+                title="Nothing matches"
+                hint={
+                  elsewhereCount > 0
+                    ? `No match in ${formatMonth(month)}, but ${elsewhereCount} elsewhere.`
+                    : "Try a different word, or clear the filter."
+                }
+                action={
+                  elsewhereCount > 0 ? (
+                    <Button variant="ghost" onClick={() => setSearchAll(true)}>
+                      Search every month
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setQuery("");
+                        setLedgerType("all");
+                      }}
+                    >
+                      Clear filter
+                    </Button>
+                  )
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={<Icon name="receipt" />}
+                title="No transactions this month"
+                hint="Add the first record and the history shows up here."
+                action={<Button onClick={openAddTx}>+ Add</Button>}
+              />
+            )}
           </GlassCard>
         ) : (
-          <div className="space-y-4">
-            {days.map((day) => {
-              const planned = day > today;
-              return (
-              <section key={day}>
-                <h3 className="mb-2 flex items-center gap-2 px-1 text-xs font-medium text-ink-3">
-                  {formatDate(day)}
-                  {planned && (
-                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent">
-                      Planned
-                    </span>
-                  )}
-                </h3>
-                <div
-                  className={`glass space-y-0.5 rounded-card p-1.5 ${
-                    planned ? "opacity-70" : ""
-                  }`}
+          // One ledger, not one card per day: with a handful of entries spread
+          // across the month, every row used to arrive as its own floating
+          // panel under its own heading, and nine transactions filled half a
+          // screen. The day is a divider inside the list now, and it carries
+          // that day's net so the column reads like a statement.
+          <GlassCard
+            title="Ledger"
+            subtitle={
+              filtering
+                ? `${ledgerTx.length} match${ledgerTx.length === 1 ? "" : "es"} ${
+                    spanningAll ? "across every month" : `in ${formatMonth(month)}`
+                  }`
+                : `${monthTxCount} entr${monthTxCount === 1 ? "y" : "ies"} in ${formatMonth(month)}`
+            }
+            icon={<Icon name="receipt" />}
+            action={
+              <Button variant="ghost" onClick={openAddTx}>
+                + Add
+              </Button>
+            }
+          >
+            {elsewhereCount > 0 && (
+              <p className="mb-3 flex flex-wrap items-center gap-2 rounded-field bg-ghost px-3 py-2 text-xs text-ink-2">
+                {elsewhereCount} more match{elsewhereCount === 1 ? "" : "es"} outside{" "}
+                {formatMonth(month)}.
+                <button
+                  type="button"
+                  onClick={() => setSearchAll(true)}
+                  className="font-semibold text-accent underline-offset-2 hover:underline"
                 >
-                  {byDay.get(day)!.map((tx) => {
+                  Search every month
+                </button>
+              </p>
+            )}
+            <div className="-mx-1.5">
+              {days.map((day) => {
+                const planned = day > today;
+                const dayNet = byDay
+                  .get(day)!
+                  .filter((t) => t.type !== "transfer")
+                  .reduce(
+                    (sum, t) =>
+                      sum +
+                      (t.type === "income" ? 1 : -1) *
+                        convert(t.amount, t.currency, base, settings.rates),
+                    0,
+                  );
+                return (
+                  <section key={day} className={planned ? "opacity-75" : ""}>
+                    <h3 className="flex items-baseline justify-between gap-3 border-b border-hairline px-1.5 pb-1.5 pt-3 text-xs font-medium text-ink-3 first:pt-0">
+                      <span className="flex items-center gap-2">
+                        {/* results can span years once the search leaves the
+                            month, and "21 Jul" alone would not say which */}
+                        {spanningAll ? formatDate(day) : formatDateShort(day)}
+                        {/* a quiet word, not a badge: in an open month every
+                            single day carries it, and nine filled pills in a
+                            row shouted louder than the amounts */}
+                        {planned && <span className="tracking-wide">planned</span>}
+                      </span>
+                      {/* only worth printing when the day has more than one row
+                          to add up — otherwise it just repeats the amount below */}
+                      {byDay.get(day)!.length > 1 && (
+                        <span className="tnum shrink-0">
+                          {formatMoney(dayNet, base, { compact: true, sign: true })}
+                        </span>
+                      )}
+                    </h3>
+                    <div className="py-1">
+                      {byDay.get(day)!.map((tx) => {
                     const cat = catById.get(tx.categoryId);
                     const isTransfer = tx.type === "transfer";
                     const from = tx.accountId ? accountById.get(tx.accountId) : undefined;
@@ -730,11 +1028,11 @@ export function TransactionsPage() {
                         key={tx.id}
                         type="button"
                         onClick={() => openEditTx(tx)}
-                        className="row-tap flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                        className="row-tap flex w-full items-center gap-3 px-1.5 py-2 text-left"
                       >
                         <span
                           aria-hidden
-                          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-ghost text-lg"
+                          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ghost text-base"
                         >
                           {isTransfer ? "⇄" : (cat?.icon ?? "❓")}
                         </span>
@@ -765,22 +1063,23 @@ export function TransactionsPage() {
                           }`}
                         />
                       </button>
-                    );
-                  })}
-                </div>
-              </section>
-              );
-            })}
-          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </GlassCard>
         )}
         </div>
 
-        <div className="space-y-4 xl:col-span-2">
+        <div className="space-y-4 sm:space-y-5 xl:col-span-2">
         {/* subscriptions */}
         <GlassCard
           title="Subscriptions"
           subtitle="Recurring services"
-          icon="📱"
+          icon={<Icon name="device" />}
           action={
             <Button variant="ghost" onClick={openAddSub}>
               + Add
@@ -789,7 +1088,7 @@ export function TransactionsPage() {
         >
           {state.subscriptions.length === 0 ? (
             <EmptyState
-              icon="📱"
+              icon={<Icon name="device" />}
               title="No subscriptions yet"
               hint="Add them once — each active subscription posts itself on its cycle (monthly or yearly), and yearly costs are split evenly across the months."
               action={
@@ -860,7 +1159,7 @@ export function TransactionsPage() {
         <GlassCard
           title="Recurring"
           subtitle="Auto-posted each month"
-          icon="🔁"
+          icon={<Icon name="repeat" />}
           action={
             <Button variant="ghost" onClick={openAddRec}>
               + Add
@@ -869,7 +1168,7 @@ export function TransactionsPage() {
         >
           {state.recurring.length === 0 ? (
             <EmptyState
-              icon="🔁"
+              icon={<Icon name="repeat" />}
               title="No recurring payments"
               hint="Salary or rent — add them once and they post themselves every month."
               action={
@@ -923,7 +1222,7 @@ export function TransactionsPage() {
         <GlassCard
           title="Monthly budgets"
           subtitle="Per-category limits"
-          icon="🎯"
+          icon={<Icon name="target" />}
           action={
             <Button
               variant="ghost"
@@ -936,7 +1235,7 @@ export function TransactionsPage() {
         >
           {state.budgets.length === 0 ? (
             <EmptyState
-              icon="🎯"
+              icon={<Icon name="target" />}
               title="No budgets"
               hint="Set monthly spending limits per category — you’ll see right away when you approach the line."
               action={
@@ -981,7 +1280,12 @@ export function TransactionsPage() {
                         </span>
                       </span>
                       <span className="mt-2 block">
-                        <ProgressMeter value={spent} max={b.limit} tone="budget" />
+                        <ProgressMeter
+                          value={spent}
+                          max={b.limit}
+                          tone="budget"
+                          label={`${cat?.name ?? "Uncategorized"} budget`}
+                        />
                       </span>
                       <span
                         className={`tnum mt-1.5 block text-xs ${
@@ -1006,17 +1310,42 @@ export function TransactionsPage() {
         <Sheet
           open
           onClose={() => setTxForm(null)}
+          onSubmit={saveTx}
+          problem={txProblem}
           title={txForm.id ? "Edit transaction" : "New transaction"}
+          footer={
+            <>
+              {txForm.id && (
+                <Button variant="danger" className="mr-auto" onClick={() => setConfirmTxDelete(true)}>
+                  Delete
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => setTxForm(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!txValid}>
+                Save
+              </Button>
+            </>
+          }
         >
           <SegmentedControl
-            options={TX_TYPE_OPTIONS}
+            label="Kind of entry"
+            options={txTypeOptions}
             value={txForm.type}
             onChange={(t) => setTxForm(switchTxType(txForm, t))}
           />
+          {!canTransfer && (
+            <p className="-mt-1 text-xs text-ink-3">
+              Transfers need two accounts — add another on Balance.
+            </p>
+          )}
 
           {txForm.type === "transfer" ? (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              {/* two selects abreast need the room for "🏦 Monobank card (UAH)"
+                  plus a chevron chip; on a phone that is about 90px of text */}
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="From account">
                   <Select
                     value={txForm.accountId}
@@ -1056,6 +1385,7 @@ export function TransactionsPage() {
                 <TextInput
                   inputMode="decimal"
                   placeholder="0"
+                  prefix={CURRENCY_SYMBOL[fromAccount?.currency ?? txForm.currency]}
                   value={txForm.amount}
                   onChange={(e) => setTxForm({ ...txForm, amount: e.target.value })}
                 />
@@ -1072,6 +1402,7 @@ export function TransactionsPage() {
                   <TextInput
                     inputMode="decimal"
                     placeholder="0"
+                    prefix={toAccount ? CURRENCY_SYMBOL[toAccount.currency] : undefined}
                     value={txForm.toAmount}
                     onChange={(e) => setTxForm({ ...txForm, toAmount: e.target.value })}
                   />
@@ -1084,17 +1415,21 @@ export function TransactionsPage() {
                 <TextInput
                   inputMode="decimal"
                   placeholder="0"
+                  // the sign follows the currency picker right below it, so the
+                  // field always says what the number is denominated in
+                  prefix={CURRENCY_SYMBOL[txForm.currency]}
                   value={txForm.amount}
                   onChange={(e) => setTxForm({ ...txForm, amount: e.target.value })}
                 />
               </Field>
-              <Field label="Currency">
+              <FieldSet label="Currency">
                 <SegmentedControl
+                  label="Currency"
                   options={CURRENCY_OPTIONS}
                   value={txForm.currency}
                   onChange={(c) => setTxForm({ ...txForm, currency: c })}
                 />
-              </Field>
+              </FieldSet>
               <Field label="Category">
                 <Select
                   value={txForm.categoryId}
@@ -1146,18 +1481,6 @@ export function TransactionsPage() {
               onChange={(e) => setTxForm({ ...txForm, note: e.target.value })}
             />
           </Field>
-          <Button className="w-full" onClick={saveTx} disabled={!txValid}>
-            Save
-          </Button>
-          {txForm.id && (
-            <Button
-              variant="danger"
-              className="w-full"
-              onClick={() => setConfirmTxDelete(true)}
-            >
-              Delete
-            </Button>
-          )}
         </Sheet>
       )}
 
@@ -1166,7 +1489,24 @@ export function TransactionsPage() {
         <Sheet
           open
           onClose={() => setRecForm(null)}
+          onSubmit={saveRec}
+          problem={recProblem}
           title={recForm.id ? "Edit recurring rule" : "New recurring rule"}
+          footer={
+            <>
+              {recForm.id && (
+                <Button variant="danger" className="mr-auto" onClick={() => setConfirmRecDelete(true)}>
+                  Delete
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => setRecForm(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!recValid}>
+                Save
+              </Button>
+            </>
+          }
         >
           {recForm.id && (
             <p className="rounded-field bg-ghost px-3 py-2.5 text-xs leading-snug text-ink-2">
@@ -1175,6 +1515,7 @@ export function TransactionsPage() {
             </p>
           )}
           <SegmentedControl
+            label="Kind of entry"
             options={KIND_OPTIONS}
             value={recForm.type}
             onChange={(t) =>
@@ -1185,17 +1526,19 @@ export function TransactionsPage() {
             <TextInput
               inputMode="decimal"
               placeholder="0"
+              prefix={CURRENCY_SYMBOL[recForm.currency]}
               value={recForm.amount}
               onChange={(e) => setRecForm({ ...recForm, amount: e.target.value })}
             />
           </Field>
-          <Field label="Currency">
+          <FieldSet label="Currency">
             <SegmentedControl
+              label="Currency"
               options={CURRENCY_OPTIONS}
               value={recForm.currency}
               onChange={(c) => setRecForm({ ...recForm, currency: c })}
             />
-          </Field>
+          </FieldSet>
           <Field label="Category">
             <Select
               value={recForm.categoryId}
@@ -1237,33 +1580,21 @@ export function TransactionsPage() {
               onChange={(e) => setRecForm({ ...recForm, day: e.target.value })}
             />
           </Field>
-          <Field label="From">
+          <FieldSet label="From">
             <MonthInput
               name="From"
               value={recForm.startMonth}
               onChange={(startMonth) => setRecForm({ ...recForm, startMonth })}
             />
-          </Field>
-          <Field label="Until (optional)" hint="Leave empty to keep it running">
+          </FieldSet>
+          <FieldSet label="Until (optional)" hint="Leave empty to keep it running">
             <MonthInput
               name="Until"
               allowEmpty
               value={recForm.endMonth}
               onChange={(endMonth) => setRecForm({ ...recForm, endMonth })}
             />
-          </Field>
-          <Button className="w-full" onClick={saveRec} disabled={!recValid}>
-            Save
-          </Button>
-          {recForm.id && (
-            <Button
-              variant="danger"
-              className="w-full"
-              onClick={() => setConfirmRecDelete(true)}
-            >
-              Delete
-            </Button>
-          )}
+          </FieldSet>
         </Sheet>
       )}
 
@@ -1272,7 +1603,24 @@ export function TransactionsPage() {
         <Sheet
           open
           onClose={() => setSubForm(null)}
+          onSubmit={saveSub}
+          problem={subProblem}
           title={subForm.id ? "Edit subscription" : "New subscription"}
+          footer={
+            <>
+              {subForm.id && (
+                <Button variant="danger" className="mr-auto" onClick={() => setConfirmSubDelete(true)}>
+                  Delete
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => setSubForm(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!subValid}>
+                Save
+              </Button>
+            </>
+          }
         >
           {subForm.id && (
             <p className="rounded-field bg-ghost px-3 py-2.5 text-xs leading-snug text-ink-2">
@@ -1287,23 +1635,23 @@ export function TransactionsPage() {
               placeholder="YouTube Premium"
             />
           </Field>
-          <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink-2">Icon</span>
+          <FieldSet label="Icon">
             <OptionChips
-                label="Icon"
-                size="lg"
-                options={ICON_CHOICES.map((icon) => ({ value: icon, label: icon }))}
-                value={subForm.icon}
-                onChange={(icon) => setSubForm({ ...subForm, icon })}
-              />
-          </div>
-          <Field label="Billing period">
+              label="Icon"
+              size="lg"
+              options={ICON_CHOICES.map((icon) => ({ value: icon, label: icon }))}
+              value={subForm.icon}
+              onChange={(icon) => setSubForm({ ...subForm, icon })}
+            />
+          </FieldSet>
+          <FieldSet label="Billing period">
             <SegmentedControl
+              label="Billing period"
               options={PERIOD_OPTIONS}
               value={subForm.period}
               onChange={(p) => setSubForm({ ...subForm, period: p })}
             />
-          </Field>
+          </FieldSet>
           <Field
             label={subForm.period === "yearly" ? "Price per year" : "Price per month"}
             hint={
@@ -1314,18 +1662,20 @@ export function TransactionsPage() {
           >
             <TextInput
               inputMode="decimal"
+              prefix={CURRENCY_SYMBOL[subForm.currency]}
               value={subForm.price}
               onChange={(e) => setSubForm({ ...subForm, price: e.target.value })}
               placeholder={subForm.period === "yearly" ? "1188" : "99"}
             />
           </Field>
-          <Field label="Currency">
+          <FieldSet label="Currency">
             <SegmentedControl
+              label="Currency"
               options={CURRENCY_OPTIONS}
               value={subForm.currency}
               onChange={(c) => setSubForm({ ...subForm, currency: c })}
             />
-          </Field>
+          </FieldSet>
           <Field label="Account" hint="Charges move this account's balance">
             <Select
               value={subForm.accountId}
@@ -1346,18 +1696,16 @@ export function TransactionsPage() {
               onChange={(e) => setSubForm({ ...subForm, day: e.target.value })}
             />
           </Field>
-          <Button className="w-full" onClick={saveSub} disabled={!subValid}>
-            Save
-          </Button>
-          {subForm.id && (
-            <Button
-              variant="danger"
-              className="w-full"
-              onClick={() => setConfirmSubDelete(true)}
-            >
-              Delete
-            </Button>
-          )}
+          <FieldSet
+            label="Billing from"
+            hint="Charges are posted from this month onwards, past months included"
+          >
+            <MonthInput
+              name="Billing from"
+              value={subForm.startMonth}
+              onChange={(startMonth) => setSubForm({ ...subForm, startMonth })}
+            />
+          </FieldSet>
         </Sheet>
       )}
 
@@ -1366,7 +1714,24 @@ export function TransactionsPage() {
         <Sheet
           open
           onClose={() => setBudgetForm(null)}
+          onSubmit={saveBudget}
+          problem={budgetProblem}
           title={budgetForm.editingId ? "Edit budget" : "New budget"}
+          footer={
+            <>
+              {budgetForm.editingId && (
+                <Button variant="danger" className="mr-auto" onClick={() => setConfirmBudgetDelete(true)}>
+                  Delete
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => setBudgetForm(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!budgetValid}>
+                Save
+              </Button>
+            </>
+          }
         >
           <Field label="Expense category">
             <Select
@@ -1386,29 +1751,19 @@ export function TransactionsPage() {
             <TextInput
               inputMode="decimal"
               placeholder="0"
+              prefix={CURRENCY_SYMBOL[budgetForm.currency]}
               value={budgetForm.limit}
               onChange={(e) => setBudgetForm({ ...budgetForm, limit: e.target.value })}
             />
           </Field>
-          <Field label="Currency">
+          <FieldSet label="Currency">
             <SegmentedControl
+              label="Currency"
               options={CURRENCY_OPTIONS}
               value={budgetForm.currency}
               onChange={(c) => setBudgetForm({ ...budgetForm, currency: c })}
             />
-          </Field>
-          <Button className="w-full" onClick={saveBudget} disabled={!budgetValid}>
-            Save
-          </Button>
-          {budgetForm.editingId && (
-            <Button
-              variant="danger"
-              className="w-full"
-              onClick={() => setConfirmBudgetDelete(true)}
-            >
-              Delete
-            </Button>
-          )}
+          </FieldSet>
         </Sheet>
       )}
 
@@ -1425,14 +1780,14 @@ export function TransactionsPage() {
         onClose={() => setConfirmRecDelete(false)}
         onConfirm={deleteRec}
         title="Delete this rule?"
-        message="The rule and every transaction it posted are removed, in past and future months alike. This cannot be undone."
+        message={`The rule and the ${postedCount("recurring", recForm?.id ?? null)} transactions it posted are removed, in past and future months alike.`}
       />
       <ConfirmDialog
         open={confirmSubDelete}
         onClose={() => setConfirmSubDelete(false)}
         onConfirm={deleteSub}
         title="Delete this subscription?"
-        message="The subscription and every charge it posted are removed, in past and future months alike. To keep those charges, switch it off instead."
+        message={`The subscription and the ${postedCount("subscription", subForm?.id ?? null)} charges it posted are removed, in past and future months alike. To keep those charges, switch it off instead.`}
       />
       <ConfirmDialog
         open={confirmBudgetDelete}

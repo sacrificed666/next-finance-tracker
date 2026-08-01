@@ -25,7 +25,12 @@ export function uid(): string {
   return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export type SyncStatus = "idle" | "saving" | "error";
+/**
+ * `conflict` is not just a failed write: the dataset moved on somewhere else,
+ * so retrying would overwrite whatever that was. Writing stops until the tab
+ * reloads.
+ */
+export type SyncStatus = "idle" | "saving" | "error" | "conflict";
 
 interface StoreApi {
   state: AppState;
@@ -35,25 +40,38 @@ interface StoreApi {
   loadError: string | null;
   /** whether the last write reached Postgres */
   sync: SyncStatus;
-  /** functional state update; persisted automatically */
-  update: (fn: (s: AppState) => AppState) => void;
+  /**
+   * Functional state update; persisted automatically. Pass `undoLabel` for a
+   * change worth offering back ("Transaction deleted") — it snapshots the state
+   * as it was and surfaces an Undo. Any later update without a label clears the
+   * offer, so Undo can never reach past something else you have since done.
+   */
+  update: (fn: (s: AppState) => AppState, undoLabel?: string) => void;
   /** replace the whole state (import/reset) */
-  replace: (next: AppState) => void;
+  replace: (next: AppState, undoLabel?: string) => void;
   /** re-read the dataset from the server */
   reload: () => Promise<void>;
+  /** what the pending undo would take back, or null when there is nothing */
+  undoLabel: string | null;
+  /** restore the state captured before the labelled change */
+  undo: () => void;
+  /** drop the offer without restoring */
+  dismissUndo: () => void;
 }
 
 const StoreContext = createContext<StoreApi | null>(null);
 
 const STATE_ENDPOINT = "/api/state";
 
-async function fetchState(): Promise<AppState> {
+async function fetchState(): Promise<{ state: AppState; revision: string }> {
   const res = await fetch(STATE_ENDPOINT, { cache: "no-store" });
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new Error(detail?.error ?? `Server responded with ${res.status}`);
   }
-  return normalizeState(await res.json());
+  // the revision this snapshot was read at; every write quotes it back
+  const revision = res.headers.get("etag") ?? "";
+  return { state: normalizeState(await res.json()), revision };
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -61,14 +79,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sync, setSync] = useState<SyncStatus>("idle");
+  const [undoLabel, setUndoLabel] = useState<string | null>(null);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // guards the debounced writer against firing for the state we just loaded
   const dirty = useRef(false);
+  /**
+   * True only once the dataset has actually come back from Postgres. Until
+   * then `state` is nothing but DEFAULT_STATE, and persisting that would delete
+   * every row the server holds — the sidebar and its theme switch stay live even
+   * on the "database unavailable" screen, so one click used to be enough to
+   * empty the database the app had just failed to read.
+   */
+  const loadedFromServer = useRef(false);
+  // revision of the snapshot this tab is editing, refreshed after every write
+  const revision = useRef("");
+  // set once a write is refused as stale; cleared only by reloading
+  const conflicted = useRef(false);
   // save serialization: at most one PUT is ever in flight, and it always sends
   // the newest state — overlapping writes can no longer interleave on the server
   const stateRef = useRef(state);
   const savingRef = useRef(false);
   const resaveRef = useRef(false);
+  // the state the pending undo restores; the label lives in React state so the
+  // toast can render, the snapshot in a ref so writing it costs no re-render
+  const undoRef = useRef<AppState | null>(null);
 
   // keep the latest state reachable from the async writer (updated post-render,
   // never during render, so the compiler's ref rule is satisfied)
@@ -78,13 +112,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(async () => {
     try {
+      conflicted.current = false;
       const loaded = await fetchState();
-      const materialized = materializeRecurring(loaded);
+      const materialized = materializeRecurring(loaded.state);
+      loadedFromServer.current = true;
+      revision.current = loaded.revision;
       // materializeRecurring returns the same object when nothing was due, so
       // this only schedules a write when it actually posted new rows
-      dirty.current = materialized !== loaded;
+      dirty.current = materialized !== loaded.state;
       setState(materialized);
       setLoadError(null);
+      // a fresh read is exactly what clears a conflict — this tab is current now
+      setSync("idle");
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Could not reach the database");
     } finally {
@@ -108,7 +147,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // one PUT is ever in flight and it always sends the newest state, so
   // overlapping saves can never interleave and re-create rows on the server.
   useEffect(() => {
-    if (!hydrated || !dirty.current) return;
+    if (!hydrated || !loadedFromServer.current || !dirty.current) return;
+    // a conflicted tab holds a snapshot that is no longer the truth; writing it
+    // would delete whatever the other tab saved, so it stops until a reload
+    if (conflicted.current) return;
     const save = async (): Promise<void> => {
       if (savingRef.current) {
         resaveRef.current = true; // a save is running — send the latest next
@@ -119,11 +161,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const res = await fetch(STATE_ENDPOINT, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            // what this tab believes it is overwriting; the server refuses the
+            // write if the dataset has moved on since
+            "If-Match": revision.current,
+          },
+          // deliberately not `keepalive`: the fetch spec caps a keepalive body
+          // at 64 KiB, and a real ledger passes that inside a year — the write
+          // then failed outright rather than surviving a closing tab.
           body: JSON.stringify(stateRef.current),
-          keepalive: true,
         });
+        if (res.status === 409) {
+          conflicted.current = true;
+          resaveRef.current = false;
+          setSync("conflict");
+          return;
+        }
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+        revision.current = res.headers.get("etag") ?? revision.current;
         setSync("idle");
       } catch {
         setSync("error");
@@ -142,6 +198,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (persistTimer.current) clearTimeout(persistTimer.current);
     };
   }, [state, hydrated]);
+
+  /**
+   * Nothing can be written after the tab is gone, so say so while it is still
+   * here: a change is only ever unsaved for the debounce window plus one
+   * request, and closing inside it is exactly when a figure disappears without
+   * anyone noticing.
+   */
+  useEffect(() => {
+    if (sync === "idle") return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [sync]);
 
   // apply theme preference to <html data-theme> and keep the pre-paint key in sync
   const theme = state.settings.theme;
@@ -164,19 +233,64 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [theme, hydrated]);
 
-  const update = useCallback((fn: (s: AppState) => AppState) => {
+  /**
+   * Mark the moment a change exists but has not reached Postgres yet. Set here
+   * rather than when the request starts, so the status covers the debounce
+   * window too — that is where the unload guard above has to bite.
+   */
+  const markPending = useCallback((undoLabel: string | undefined, from: AppState) => {
     dirty.current = true;
-    setState((s) => fn(s));
+    // nothing can be written before the dataset has been read, so claiming a
+    // save is under way would leave the status stuck and the unload guard armed
+    if (loadedFromServer.current && !conflicted.current) setSync("saving");
+    // a labelled change offers itself back; anything else invalidates the offer,
+    // so Undo can never silently roll back work done after it
+    undoRef.current = undoLabel ? from : null;
+    setUndoLabel(undoLabel ?? null);
   }, []);
 
-  const replace = useCallback((next: AppState) => {
-    dirty.current = true;
-    setState(materializeRecurring(normalizeState(next)));
+  const update = useCallback(
+    (fn: (s: AppState) => AppState, undoLabel?: string) => {
+      markPending(undoLabel, stateRef.current);
+      setState((s) => fn(s));
+    },
+    [markPending],
+  );
+
+  const replace = useCallback(
+    (next: AppState, undoLabel?: string) => {
+      markPending(undoLabel, stateRef.current);
+      setState(materializeRecurring(normalizeState(next)));
+    },
+    [markPending],
+  );
+
+  const undo = useCallback(() => {
+    const previous = undoRef.current;
+    if (!previous) return;
+    markPending(undefined, previous);
+    setState(previous);
+  }, [markPending]);
+
+  const dismissUndo = useCallback(() => {
+    undoRef.current = null;
+    setUndoLabel(null);
   }, []);
 
   return (
     <StoreContext.Provider
-      value={{ state, hydrated, loadError, sync, update, replace, reload: load }}
+      value={{
+        state,
+        hydrated,
+        loadError,
+        sync,
+        update,
+        replace,
+        reload: load,
+        undoLabel,
+        undo,
+        dismissUndo,
+      }}
     >
       {children}
     </StoreContext.Provider>
@@ -287,6 +401,114 @@ export function deleteSchedule(
         : state.subscriptions,
     transactions: state.transactions.filter((t) => !isPostingOf(t, kind, id)),
   });
+}
+
+/* ────────────────────────────── account deletion ────────────────────────────── */
+
+/** what still points at a savings account, so a delete can say what it touches */
+export interface AccountUsage {
+  /** income/expense rows recorded against it */
+  entries: number;
+  /** transfers with this account on either end */
+  transfers: number;
+  recurring: number;
+  subscriptions: number;
+}
+
+export function accountUsage(state: AppState, id: string): AccountUsage {
+  const usage: AccountUsage = { entries: 0, transfers: 0, recurring: 0, subscriptions: 0 };
+  for (const t of state.transactions) {
+    if (t.type === "transfer") {
+      if (t.accountId === id || t.toAccountId === id) usage.transfers++;
+    } else if (t.accountId === id) {
+      usage.entries++;
+    }
+  }
+  usage.recurring = state.recurring.filter((r) => r.accountId === id).length;
+  usage.subscriptions = state.subscriptions.filter((s) => s.accountId === id).length;
+  return usage;
+}
+
+/**
+ * Remove an account and resolve everything that referred to it, rather than
+ * leaving rows pointing at something that is gone.
+ *
+ * Income and expense rows keep their amount, date and category and simply stop
+ * being tied to an account — they are still what happened.
+ *
+ * A transfer is the hard case. Left alone it reads "? → Card" forever; deleted,
+ * the surviving account's balance jumps by money that genuinely did move. So it
+ * becomes a plain expense (money that left the surviving account) or income
+ * (money that arrived in it): once the other end is no longer tracked, that is
+ * exactly what it is, and every balance stays where it was. A transfer between
+ * two accounts that are both gone has no surviving side and is dropped.
+ */
+export function deleteAccount(state: AppState, id: string): AppState {
+  const outCategory =
+    state.categories.find((c) => c.id === "cat-other-exp")?.id ??
+    state.categories.find((c) => c.kind === "expense")?.id;
+  const inCategory =
+    state.categories.find((c) => c.id === "cat-other-inc")?.id ??
+    state.categories.find((c) => c.kind === "income")?.id;
+  const deleted = state.savings.find((a) => a.id === id);
+  const name = deleted?.name ?? "a deleted account";
+  const currencyOf = new Map(state.savings.map((a) => [a.id, a.currency]));
+
+  const transactions = state.transactions.flatMap((t): Transaction[] => {
+    if (t.type !== "transfer") {
+      return t.accountId === id ? [{ ...t, accountId: undefined }] : [t];
+    }
+    const fromGone = t.accountId === id;
+    const toGone = t.toAccountId === id;
+    if (!fromGone && !toGone) return [t];
+    // money arrived in the surviving destination account
+    if (fromGone && !toGone) {
+      const destination = t.toAccountId ? currencyOf.get(t.toAccountId) : undefined;
+      if (!inCategory || !destination) return [];
+      return [
+        {
+          id: t.id,
+          type: "income",
+          // what actually landed, denominated in the account that received it —
+          // `currency` on a transfer describes the *source* side
+          amount: t.toAmount ?? t.amount,
+          currency: destination,
+          categoryId: inCategory,
+          date: t.date,
+          note: t.note ?? `Transfer from ${name}`,
+          accountId: t.toAccountId,
+        },
+      ];
+    }
+    if (toGone && !fromGone) {
+      if (!outCategory) return [];
+      return [
+        {
+          id: t.id,
+          type: "expense",
+          amount: t.amount,
+          currency: t.currency,
+          categoryId: outCategory,
+          date: t.date,
+          note: t.note ?? `Transfer to ${name}`,
+          accountId: t.accountId,
+        },
+      ];
+    }
+    return []; // both ends gone — nothing left to describe
+  });
+
+  return {
+    ...state,
+    savings: state.savings.filter((a) => a.id !== id),
+    transactions,
+    recurring: state.recurring.map((r) =>
+      r.accountId === id ? { ...r, accountId: undefined } : r,
+    ),
+    subscriptions: state.subscriptions.map((s) =>
+      s.accountId === id ? { ...s, accountId: undefined } : s,
+    ),
+  };
 }
 
 /**

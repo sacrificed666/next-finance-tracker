@@ -37,16 +37,21 @@ export interface InvestmentSnapshot {
  * from the month they are made.
  * payout: interest is paid out (simple, linear); position value stays at
  * principal + contributions.
+ *
+ * Past `endDate` the position is frozen at what it was worth on maturity: a
+ * two-year deposit stops paying on the day it ends, and a forecast that let it
+ * keep compounding was quietly promising money the bank never will.
  */
 export function investmentAt(inv: Investment, atISO: string): InvestmentSnapshot {
-  const t = yearsBetween(inv.startDate, atISO); // fractional years
+  const asOf = inv.endDate && atISO > inv.endDate ? inv.endDate : atISO;
+  const t = yearsBetween(inv.startDate, asOf); // fractional years
   const r = inv.annualRatePct / 100;
   const f = FREQ_PER_YEAR[inv.compoundingFreq];
   const c = inv.monthlyContribution ?? 0;
   // contributions land monthly starting one month after startDate. Counted
   // by actual elapsed calendar months (not t*12, which under/over-counts
   // around months shorter than the 365.25/12-day average — e.g. February).
-  const n = wholeMonthsBetween(inv.startDate, atISO);
+  const n = wholeMonthsBetween(inv.startDate, asOf);
   const invested = inv.principal + c * n;
 
   if (t <= 0) return { invested: inv.principal, value: inv.principal, accrued: 0, paidOut: 0 };
@@ -132,17 +137,33 @@ export function accountBalance(
   return balance;
 }
 
-/** every account's live balance, keyed by account id */
+/**
+ * Every account's live balance, keyed by account id. One pass over the ledger
+ * for all accounts, not one pass each: the dashboard asks for this a dozen
+ * times per render (the hero, the twelve months of history, the allocation
+ * ring), and the per-account version made that quadratic in accounts.
+ */
 export function accountBalances(
   state: AppState,
   upToISO?: string,
 ): Map<string, number> {
-  return new Map(
-    state.savings.map((acc) => [
-      acc.id,
-      accountBalance(acc, state.transactions, upToISO),
-    ]),
-  );
+  const balances = new Map(state.savings.map((acc) => [acc.id, acc.openingBalance]));
+  const add = (id: string | undefined, delta: number) => {
+    if (!id) return;
+    const current = balances.get(id);
+    if (current === undefined) return; // points at an account that is gone
+    balances.set(id, current + delta);
+  };
+  for (const tx of state.transactions) {
+    if (upToISO && tx.date > upToISO) continue;
+    if (tx.type === "transfer") {
+      add(tx.accountId, -tx.amount);
+      add(tx.toAccountId, tx.toAmount ?? tx.amount);
+      continue;
+    }
+    add(tx.accountId, tx.type === "income" ? tx.amount : -tx.amount);
+  }
+  return balances;
 }
 
 /** current net worth in the base currency */
@@ -267,18 +288,34 @@ export function monthTotals(
   return { income, expense, net: income - expense };
 }
 
-/** totals for the last `count` months ending at `month` (inclusive), oldest first */
+/**
+ * Totals for the last `count` months ending at `month` (inclusive), oldest
+ * first. Buckets the ledger once and fills the window from it — calling
+ * `monthTotals` per point meant `count` full passes for a single chart, and a
+ * 3-year window did thirty-six of them on every keystroke elsewhere on the page.
+ */
 export function monthlySeries(
   transactions: Transaction[],
   month: string,
   count: number,
   settings: Settings,
 ): Array<MonthTotals & { month: string }> {
-  const result: Array<MonthTotals & { month: string }> = [];
+  const byMonth = new Map<string, MonthTotals & { month: string }>();
   for (let i = count - 1; i >= 0; i--) {
     const m = addMonths(month, -i);
-    result.push({ month: m, ...monthTotals(transactions, m, settings) });
+    byMonth.set(m, { month: m, income: 0, expense: 0, net: 0 });
   }
+  for (const tx of transactions) {
+    if (tx.type === "transfer") continue;
+    const bucket = byMonth.get(monthOf(tx.date));
+    if (!bucket) continue;
+    const v = convert(tx.amount, tx.currency, settings.baseCurrency, settings.rates);
+    if (tx.type === "income") bucket.income += v;
+    else bucket.expense += v;
+  }
+  // Map iterates in insertion order, which is oldest first by construction
+  const result = [...byMonth.values()];
+  for (const bucket of result) bucket.net = bucket.income - bucket.expense;
   return result;
 }
 
@@ -297,7 +334,12 @@ export function expensesByCategory(
   return new Map([...byCat.entries()].sort((a, b) => b[1] - a[1]));
 }
 
-/** spent in a category for a month, in the target currency */
+/**
+ * Spent in a category for a month, in the target currency. Expenses only:
+ * budgets measure money going out, and a refund or a reimbursement filed under
+ * the same category is income — counting it here made a budget read as *more*
+ * spent the moment money came back.
+ */
 export function spentInCategory(
   transactions: Transaction[],
   categoryId: string,
@@ -307,7 +349,7 @@ export function spentInCategory(
 ): number {
   let sum = 0;
   for (const tx of transactions) {
-    if (tx.type === "transfer") continue;
+    if (tx.type !== "expense") continue;
     if (tx.categoryId !== categoryId || monthOf(tx.date) !== month) continue;
     sum += convert(tx.amount, tx.currency, to, settings.rates);
   }

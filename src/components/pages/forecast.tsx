@@ -1,36 +1,27 @@
 "use client";
 
-import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { StackedArea, StatTile, type AreaPoint } from "@/components/charts";
 import {
   Button,
   EmptyState,
   Field,
+  FieldSet,
   GlassCard,
+  LinkButton,
   PageHeader,
   SegmentedControl,
   Slider,
   Switch,
   TextInput,
 } from "@/components/ui";
+import { Icon } from "@/components/icons";
 import { CURRENCIES, CURRENCY_SYMBOL } from "@/lib/constants";
 import { currentMonth, formatMonthCompact, formatMonthShort, todayISO } from "@/lib/date";
 import { averageMonthlyNet, buildProjection } from "@/lib/finmath";
 import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
 import { useStore } from "@/lib/store";
 import type { Currency } from "@/lib/types";
-
-function LinkButton({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="btn-gradient inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold shadow-md transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.97]"
-    >
-      {children}
-    </Link>
-  );
-}
 
 const num = (s: string) => {
   const v = parseAmount(s);
@@ -155,6 +146,7 @@ export function ForecastPage() {
         subtitle="Project your wealth, in any currency, under your own assumptions"
         action={
           <SegmentedControl
+            label="Currency to show the projection in"
             options={CURRENCIES.map((c) => ({ value: c, label: c }))}
             value={view}
             onChange={setView}
@@ -163,13 +155,13 @@ export function ForecastPage() {
         }
       />
 
-      <div className="stagger space-y-4">
+      <div className="stagger space-y-4 sm:space-y-5">
         {/* assumptions */}
-        <GlassCard title="Assumptions" subtitle="Tune the projection" icon="🎛️">
+        <GlassCard title="Assumptions" subtitle="Tune the projection" icon={<Icon name="sliders" />}>
           <div className="grid gap-x-6 gap-y-5 lg:grid-cols-2">
             <div>
               <div className="mb-2 flex items-baseline justify-between">
-                <span className="text-[13px] font-medium text-ink-2">Horizon</span>
+                <span className="label">Horizon</span>
                 <span className="tnum text-sm font-semibold text-ink-1">
                   {years} {years === 1 ? "year" : "years"}
                 </span>
@@ -179,7 +171,7 @@ export function ForecastPage() {
 
             <div>
               <div className="mb-2 flex items-baseline justify-between">
-                <span className="text-[13px] font-medium text-ink-2">
+                <span className="label">
                   Return on savings
                 </span>
                 <span className="tnum text-sm font-semibold text-ink-1">
@@ -197,26 +189,25 @@ export function ForecastPage() {
             </div>
 
             <div className="lg:col-span-2">
-              <span className="mb-2 block text-[13px] font-medium text-ink-2">
+              <span className="mb-2 block label">
                 Monthly saving — split across currencies
               </span>
               <div className="grid gap-2.5 sm:grid-cols-3 sm:gap-3">
                 {CURRENCIES.map((c) => (
-                  <div key={c} className="relative">
-                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-3">
-                      {CURRENCY_SYMBOL[c]}
-                    </span>
-                    <TextInput
-                      inputMode="decimal"
-                      value={saveByCur[c]}
-                      onChange={(e) =>
-                        setSaveByCur((prev) => ({ ...prev, [c]: e.target.value }))
-                      }
-                      placeholder="0"
-                      className="pl-8"
-                      aria-label={`Monthly saving in ${c}`}
-                    />
-                  </div>
+                  // the field's own `prefix`, not a hand-placed span: the local
+                  // copy sat at a different size and a different inset from the
+                  // one every other amount field in the app uses
+                  <TextInput
+                    key={c}
+                    inputMode="decimal"
+                    prefix={CURRENCY_SYMBOL[c]}
+                    value={saveByCur[c]}
+                    onChange={(e) =>
+                      setSaveByCur((prev) => ({ ...prev, [c]: e.target.value }))
+                    }
+                    placeholder="0"
+                    aria-label={`Monthly saving in ${c}`}
+                  />
                 ))}
               </div>
               <p className="mt-2 text-xs text-ink-3">
@@ -228,7 +219,7 @@ export function ForecastPage() {
 
             <div className="flex items-center justify-between gap-3 lg:col-span-2">
               <div>
-                <p className="text-[15px] font-medium text-ink-1">Show in today’s money</p>
+                <p className="body-strong">Show in today’s money</p>
                 <p className="mt-0.5 text-xs text-ink-3">
                   Real terms — discount {CURRENCY_SYMBOL[view]} by {formatPercent(inflationPct, 1)}/yr,
                   its long-run inflation
@@ -244,7 +235,7 @@ export function ForecastPage() {
         </GlassCard>
 
         {/* headline numbers */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
           <StatTile
             label="Now"
             value={formatMoney(nowTotal, view, { compact: true })}
@@ -261,6 +252,9 @@ export function ForecastPage() {
             label="Growth"
             value={formatMoney(diff, view, { compact: true, sign: true })}
             tone={diff >= 0 ? "income" : "expense"}
+            // the curve of the gain itself, so the tile carries the same kind
+            // of shape as the one beside it instead of sitting flat
+            spark={points.map((p) => p.a + p.b - nowTotal)}
             delta={
               nowTotal > 0
                 ? {
@@ -275,7 +269,7 @@ export function ForecastPage() {
         {isEmpty ? (
           <GlassCard>
             <EmptyState
-              icon="🔮"
+              icon={<Icon name="trend" />}
               title="Nothing to project yet"
               hint="Add savings or investments, or set a monthly saving amount — and watch your wealth curve appear."
               action={
@@ -288,8 +282,11 @@ export function ForecastPage() {
           </GlassCard>
         ) : (
           <>
-            <div className="grid items-start gap-4 xl:grid-cols-3">
-              <GlassCard title={`Wealth projection · ${view}`} icon="📈" className="xl:col-span-2">
+            {/* from a laptop, not only a wide desktop: between 1024 and 1280 the
+                goal form owned a full-width row and spread a short input, three
+                presets and one milestone across it */}
+            <div className="grid items-start gap-4 sm:gap-5 lg:grid-cols-3">
+              <GlassCard title={`Wealth projection · ${view}`} icon={<Icon name="trend" />} className="lg:col-span-2">
                 <StackedArea
                   points={points}
                   currency={view}
@@ -307,26 +304,31 @@ export function ForecastPage() {
               </GlassCard>
 
               {/* goal calculator */}
-              <GlassCard title="Reach a goal" subtitle="When you hit a target" icon="🎯">
+              <GlassCard title="Reach a goal" subtitle="When you hit a target" icon={<Icon name="target" />}>
                 <p className="mb-3 text-sm text-ink-2">
                   How long until you have a certain amount?
                 </p>
-                <Field label="Target amount">
-                  <TextInput
-                    inputMode="decimal"
-                    value={goalAmount}
-                    onChange={(e) => setGoalAmount(e.target.value)}
-                    placeholder="e.g. 20 000"
-                  />
-                </Field>
-                <div className="mt-3">
-                  <Field label="Currency">
+                <div className="space-y-3">
+                  <Field label="Target amount">
+                    <TextInput
+                      inputMode="decimal"
+                      // the only amount field in the app that was not saying
+                      // what it was denominated in, with the currency picker
+                      // for it sitting directly underneath
+                      prefix={CURRENCY_SYMBOL[goalCurrency]}
+                      value={goalAmount}
+                      onChange={(e) => setGoalAmount(e.target.value)}
+                      placeholder="e.g. 20 000"
+                    />
+                  </Field>
+                  <FieldSet label="Currency">
                     <SegmentedControl
+                      label="Goal currency"
                       options={CURRENCIES.map((c) => ({ value: c, label: c }))}
                       value={goalCurrency}
                       onChange={setGoalCurrency}
                     />
-                  </Field>
+                  </FieldSet>
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-1.5">
@@ -334,7 +336,7 @@ export function ForecastPage() {
                     <Button
                       key={preset}
                       variant="ghost"
-                      className="min-h-9 px-3 text-xs"
+                      size="sm"
                       onClick={() => setGoalAmount(String(preset))}
                     >
                       {formatMoney(preset, goalCurrency, { compact: true })}
@@ -347,15 +349,20 @@ export function ForecastPage() {
                     <p className="text-sm text-ink-3">Enter a target to see when you reach it.</p>
                   ) : alreadyThere ? (
                     <>
-                      <p className="text-2xl">🎉</p>
-                      <p className="mt-1 text-sm font-semibold text-income">
+                      <span
+                        aria-hidden
+                        className="mx-auto flex size-9 items-center justify-center rounded-full bg-accent-soft text-accent"
+                      >
+                        <Icon name="check" size={20} strokeWidth={2.6} />
+                      </span>
+                      <p className="mt-2 text-sm font-semibold text-income">
                         You’re already there
                       </p>
                     </>
                   ) : goalHitMonth ? (
                     <>
                       <p className="card-title">Reached around</p>
-                      <p className="hero-number mt-1 text-2xl font-bold">
+                      <p className="hero-number num-md mt-1">
                         {formatMonthCompact(goalHitMonth)}
                       </p>
                       <p className="mt-1 text-xs text-ink-3">
@@ -394,19 +401,26 @@ export function ForecastPage() {
               </GlassCard>
             </div>
 
-            <GlassCard title={`Year by year · ${view}`} icon="📅">
+            <GlassCard title={`Year by year · ${view}`} icon={<Icon name="calendar" />}>
               <div className="-mx-1 overflow-x-auto px-1">
                 <table className="w-full min-w-104 text-sm">
                   <thead>
-                    <tr className="border-b border-hairline text-[13px] text-ink-2">
+                    <tr className="label border-b border-hairline">
                       <th className="py-2 pr-3 text-left font-medium">Year</th>
                       <th className="px-3 py-2 text-right font-medium">Savings</th>
                       <th className="px-3 py-2 text-right font-medium">Investments</th>
-                      <th className="py-2 pl-3 text-right font-medium">Total</th>
+                      <th className="px-3 py-2 text-right font-medium">Total</th>
+                      {/* the table ran four columns across the full page width,
+                          so the numbers drifted apart; this is the one the rows
+                          were implicitly asking you to work out anyway */}
+                      <th className="py-2 pl-3 text-right font-medium">Added</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {yearRows.map(({ p, i }) => (
+                    {yearRows.map(({ p, i }, idx) => {
+                      const prev = idx > 0 ? yearRows[idx - 1] : null;
+                      const added = prev ? show(p.total, i) - show(prev.p.total, prev.i) : 0;
+                      return (
                       <tr key={p.month} className="border-b border-hairline last:border-b-0">
                         <td className="py-2.5 pr-3 text-ink-1">
                           {i === 0 ? "Now" : p.month.slice(0, 4)}
@@ -417,11 +431,19 @@ export function ForecastPage() {
                         <td className="tnum px-3 py-2.5 text-right text-ink-2">
                           {formatMoney(show(p.investments, i), view, { compact: true })}
                         </td>
-                        <td className="tnum py-2.5 pl-3 text-right font-semibold text-ink-1">
+                        <td className="tnum px-3 py-2.5 text-right font-semibold text-ink-1">
                           {formatMoney(show(p.total, i), view, { compact: true })}
                         </td>
+                        <td
+                          className={`tnum py-2.5 pl-3 text-right ${
+                            added > 0 ? "text-income" : "text-ink-3"
+                          }`}
+                        >
+                          {prev ? formatMoney(added, view, { compact: true, sign: true }) : "—"}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

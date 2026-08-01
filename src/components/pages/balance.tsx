@@ -8,6 +8,7 @@ import {
   CurrencyCells,
   EmptyState,
   Field,
+  FieldSet,
   GlassCard,
   Money,
   OptionChips,
@@ -20,7 +21,8 @@ import {
   TextInput,
   TripleMoney,
 } from "@/components/ui";
-import { CURRENCIES, ICON_CHOICES } from "@/lib/constants";
+import { Icon } from "@/components/icons";
+import { CURRENCIES, CURRENCY_SYMBOL, ICON_CHOICES } from "@/lib/constants";
 import {
   addMonths,
   dateInMonth,
@@ -31,7 +33,7 @@ import {
 } from "@/lib/date";
 import { accountBalances, investmentAt, netWorth } from "@/lib/finmath";
 import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
-import { uid, useStore } from "@/lib/store";
+import { accountUsage, deleteAccount, uid, useStore } from "@/lib/store";
 import type {
   Compounding,
   CompoundingFreq,
@@ -81,6 +83,8 @@ interface InvestmentForm {
   principal: string;
   rate: string;
   startDate: string;
+  /** maturity; "" = open-ended */
+  endDate: string;
   compounding: Compounding;
   freq: CompoundingFreq;
   contribution: string;
@@ -146,20 +150,16 @@ export function BalancePage() {
 
   /* ---------- accounts state ---------- */
   const [accForm, setAccForm] = useState<AccountForm | null>(null);
-  const [accError, setAccError] = useState<string | null>(null);
   const [accDeleteId, setAccDeleteId] = useState<string | null>(null);
   const [moveId, setMoveId] = useState<string | null>(null);
   const [moveAmount, setMoveAmount] = useState("");
-  const [moveError, setMoveError] = useState<string | null>(null);
 
   /* ---------- investments state ---------- */
   const [invForm, setInvForm] = useState<InvestmentForm | null>(null);
-  const [invError, setInvError] = useState<string | null>(null);
   const [invDeleteId, setInvDeleteId] = useState<string | null>(null);
 
   /* ---------- debts state ---------- */
   const [debtForm, setDebtForm] = useState<DebtForm | null>(null);
-  const [debtError, setDebtError] = useState<string | null>(null);
   const [debtDeleteId, setDebtDeleteId] = useState<string | null>(null);
 
   /* ---------- investments totals ---------- */
@@ -187,7 +187,7 @@ export function BalancePage() {
 
   /* ---------- account handlers ---------- */
 
-  const openAddAccount = () => {
+  const openAddAccount = () =>
     setAccForm({
       id: null,
       name: "",
@@ -198,10 +198,8 @@ export function BalancePage() {
       target: "",
       deadline: "",
     });
-    setAccError(null);
-  };
 
-  const openEditAccount = (acc: SavingsAccount) => {
+  const openEditAccount = (acc: SavingsAccount) =>
     setAccForm({
       id: acc.id,
       name: acc.name,
@@ -212,32 +210,39 @@ export function BalancePage() {
       target: acc.goal ? String(acc.goal.target) : "",
       deadline: acc.goal?.deadline ?? "",
     });
-    setAccError(null);
-  };
+
+  /**
+   * Every form on this page now says why Save is off before you press it, in
+   * one place, next to the button — rather than validating on click and
+   * printing the answer at the bottom of a panel that scrolls independently of
+   * the footer. On the ten-field investment form that answer was reliably
+   * off-screen, so Save read as broken.
+   */
+  const accProblem: string | null = (() => {
+    if (!accForm) return null;
+    if (!accForm.name.trim()) return "Name the account.";
+    const opening = parseAmount(
+      accForm.openingBalance.trim() === "" ? "0" : accForm.openingBalance,
+    );
+    if (!Number.isFinite(opening)) return "The opening balance has to be a number.";
+    if (accForm.goalEnabled) {
+      const target = parseAmount(accForm.target);
+      if (!Number.isFinite(target) || target <= 0)
+        return "The goal target has to be greater than zero.";
+    }
+    return null;
+  })();
+  const accValid = accForm !== null && accProblem === null;
 
   const submitAccount = () => {
-    if (!accForm) return;
+    if (!accForm || !accValid) return;
     const name = accForm.name.trim();
-    if (!name) {
-      setAccError("Name the account.");
-      return;
-    }
     const openingBalance = parseAmount(
       accForm.openingBalance.trim() === "" ? "0" : accForm.openingBalance,
     );
-    if (!Number.isFinite(openingBalance)) {
-      setAccError("Balance must be a non-negative number.");
-      return;
-    }
-    let goal: SavingsAccount["goal"];
-    if (accForm.goalEnabled) {
-      const target = parseAmount(accForm.target);
-      if (!Number.isFinite(target) || target <= 0) {
-        setAccError("Goal target must be greater than zero.");
-        return;
-      }
-      goal = { target, deadline: accForm.deadline || undefined };
-    }
+    const goal: SavingsAccount["goal"] = accForm.goalEnabled
+      ? { target: parseAmount(accForm.target), deadline: accForm.deadline || undefined }
+      : undefined;
     if (accForm.id) {
       const id = accForm.id;
       update((s) => ({
@@ -264,13 +269,34 @@ export function BalancePage() {
 
   const confirmDeleteAccount = () => {
     if (!accDeleteId) return;
-    update((s) => ({ ...s, savings: s.savings.filter((a) => a.id !== accDeleteId) }));
+    // everything that pointed at the account is resolved with it, so no row is
+    // left describing a place that no longer exists — see `deleteAccount`
+    update((s) => deleteAccount(s, accDeleteId), "Account deleted");
     setAccDeleteId(null);
     setAccForm(null);
   };
 
   const moveAccount = state.savings.find((a) => a.id === moveId) ?? null;
   const moveCurrent = moveAccount ? (balances.get(moveAccount.id) ?? 0) : 0;
+  const moveDelta = parseAmount(moveAmount) - moveCurrent;
+  /** where an adjustment is booked: "Other" of the right kind, or any category */
+  const adjustCategoryId = (up: boolean) =>
+    (up
+      ? (state.categories.find((c) => c.id === "cat-other-inc") ??
+        state.categories.find((c) => c.kind === "income"))
+      : (state.categories.find((c) => c.id === "cat-other-exp") ??
+        state.categories.find((c) => c.kind === "expense")))?.id;
+
+  const moveProblem: string | null = (() => {
+    if (!moveAccount) return null;
+    if (moveAmount.trim() === "" || !Number.isFinite(parseAmount(moveAmount)))
+      return "Enter the balance your bank shows.";
+    if (Math.abs(moveDelta) < 0.005) return "That already matches — nothing to adjust.";
+    if (!adjustCategoryId(moveDelta > 0))
+      return "Add an income and an expense category first.";
+    return null;
+  })();
+  const moveValid = moveAccount !== null && moveProblem === null;
 
   /**
    * Reconciliation: you type what the bank actually shows and the difference
@@ -278,52 +304,36 @@ export function BalancePage() {
    * instead of being silently overwritten.
    */
   const submitMove = () => {
-    if (!moveAccount) return;
-    const actual = parseAmount(moveAmount);
-    if (!Number.isFinite(actual)) {
-      setMoveError("Enter the balance your bank shows.");
-      return;
-    }
-    const delta = actual - moveCurrent;
-    if (Math.abs(delta) < 0.005) {
-      setMoveError("That already matches — nothing to adjust.");
-      return;
-    }
-    const categoryId =
-      delta > 0
-        ? (state.categories.find((c) => c.id === "cat-other-inc") ??
-            state.categories.find((c) => c.kind === "income"))?.id
-        : (state.categories.find((c) => c.id === "cat-other-exp") ??
-            state.categories.find((c) => c.kind === "expense"))?.id;
-    if (!categoryId) {
-      setMoveError("Add an income and an expense category first.");
-      return;
-    }
+    if (!moveAccount || !moveValid) return;
+    const delta = moveDelta;
+    const categoryId = adjustCategoryId(delta > 0)!;
     const accountId = moveAccount.id;
-    update((s) => ({
-      ...s,
-      transactions: [
-        ...s.transactions,
-        {
-          id: uid(),
-          type: delta > 0 ? ("income" as const) : ("expense" as const),
-          amount: Math.abs(delta),
-          currency: moveAccount.currency,
-          categoryId,
-          date: today,
-          note: `Balance adjustment · ${moveAccount.name}`,
-          accountId,
-        },
-      ],
-    }));
+    update(
+      (s) => ({
+        ...s,
+        transactions: [
+          ...s.transactions,
+          {
+            id: uid(),
+            type: delta > 0 ? ("income" as const) : ("expense" as const),
+            amount: Math.abs(delta),
+            currency: moveAccount.currency,
+            categoryId,
+            date: today,
+            note: `Balance adjustment · ${moveAccount.name}`,
+            accountId,
+          },
+        ],
+      }),
+      "Balance adjusted",
+    );
     setMoveId(null);
     setMoveAmount("");
-    setMoveError(null);
   };
 
   /* ---------- investment handlers ---------- */
 
-  const openAddInvestment = () => {
+  const openAddInvestment = () =>
     setInvForm({
       id: null,
       name: "",
@@ -331,13 +341,12 @@ export function BalancePage() {
       principal: "",
       rate: "",
       startDate: today,
+      endDate: "",
       compounding: "reinvest",
       freq: "monthly",
       contribution: "",
       note: "",
     });
-    setInvError(null);
-  };
 
   const openEditInvestment = (inv: Investment) => {
     setInvForm({
@@ -347,45 +356,42 @@ export function BalancePage() {
       principal: String(inv.principal),
       rate: String(inv.annualRatePct),
       startDate: inv.startDate,
+      endDate: inv.endDate ?? "",
       compounding: inv.compounding,
       freq: inv.compoundingFreq,
       contribution:
         inv.monthlyContribution != null ? String(inv.monthlyContribution) : "",
       note: inv.note ?? "",
     });
-    setInvError(null);
   };
 
-  const submitInvestment = () => {
-    if (!invForm) return;
-    const name = invForm.name.trim();
-    if (!name) {
-      setInvError("Name the investment.");
-      return;
-    }
+  const invProblem: string | null = (() => {
+    if (!invForm) return null;
+    if (!invForm.name.trim()) return "Name the investment.";
     const principal = parseAmount(invForm.principal);
-    if (!Number.isFinite(principal) || principal <= 0) {
-      setInvError("Principal must be greater than zero.");
-      return;
-    }
+    if (!Number.isFinite(principal) || principal <= 0)
+      return "The principal has to be greater than zero.";
     const rate = parseAmount(invForm.rate);
-    if (!Number.isFinite(rate) || rate < 0 || rate > 200) {
-      setInvError("Rate must be between 0 and 200% per year.");
-      return;
-    }
-    if (!invForm.startDate) {
-      setInvError("Pick a start date.");
-      return;
-    }
-    let contribution: number | undefined;
+    if (!Number.isFinite(rate) || rate < 0 || rate > 200)
+      return "The rate has to be between 0 and 200% a year.";
+    if (!invForm.startDate) return "Pick a start date.";
+    if (invForm.endDate && invForm.endDate < invForm.startDate)
+      return "Maturity has to come after the start date.";
     if (invForm.contribution.trim() !== "") {
       const c = parseAmount(invForm.contribution);
-      if (!Number.isFinite(c) || c < 0) {
-        setInvError("Monthly top-up must be a non-negative number.");
-        return;
-      }
-      contribution = c > 0 ? c : undefined;
+      if (!Number.isFinite(c) || c < 0) return "The monthly top-up has to be zero or more.";
     }
+    return null;
+  })();
+  const invValid = invForm !== null && invProblem === null;
+
+  const submitInvestment = () => {
+    if (!invForm || !invValid) return;
+    const name = invForm.name.trim();
+    const principal = parseAmount(invForm.principal);
+    const rate = parseAmount(invForm.rate);
+    const typed = invForm.contribution.trim() === "" ? 0 : parseAmount(invForm.contribution);
+    const contribution = typed > 0 ? typed : undefined;
     const note = invForm.note.trim();
 
     if (invForm.id) {
@@ -401,6 +407,7 @@ export function BalancePage() {
                 principal,
                 annualRatePct: rate,
                 startDate: invForm.startDate,
+                endDate: invForm.endDate || undefined,
                 compounding: invForm.compounding,
                 compoundingFreq: invForm.freq,
                 monthlyContribution: contribution,
@@ -417,6 +424,7 @@ export function BalancePage() {
         principal,
         annualRatePct: rate,
         startDate: invForm.startDate,
+        endDate: invForm.endDate || undefined,
         compounding: invForm.compounding,
         compoundingFreq: invForm.freq,
         monthlyContribution: contribution,
@@ -429,10 +437,13 @@ export function BalancePage() {
 
   const confirmDeleteInvestment = () => {
     if (!invDeleteId) return;
-    update((s) => ({
-      ...s,
-      investments: s.investments.filter((inv) => inv.id !== invDeleteId),
-    }));
+    update(
+      (s) => ({
+        ...s,
+        investments: s.investments.filter((inv) => inv.id !== invDeleteId),
+      }),
+      "Investment deleted",
+    );
     setInvDeleteId(null);
     setInvForm(null);
   };
@@ -451,7 +462,6 @@ export function BalancePage() {
       monthlyPayment: "",
       note: "",
     });
-    setDebtError(null);
   };
 
   const openEditDebt = (debt: Debt) => {
@@ -466,36 +476,39 @@ export function BalancePage() {
       monthlyPayment: debt.monthlyPayment != null ? String(debt.monthlyPayment) : "",
       note: debt.note ?? "",
     });
-    setDebtError(null);
   };
 
-  const submitDebt = () => {
-    if (!debtForm) return;
-    const name = debtForm.name.trim();
-    if (!name) {
-      setDebtError("Name the debt.");
-      return;
-    }
+  /** an optional number field: blank is fine, and so is zero — both mean "unset" */
+  const optionalNumber = (raw: string): number | undefined =>
+    raw.trim() === "" ? undefined : parseAmount(raw) || undefined;
+  const optionalOutOfRange = (raw: string, max: number) => {
+    if (raw.trim() === "") return false;
+    const v = parseAmount(raw);
+    return !Number.isFinite(v) || v < 0 || v > max;
+  };
+
+  const debtProblem: string | null = (() => {
+    if (!debtForm) return null;
+    if (!debtForm.name.trim()) return "Name the debt.";
     const balance = parseAmount(debtForm.balance);
-    if (!Number.isFinite(balance) || balance < 0) {
-      setDebtError("Outstanding balance must be a non-negative number.");
-      return;
-    }
-    const optional = (raw: string, max: number, msg: string): number | undefined | null => {
-      if (raw.trim() === "") return undefined;
-      const v = parseAmount(raw);
-      if (!Number.isFinite(v) || v < 0 || v > max) {
-        setDebtError(msg);
-        return null; // signal invalid
-      }
-      return v > 0 ? v : undefined;
-    };
-    const principal = optional(debtForm.principal, 1e12, "Original amount looks off.");
-    if (principal === null) return;
-    const rate = optional(debtForm.rate, 200, "Rate must be between 0 and 200% per year.");
-    if (rate === null) return;
-    const monthlyPayment = optional(debtForm.monthlyPayment, 1e12, "Monthly payment looks off.");
-    if (monthlyPayment === null) return;
+    if (!Number.isFinite(balance) || balance < 0)
+      return "The outstanding balance has to be zero or more.";
+    if (optionalOutOfRange(debtForm.principal, 1e12)) return "The original amount looks off.";
+    if (optionalOutOfRange(debtForm.rate, 200))
+      return "The rate has to be between 0 and 200% a year.";
+    if (optionalOutOfRange(debtForm.monthlyPayment, 1e12))
+      return "The monthly payment looks off.";
+    return null;
+  })();
+  const debtValid = debtForm !== null && debtProblem === null;
+
+  const submitDebt = () => {
+    if (!debtForm || !debtValid) return;
+    const name = debtForm.name.trim();
+    const balance = parseAmount(debtForm.balance);
+    const principal = optionalNumber(debtForm.principal);
+    const rate = optionalNumber(debtForm.rate);
+    const monthlyPayment = optionalNumber(debtForm.monthlyPayment);
     const note = debtForm.note.trim();
 
     const fields = {
@@ -524,7 +537,10 @@ export function BalancePage() {
 
   const confirmDeleteDebt = () => {
     if (!debtDeleteId) return;
-    update((s) => ({ ...s, debts: s.debts.filter((d) => d.id !== debtDeleteId) }));
+    update(
+      (s) => ({ ...s, debts: s.debts.filter((d) => d.id !== debtDeleteId) }),
+      "Debt deleted",
+    );
     setDebtDeleteId(null);
     setDebtForm(null);
   };
@@ -532,6 +548,27 @@ export function BalancePage() {
   const deletingAccount = state.savings.find((a) => a.id === accDeleteId);
   const deletingInvestment = state.investments.find((i) => i.id === invDeleteId);
   const deletingDebt = state.debts.find((d) => d.id === debtDeleteId);
+
+  /**
+   * What deleting this account would touch. An account is rarely alone: a year
+   * of groceries and every transfer it ever took part in point at it, and the
+   * dialog is the last place to say so before they are all rewritten.
+   */
+  const accountImpact = (() => {
+    if (!deletingAccount) return "";
+    const use = accountUsage(state, deletingAccount.id);
+    const parts = [
+      use.entries > 0 &&
+        `${use.entries} ${use.entries === 1 ? "transaction keeps" : "transactions keep"} its amount but stops moving a balance`,
+      use.transfers > 0 &&
+        `${use.transfers} ${use.transfers === 1 ? "transfer becomes" : "transfers become"} a plain income or expense on the other account`,
+      use.recurring > 0 &&
+        `${use.recurring} recurring ${use.recurring === 1 ? "rule" : "rules"} lose their account`,
+      use.subscriptions > 0 &&
+        `${use.subscriptions} ${use.subscriptions === 1 ? "subscription loses its" : "subscriptions lose their"} account`,
+    ].filter(Boolean);
+    return parts.length > 0 ? ` ${parts.join("; ")}.` : "";
+  })();
 
   const isEmpty =
     state.savings.length === 0 &&
@@ -555,18 +592,27 @@ export function BalancePage() {
           </div>
         }
       />
-      <div className="stagger space-y-4">
-        <div className="grid items-start gap-4 xl:grid-cols-3">
+      <div className="stagger space-y-4 sm:space-y-5">
+        {/* three columns only from 1280: at 1152 a third of the row could not
+            hold "768,776.07 ₴" on one line, and the accounts table lost its
+            account names to ellipses. Below that the hero splits internally
+            instead — see the grid inside it. */}
+        <div className="grid items-start gap-4 sm:gap-5 xl:grid-cols-3">
           {/* net worth hero */}
           <GlassCard className="glow xl:col-span-1">
+            {/* side by side while the card owns a wide row, stacked again once
+                it is one narrow column of three */}
+            <div className="sm:grid sm:grid-cols-2 sm:items-center sm:gap-8 xl:block">
+            <div>
             <p className="card-title">Net worth</p>
             <div className="mt-2">
               <TripleMoney amount={worth.total} currency={base} settings={settings} size="lg" />
             </div>
-            <div className="mt-4 space-y-2.5 border-t border-hairline pt-3.5 text-sm">
+            </div>
+            <div className="mt-4 space-y-2.5 border-t border-hairline pt-3.5 text-sm sm:mt-0 sm:border-t-0 sm:pt-0 xl:mt-4 xl:border-t xl:pt-3.5">
               <div className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2 text-ink-2">
-                  <span aria-hidden className="size-2.5 rounded-sm bg-series-2" />
+                  <span aria-hidden className="size-2.5 rounded-sm bg-series-1" />
                   Accounts
                 </span>
                 <span className="tnum font-semibold text-ink-1">
@@ -575,7 +621,7 @@ export function BalancePage() {
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2 text-ink-2">
-                  <span aria-hidden className="size-2.5 rounded-sm bg-series-1" />
+                  <span aria-hidden className="size-2.5 rounded-sm bg-series-2" />
                   Investments
                 </span>
                 <span className="tnum font-semibold text-ink-1">
@@ -585,11 +631,11 @@ export function BalancePage() {
               {worth.assets > 0 && (
                 <div className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden>
                   <div
-                    className="bar-slice bg-series-2"
+                    className="bar-slice bg-series-1"
                     style={{ width: `${(worth.savings / worth.assets) * 100}%` }}
                   />
                   <div
-                    className="bar-slice bg-series-1"
+                    className="bar-slice bg-series-2"
                     style={{ width: `${(worth.investments / worth.assets) * 100}%` }}
                   />
                 </div>
@@ -610,6 +656,7 @@ export function BalancePage() {
                 </p>
               )}
             </div>
+            </div>
           </GlassCard>
 
           {!isEmpty && (
@@ -618,7 +665,7 @@ export function BalancePage() {
             <GlassCard
               title="Accounts"
               subtitle="Where your money sits"
-              icon="🏦"
+              icon={<Icon name="bank" />}
               action={
                 <Button variant="ghost" onClick={openAddAccount}>
                   + Add
@@ -627,7 +674,7 @@ export function BalancePage() {
             >
               {state.savings.length === 0 ? (
                 <EmptyState
-                  icon="💳"
+                  icon={<Icon name="card" />}
                   title="No accounts yet"
                   hint="Cards, cash, crypto — anything that holds value."
                   action={<Button variant="ghost" onClick={openAddAccount}>+ Add</Button>}
@@ -635,10 +682,10 @@ export function BalancePage() {
               ) : (
                 <div className="space-y-1">
                   <div className="hidden grid-cols-[minmax(0,1fr)_repeat(3,7.5rem)] gap-3 px-2 pb-1 sm:grid">
-                    <span className="text-[13px] font-medium text-ink-2">Account</span>
-                    <span className="text-right text-[13px] font-medium text-ink-2">₴</span>
-                    <span className="text-right text-[13px] font-medium text-ink-2">$</span>
-                    <span className="text-right text-[13px] font-medium text-ink-2">€</span>
+                    <span className="label">Account</span>
+                    <span className="text-right label">₴</span>
+                    <span className="text-right label">$</span>
+                    <span className="text-right label">€</span>
                   </div>
                   {state.savings.map((acc) => {
                     const goal = acc.goal;
@@ -655,7 +702,7 @@ export function BalancePage() {
                           <span className="flex min-w-0 items-center gap-3">
                             <span
                               aria-hidden
-                              className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-ghost text-lg"
+                              className="flex size-10 shrink-0 items-center justify-center rounded-field bg-ghost text-lg"
                             >
                               {acc.icon}
                             </span>
@@ -679,7 +726,11 @@ export function BalancePage() {
                         </span>
                         {goal && (
                           <span className="mt-2 block pl-13 pr-1">
-                            <ProgressMeter value={shown} max={goal.target} />
+                            <ProgressMeter
+                              value={shown}
+                              max={goal.target}
+                              label={`${acc.name} savings goal`}
+                            />
                             <span
                               className={`tnum mt-1 block text-xs ${
                                 reached ? "font-medium text-income" : "text-ink-3"
@@ -718,7 +769,7 @@ export function BalancePage() {
           <GlassCard
             title="Debts"
             subtitle={`You owe ${formatMoney(worth.debts, base, { compact: true })} across ${state.debts.length} ${state.debts.length === 1 ? "liability" : "liabilities"}`}
-            icon="💳"
+            icon={<Icon name="card" />}
             action={
               <Button variant="ghost" onClick={openAddDebt}>
                 + Add
@@ -741,7 +792,7 @@ export function BalancePage() {
                       <span className="flex min-w-0 items-center gap-3">
                         <span
                           aria-hidden
-                          className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-ghost text-lg"
+                          className="flex size-10 shrink-0 items-center justify-center rounded-field bg-ghost text-lg"
                         >
                           {debt.icon}
                         </span>
@@ -768,7 +819,11 @@ export function BalancePage() {
                     </span>
                     {hasProgress && (
                       <span className="mt-2 block pl-13 pr-1">
-                        <ProgressMeter value={paid} max={principal} />
+                        <ProgressMeter
+                          value={paid}
+                          max={principal}
+                          label={`${debt.name} paid off`}
+                        />
                         <span className="tnum mt-1 block text-xs text-ink-3">
                           {formatMoney(paid, debt.currency, { compact: true })} of{" "}
                           {formatMoney(principal, debt.currency, { compact: true })} paid off (
@@ -795,7 +850,7 @@ export function BalancePage() {
         {isEmpty ? (
           <GlassCard>
             <EmptyState
-              icon="🏦"
+              icon={<Icon name="bank" />}
               title="Nothing here yet"
               hint="Add your accounts (cards, cash, even CS2 skins), interest-bearing investments and any debts to see your full balance sheet."
               action={<Button onClick={openAddAccount}>+ Add account</Button>}
@@ -807,7 +862,7 @@ export function BalancePage() {
             {/* investments */}
             {state.investments.length > 0 && (
               <>
-                <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
+                <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
                   <StatTile
                     label="Invested"
                     value={formatMoney(invTotals.invested, base, { compact: true })}
@@ -831,10 +886,11 @@ export function BalancePage() {
                   />
                 </div>
 
-                {/* one position gets the full width instead of leaving a hole
-                    beside it; from two on they pair up */}
+                {/* one position keeps the full width — half a card with an empty
+                    half-page beside it reads worse than a wide one — and lays
+                    its details out in two columns instead; from two they pair */}
                 <div
-                  className={`grid gap-3 sm:gap-4 ${
+                  className={`grid gap-4 sm:gap-5 ${
                     state.investments.length > 1 ? "xl:grid-cols-2" : ""
                   }`}
                 >
@@ -844,8 +900,10 @@ export function BalancePage() {
                       inv,
                       dateInMonth(addMonths(monthOf(today), 12), Number(today.slice(8, 10))),
                     );
-                    const caption =
-                      inv.compounding === "reinvest"
+                    const matured = inv.endDate != null && inv.endDate <= today;
+                    const caption = matured
+                      ? `Matured ${formatDate(inv.endDate!)} · no longer earning`
+                      : inv.compounding === "reinvest"
                         ? `Compound interest · ${FREQ_ADVERB[inv.compoundingFreq]} reinvestment`
                         : "Simple interest · paid out to you";
                     const earned = snap.accrued + snap.paidOut;
@@ -856,7 +914,10 @@ export function BalancePage() {
                       <GlassCard key={inv.id} className="flex flex-col">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <h3 className="truncate font-semibold text-ink-1">{inv.name}</h3>
+                            {/* h2, like every other card title on the page: as
+                                an h3 under a page whose only other heading is
+                                the h1 it skipped a level */}
+                            <h2 className="truncate font-semibold text-ink-1">{inv.name}</h2>
                             <p className="mt-0.5 text-xs text-ink-2">{caption}</p>
                           </div>
                           <span className="shrink-0 rounded-full bg-ghost px-2 py-0.5 text-xs font-medium text-ink-2">
@@ -870,7 +931,7 @@ export function BalancePage() {
                               amount={snap.value}
                               currency={inv.currency}
                               exact
-                              className="block text-[28px] font-bold leading-tight tracking-tight text-ink-1"
+                              className="num-lg block text-ink-1"
                             />
                             <div className="mt-1.5 flex flex-wrap items-center gap-2">
                               <span
@@ -888,7 +949,17 @@ export function BalancePage() {
                           <Sparkline values={sparkValues(inv, today)} width={116} height={46} />
                         </div>
 
-                        <div className="mt-4 space-y-1.5 text-sm">
+                        {/* a lone position owns the full page width, and a
+                            single column of label-on-the-left rows then spans a
+                            metre of nothing; split it in two so the figures
+                            stay next to their labels */}
+                        <div
+                          className={`mt-4 text-sm ${
+                            state.investments.length === 1
+                              ? "grid gap-x-10 gap-y-1.5 sm:grid-cols-2"
+                              : "space-y-1.5"
+                          }`}
+                        >
                           <InfoRow label="Rate">{formatPercent(inv.annualRatePct)} / year</InfoRow>
                           <InfoRow label="Invested">
                             <Money amount={snap.invested} currency={inv.currency} exact />
@@ -898,43 +969,54 @@ export function BalancePage() {
                               {formatMoney(inv.monthlyContribution, inv.currency)}/mo
                             </InfoRow>
                           )}
-                          <InfoRow label="In 1 year">
-                            <span>
-                              <Money amount={inYear.value} currency={inv.currency} exact />{" "}
-                              <span className="text-income">
-                                (+{formatMoney(projGain, inv.currency)})
+                          {/* a matured position has no "in 1 year" — it is
+                              finished, and printing +0 beside it read as a
+                              rounding error rather than as the end of a term */}
+                          {!matured && (
+                            <InfoRow label="In 1 year">
+                              <span>
+                                <Money amount={inYear.value} currency={inv.currency} exact />{" "}
+                                <span className="text-income">
+                                  (+{formatMoney(projGain, inv.currency)})
+                                </span>
                               </span>
-                            </span>
-                          </InfoRow>
+                            </InfoRow>
+                          )}
                           <InfoRow label="Since">{formatDate(inv.startDate)}</InfoRow>
+                          {inv.endDate && (
+                            <InfoRow label={matured ? "Matured" : "Matures"}>
+                              {formatDate(inv.endDate)}
+                            </InfoRow>
+                          )}
                         </div>
 
                         {inv.note && <p className="mt-3 text-xs text-ink-3">{inv.note}</p>}
 
-                        <div className="mt-auto flex gap-2 pt-4">
-                          <Button
-                            variant="ghost"
-                            className="flex-1"
-                            onClick={() => openEditInvestment(inv)}
-                          >
+                        {/* actions sized to their words: stretched across the
+                            card they read as the main thing on it */}
+                        <div className="mt-auto flex justify-end gap-2 pt-4">
+                          <Button variant="ghost" onClick={() => openEditInvestment(inv)}>
                             Edit
                           </Button>
-                          <Button
-                            variant="ghost"
-                            className="flex-1"
-                            onClick={() => setInvDeleteId(inv.id)}
-                          >
+                          <Button variant="danger" onClick={() => setInvDeleteId(inv.id)}>
                             Delete
                           </Button>
                         </div>
                       </GlassCard>
                     );
                   })}
-                </div>
 
-                <details className="glass rounded-card px-5 py-3.5">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-ink-2 transition-colors hover:text-ink-1">
-                    ℹ️ How interest is calculated — reinvest vs payout
+                {/* spans the pair only when there is a pair to span: in the
+                    single-column case col-span-2 conjured a second implicit
+                    column and squeezed the position card into half the row */}
+                <details
+                  className={`glass rounded-card px-5 py-3.5 ${
+                    state.investments.length > 1 ? "xl:col-span-2" : ""
+                  }`}
+                >
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-ink-2 transition-colors hover:text-ink-1">
+                    <Icon name="info" size={16} />
+                    How interest is calculated — reinvest vs payout
                   </summary>
                   <p className="mt-2.5 text-sm leading-relaxed text-ink-2">
                     Reinvest means compound interest: accrued interest joins the principal at the
@@ -944,6 +1026,7 @@ export function BalancePage() {
                     your savings instead).
                   </p>
                 </details>
+                </div>
               </>
             )}
           </>
@@ -955,13 +1038,17 @@ export function BalancePage() {
         <Sheet
           open
           onClose={() => setAccForm(null)}
+          onSubmit={submitAccount}
+          problem={accProblem}
           title={accForm.id ? "Edit account" : "New account"}
           footer={
             <>
               <Button variant="ghost" onClick={() => setAccForm(null)}>
                 Cancel
               </Button>
-              <Button onClick={submitAccount}>Save</Button>
+              <Button type="submit" disabled={!accValid}>
+                Save
+              </Button>
             </>
           }
         >
@@ -972,36 +1059,37 @@ export function BalancePage() {
               placeholder="Monobank card"
             />
           </Field>
-          <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink-2">Icon</span>
+          <FieldSet label="Icon">
             <OptionChips
-                label="Icon"
-                size="lg"
-                options={ICON_CHOICES.map((icon) => ({ value: icon, label: icon }))}
-                value={accForm.icon}
-                onChange={(icon) => setAccForm({ ...accForm, icon })}
-              />
-          </div>
-          <Field label="Currency">
+              label="Icon"
+              size="lg"
+              options={ICON_CHOICES.map((icon) => ({ value: icon, label: icon }))}
+              value={accForm.icon}
+              onChange={(icon) => setAccForm({ ...accForm, icon })}
+            />
+          </FieldSet>
+          <FieldSet label="Currency">
             <SegmentedControl
+              label="Currency"
               options={CURRENCIES.map((c) => ({ value: c, label: c }))}
               value={accForm.currency}
               onChange={(v) => setAccForm({ ...accForm, currency: v })}
             />
-          </Field>
+          </FieldSet>
           <Field
             label="Opening balance"
             hint="What the account held when you started tracking — transactions take it from there"
           >
             <TextInput
               inputMode="decimal"
+              prefix={CURRENCY_SYMBOL[accForm.currency]}
               value={accForm.openingBalance}
               onChange={(e) => setAccForm({ ...accForm, openingBalance: e.target.value })}
               placeholder="0"
             />
           </Field>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[15px] font-medium text-ink-1">Savings goal</span>
+            <span className="body-strong">Savings goal</span>
             <Switch
               checked={accForm.goalEnabled}
               onChange={(v) => setAccForm({ ...accForm, goalEnabled: v })}
@@ -1013,6 +1101,7 @@ export function BalancePage() {
               <Field label="Target amount">
                 <TextInput
                   inputMode="decimal"
+                  prefix={CURRENCY_SYMBOL[accForm.currency]}
                   value={accForm.target}
                   onChange={(e) => setAccForm({ ...accForm, target: e.target.value })}
                   placeholder="50 000"
@@ -1027,7 +1116,6 @@ export function BalancePage() {
               </Field>
             </>
           )}
-          {accError && <p className="text-sm text-expense">{accError}</p>}
           {accForm.id && (
             <div className="flex gap-2">
               <Button
@@ -1036,7 +1124,6 @@ export function BalancePage() {
                 onClick={() => {
                   setMoveId(accForm.id);
                   setMoveAmount("");
-                  setMoveError(null);
                   setAccForm(null);
                 }}
               >
@@ -1058,13 +1145,17 @@ export function BalancePage() {
       <Sheet
         open={moveAccount != null}
         onClose={() => setMoveId(null)}
+        onSubmit={submitMove}
+        problem={moveProblem}
         title={`Reconcile ${moveAccount?.name ?? ""}`}
         footer={
           <>
             <Button variant="ghost" onClick={() => setMoveId(null)}>
               Cancel
             </Button>
-            <Button onClick={submitMove}>Adjust</Button>
+            <Button type="submit" disabled={!moveValid}>
+              Adjust
+            </Button>
           </>
         }
       >
@@ -1086,12 +1177,12 @@ export function BalancePage() {
         >
           <TextInput
             inputMode="decimal"
+            prefix={moveAccount ? CURRENCY_SYMBOL[moveAccount.currency] : undefined}
             value={moveAmount}
             onChange={(e) => setMoveAmount(e.target.value)}
             placeholder={moveAccount ? String(Math.round(moveCurrent)) : "0"}
           />
         </Field>
-        {moveError && <p className="text-sm text-expense">{moveError}</p>}
       </Sheet>
 
       {/* investment sheet */}
@@ -1099,13 +1190,17 @@ export function BalancePage() {
         <Sheet
           open
           onClose={() => setInvForm(null)}
+          onSubmit={submitInvestment}
+          problem={invProblem}
           title={invForm.id ? "Edit investment" : "New investment"}
           footer={
             <>
               <Button variant="ghost" onClick={() => setInvForm(null)}>
                 Cancel
               </Button>
-              <Button onClick={submitInvestment}>Save</Button>
+              <Button type="submit" disabled={!invValid}>
+                Save
+              </Button>
             </>
           }
         >
@@ -1116,16 +1211,18 @@ export function BalancePage() {
               placeholder="Government bonds"
             />
           </Field>
-          <Field label="Currency">
+          <FieldSet label="Currency">
             <SegmentedControl
+              label="Currency"
               options={CURRENCIES.map((c) => ({ value: c, label: c }))}
               value={invForm.currency}
               onChange={(v) => setInvForm({ ...invForm, currency: v })}
             />
-          </Field>
+          </FieldSet>
           <Field label="Principal">
             <TextInput
               inputMode="decimal"
+              prefix={CURRENCY_SYMBOL[invForm.currency]}
               value={invForm.principal}
               onChange={(e) => setInvForm({ ...invForm, principal: e.target.value })}
               placeholder="50 000"
@@ -1139,20 +1236,34 @@ export function BalancePage() {
               placeholder="15.3"
             />
           </Field>
-          <Field label="Start date">
-            <TextInput
-              type="date"
-              value={invForm.startDate}
-              onChange={(e) => setInvForm({ ...invForm, startDate: e.target.value })}
-            />
-          </Field>
-          <Field label="Interest type">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Start date">
+              <TextInput
+                type="date"
+                value={invForm.startDate}
+                onChange={(e) => setInvForm({ ...invForm, startDate: e.target.value })}
+              />
+            </Field>
+            <Field
+              label="Matures"
+              hint="optional · leave empty for an open-ended holding"
+            >
+              <TextInput
+                type="date"
+                value={invForm.endDate}
+                min={invForm.startDate || undefined}
+                onChange={(e) => setInvForm({ ...invForm, endDate: e.target.value })}
+              />
+            </Field>
+          </div>
+          <FieldSet label="Interest type">
             <SegmentedControl
+              label="Interest type"
               options={COMPOUNDING_OPTIONS}
               value={invForm.compounding}
               onChange={(v) => setInvForm({ ...invForm, compounding: v })}
             />
-          </Field>
+          </FieldSet>
           {invForm.compounding === "reinvest" && (
             <Field label="Compounding frequency">
               <Select
@@ -1172,6 +1283,7 @@ export function BalancePage() {
           <Field label="Monthly top-up" hint="optional">
             <TextInput
               inputMode="decimal"
+              prefix={CURRENCY_SYMBOL[invForm.currency]}
               value={invForm.contribution}
               onChange={(e) => setInvForm({ ...invForm, contribution: e.target.value })}
               placeholder="0"
@@ -1184,7 +1296,6 @@ export function BalancePage() {
               placeholder="Optional"
             />
           </Field>
-          {invError && <p className="text-sm text-expense">{invError}</p>}
           {invForm.id && (
             <Button
               variant="danger"
@@ -1202,13 +1313,17 @@ export function BalancePage() {
         <Sheet
           open
           onClose={() => setDebtForm(null)}
+          onSubmit={submitDebt}
+          problem={debtProblem}
           title={debtForm.id ? "Edit debt" : "New debt"}
           footer={
             <>
               <Button variant="ghost" onClick={() => setDebtForm(null)}>
                 Cancel
               </Button>
-              <Button onClick={submitDebt}>Save</Button>
+              <Button type="submit" disabled={!debtValid}>
+                Save
+              </Button>
             </>
           }
         >
@@ -1219,26 +1334,29 @@ export function BalancePage() {
               placeholder="Apartment mortgage"
             />
           </Field>
-          <Field label="Type">
+          <FieldSet label="Type">
             <SegmentedControl
+              label="Type of debt"
               options={DEBT_KIND_OPTIONS}
               value={debtForm.kind}
               onChange={(v) => setDebtForm({ ...debtForm, kind: v })}
             />
-          </Field>
-          <Field label="Currency">
+          </FieldSet>
+          <FieldSet label="Currency">
             <SegmentedControl
+              label="Currency"
               options={CURRENCIES.map((c) => ({ value: c, label: c }))}
               value={debtForm.currency}
               onChange={(v) => setDebtForm({ ...debtForm, currency: v })}
             />
-          </Field>
+          </FieldSet>
           <Field
             label="Outstanding balance"
             hint="What you still owe today — this is what lowers your net worth"
           >
             <TextInput
               inputMode="decimal"
+              prefix={CURRENCY_SYMBOL[debtForm.currency]}
               value={debtForm.balance}
               onChange={(e) => setDebtForm({ ...debtForm, balance: e.target.value })}
               placeholder="850 000"
@@ -1247,6 +1365,7 @@ export function BalancePage() {
           <Field label="Original amount" hint="optional · shows a payoff progress bar">
             <TextInput
               inputMode="decimal"
+              prefix={CURRENCY_SYMBOL[debtForm.currency]}
               value={debtForm.principal}
               onChange={(e) => setDebtForm({ ...debtForm, principal: e.target.value })}
               placeholder="1 000 000"
@@ -1264,6 +1383,7 @@ export function BalancePage() {
             <Field label="Monthly payment" hint="optional">
               <TextInput
                 inputMode="decimal"
+                prefix={CURRENCY_SYMBOL[debtForm.currency]}
                 value={debtForm.monthlyPayment}
                 onChange={(e) => setDebtForm({ ...debtForm, monthlyPayment: e.target.value })}
                 placeholder="15 000"
@@ -1277,7 +1397,6 @@ export function BalancePage() {
               placeholder="Optional"
             />
           </Field>
-          {debtError && <p className="text-sm text-expense">{debtError}</p>}
           {debtForm.id && (
             <Button
               variant="danger"
@@ -1295,21 +1414,21 @@ export function BalancePage() {
         onClose={() => setAccDeleteId(null)}
         onConfirm={confirmDeleteAccount}
         title="Delete this account?"
-        message={`“${deletingAccount?.name ?? ""}” will be removed permanently. This cannot be undone.`}
+        message={`“${deletingAccount?.name ?? ""}” will be removed.${accountImpact}`}
       />
       <ConfirmDialog
         open={invDeleteId !== null}
         onClose={() => setInvDeleteId(null)}
         onConfirm={confirmDeleteInvestment}
         title="Delete this investment?"
-        message={`“${deletingInvestment?.name ?? ""}” will be removed permanently. This cannot be undone.`}
+        message={`“${deletingInvestment?.name ?? ""}” will be removed from your balance sheet.`}
       />
       <ConfirmDialog
         open={debtDeleteId !== null}
         onClose={() => setDebtDeleteId(null)}
         onConfirm={confirmDeleteDebt}
         title="Delete this debt?"
-        message={`“${deletingDebt?.name ?? ""}” will be removed permanently. This cannot be undone.`}
+        message={`“${deletingDebt?.name ?? ""}” will be removed and stop lowering your net worth.`}
       />
     </>
   );

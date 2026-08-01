@@ -144,6 +144,13 @@ export interface Investment {
   /** annual nominal rate, percent (e.g. 14 for 14%) */
   annualRatePct: number;
   startDate: string; // yyyy-mm-dd
+  /**
+   * Maturity, when the position stops earning: a term deposit pays out on its
+   * end date and the money stands still from then on. Optional — an open-ended
+   * holding (an index fund, a rolling account) simply never has one, and keeps
+   * compounding for as long as the projection runs.
+   */
+  endDate?: string; // yyyy-mm-dd
   /** reinvest = compound interest; payout = interest paid out (simple) */
   compounding: Compounding;
   compoundingFreq: CompoundingFreq;

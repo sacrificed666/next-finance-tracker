@@ -394,6 +394,12 @@ function isInvestment(v: unknown): v is Investment {
     v.annualRatePct <= 200 &&
     typeof v.startDate === "string" &&
     /^\d{4}-\d{2}-\d{2}$/.test(v.startDate) &&
+    // maturity is optional, but when present it has to come after the start —
+    // a position that ended before it began would freeze at its principal
+    (v.endDate === undefined ||
+      (typeof v.endDate === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(v.endDate) &&
+        v.endDate >= v.startDate)) &&
     (v.compounding === "reinvest" || v.compounding === "payout") &&
     (v.compoundingFreq === "monthly" ||
       v.compoundingFreq === "quarterly" ||
