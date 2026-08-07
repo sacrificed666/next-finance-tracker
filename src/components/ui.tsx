@@ -227,11 +227,15 @@ export function Button({
     primary:
       "btn-gradient shadow-[0_2px_10px_rgba(4,20,32,0.18)] hover:-translate-y-px hover:brightness-[1.07] active:translate-y-0 active:scale-[0.97] disabled:opacity-40 disabled:hover:translate-y-0",
     ghost:
-      "border border-hairline bg-ghost text-ink-1 shadow-[inset_0_1px_0_var(--card-highlight)] hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-fill-hover hover:text-ink-1 active:scale-[0.97] disabled:opacity-40",
+      "glass-el border border-hairline text-ink-1 hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-fill-hover hover:text-ink-1 active:scale-[0.97] disabled:opacity-40",
+    // danger and plain were the two variants left as flat fills while primary
+    // and ghost carried the app's material — so a Delete button beside a Cancel
+    // button looked like it came from a different toolkit. Same edge, same
+    // under-shadow, their own colour.
     danger:
-      "border border-expense/25 bg-expense/12 text-expense hover:bg-expense/20 active:scale-[0.97] disabled:opacity-40",
+      "border border-expense/25 bg-expense/12 text-expense shadow-[inset_0_1px_0_color-mix(in_oklab,var(--rim-light)_35%,transparent),inset_0_-1px_0_var(--under-edge)] hover:bg-expense/20 active:scale-[0.97] disabled:opacity-40",
     plain:
-      "border border-transparent text-accent underline-offset-4 hover:border-hairline hover:bg-accent-soft active:scale-[0.97] disabled:opacity-40",
+      "border border-transparent text-accent underline-offset-4 hover:border-hairline hover:bg-accent-soft hover:shadow-[inset_0_1px_0_color-mix(in_oklab,var(--rim-light)_30%,transparent)] active:scale-[0.97] disabled:opacity-40",
   };
   // swallow an accidental repeat click on the same action (double-tap, jitter)
   // so a save/add/delete can't fire twice — actions are discrete, never held
@@ -248,7 +252,10 @@ export function Button({
   // at 40 and read as a slightly different system. `sm` is the deliberate
   // exception for actions that live inside a row.
   const sizing =
-    size === "sm" ? "min-h-9 px-3 text-xs" : "min-h-11 px-4.5 py-2.5 text-sm";
+    // 40px, matching the small field and the small segmented track. The three
+    // "sm" sizes were 36, 40 and 30px, so any row that mixed them — the ledger
+    // search bar mixes all three — stepped up and down across its own baseline.
+    size === "sm" ? "min-h-10 px-3 text-xs" : "min-h-11 px-4.5 py-2.5 text-sm";
   return (
     <button
       type="button"
@@ -348,7 +355,7 @@ export function SegmentedControl<T extends string>({
       // column to the widest label, which is also what keeps the thumb's
       // 100%/n geometry honest.
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
-      className={`relative grid rounded-full border border-hairline bg-ghost ${
+      className={`glass-well relative grid rounded-full border border-hairline ${
         small ? "p-0.5" : "p-1"
       } ${className}`}
     >
@@ -356,7 +363,7 @@ export function SegmentedControl<T extends string>({
           the movement is what makes the choice legible */}
       <span
         aria-hidden
-        className={`absolute rounded-full bg-(--card-strong) shadow-[inset_0_1px_0_var(--card-highlight),0_1px_4px_rgba(10,12,20,0.14)] transition-[left,width] duration-300 ease-[cubic-bezier(0.22,0.68,0.24,1)] ${
+        className={`absolute rounded-full bg-(--card-strong) shadow-[inset_0_1px_0_color-mix(in_oklab,var(--rim-light)_70%,transparent),inset_0_-1px_0_var(--under-edge),0_2px_6px_var(--rim-shade)] transition-[left,width] duration-300 ease-[cubic-bezier(0.22,0.68,0.24,1)] ${
           small ? "inset-y-0.5" : "inset-y-1"
         }`}
         style={{
@@ -379,7 +386,7 @@ export function SegmentedControl<T extends string>({
             // md matches the 44px field height, so a segmented control and the
             // input above it read as one row of the same system
             className={`btn-ring relative z-1 min-w-0 truncate rounded-full font-semibold outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-accent-soft ${
-              small ? "px-2.5 py-1.5 text-xs" : "px-2.5 py-2.5 text-[13px] sm:px-3"
+              small ? "min-h-9 px-2.5 text-xs" : "px-2.5 py-2.5 text-[13px] sm:px-3"
             } ${active ? "text-ink-1" : "text-ink-3 hover:text-ink-1"}`}
           >
             {opt.label}
@@ -448,7 +455,7 @@ export function OptionChips<T extends string>({
                 ? "border-accent-fill bg-accent-fill text-on-accent shadow-[0_2px_10px_var(--glow-a)]"
                 : // brand colour marks the chosen chip; hovering an unchosen one
                   // only lifts its surface, so the two never look alike
-                  "border-hairline bg-ghost hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-fill-hover"
+                  "glass-el border-hairline hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-fill-hover"
             }`}
           >
             {opt.label}
@@ -511,7 +518,9 @@ export function Switch({
       // The 28×48 track is the right drawing and the wrong target, so the
       // pseudo-element takes it to 44×64 without moving a pixel of it.
       className={`btn-ring relative h-7 w-12 shrink-0 rounded-full outline-none transition-colors duration-200 before:absolute before:-inset-2 before:content-[''] focus-visible:ring-4 focus-visible:ring-accent-soft ${
-        checked ? "bg-accent-fill" : "bg-ghost-2"
+        checked
+          ? "bg-accent-fill shadow-[inset_0_1px_2px_var(--rim-shade)]"
+          : "glass-well bg-ghost-2"
       }`}
     >
       <span
@@ -584,9 +593,9 @@ export function FieldSet({
  * and rendered at neither: it stayed 44px tall, silently.
  */
 const controlBase =
-  "w-full rounded-field border border-hairline bg-ghost px-3.5 text-ink-1 outline-none transition-[background-color,border-color,box-shadow] duration-150 " +
+  "glass-el w-full rounded-field border border-hairline px-3.5 text-ink-1 outline-none transition-[background-color,border-color,box-shadow] duration-150 " +
   "placeholder:text-ink-3 hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] " +
-  "focus:border-[color-mix(in_oklab,var(--accent)_45%,var(--hairline))] focus:bg-transparent focus:ring-4 focus:ring-accent-soft " +
+  "focus:border-[color-mix(in_oklab,var(--accent)_45%,var(--hairline))] focus:ring-4 focus:ring-accent-soft " +
   "disabled:cursor-not-allowed disabled:opacity-50";
 
 // 16px on phones is deliberate in both sizes: iOS Safari zooms the whole page
@@ -769,7 +778,7 @@ export function ProgressMeter({
       aria-valuenow={Math.round(clamped * 100)}
       aria-valuemin={0}
       aria-valuemax={100}
-      className="block h-1.5 w-full overflow-hidden rounded-full bg-ghost-2"
+      className="glass-well block h-1.5 w-full overflow-hidden rounded-full"
     >
       <span
         className={`block h-full rounded-full ${color} transition-[width] duration-300`}

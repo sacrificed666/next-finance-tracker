@@ -17,6 +17,7 @@ this month's income / expenses / net flow / savings rate, a 12-month cash-flow
 chart, spending by category with budget meters, net-worth composition, currency
 allocation, a 5-year outlook and a quick-add form.
 
+
 ### 💸 Expenses
 A month-by-month ledger with recurring payments, subscriptions and budgets.
 
@@ -56,10 +57,31 @@ Accounts and investments as one balance sheet, every row in ₴ / $ / € at onc
   Transfers are excluded from income and expense totals.
 - **Reconciliation**: enter the balance your bank shows and the difference is
   booked as a transaction, so every change keeps a paper trail.
-- **Investments** with compound interest (reinvested at a chosen frequency) or
-  simple interest (paid out), optional monthly top-ups, and a one-year forecast
-  per position. Give a position a **maturity** and it stops earning on that
-  date — a two-year deposit no longer compounds its way through the forecast.
+- **Investments come in kinds** — deposit, bonds, REIT, stocks, crypto, other —
+  and the kind decides how the position is *valued*, not just which icon it
+  wears:
+  - **Deposit and bonds** accrue: compound interest (reinvested at a chosen
+    frequency) or simple interest (paid out), optional monthly top-ups, and a
+    one-year forecast per position. Give one a **maturity** and it stops earning
+    on that date — a two-year deposit no longer compounds through the forecast.
+  - **REIT, stocks and other** are worth what you say they are worth, with an
+    optional **expected return** on top.
+  - **Crypto** holds a **quantity of a coin**, and the price comes from
+    CoinGecko's public API — the ten largest coins, quoted directly in ₴ / $ / €.
+    One button re-prices every holding; nothing is fetched per render, because
+    a figure that silently changed while you read it could not be reproduced.
+
+  The expected return on a market holding is an assumption, so it is kept
+  strictly apart from what the holding is *worth*: today's value is always the
+  last figure you had — entered, or fetched — and the assumption only ever
+  compounds over time you have not lived through yet. Leave it blank and the
+  position projects flat.
+
+### 🧭 Net worth, two ways
+The dashboard breaks net worth down **by holding** (where the money sits) or
+**by type** (what it is in — cash, deposits, REIT, crypto…). The second is the
+one that answers "am I too concentrated in one asset class"; each type keeps its
+own colour whether or not the types above it happen to be present.
 - **Deleting an account resolves what pointed at it** instead of leaving
   orphans: entries keep their amount and lose only the account, and a transfer
   becomes plain income or spending on the account that survives, so no balance
@@ -223,6 +245,35 @@ page, bright on a dark one, always ≥ 4.5:1), `--accent-fill` is *surface* and
 never changes theme, `--on-accent` is what goes on it. `--income` is `--accent`:
 one hue, one meaning. `--expense` and `--warning` are reserved status colours and
 never double as a chart series.
+
+**The glass is measured, not styled.** Panes sit at 66% opacity in light and 62%
+in dark — down from 86% and 92% — and that floor is not taste. It is where every
+ink still clears 4.5:1 through *both* panes it can end up behind: the card, and
+then a control sitting on that card, over every backdrop extreme and under the
+specular. Getting there moved four things, each because a measurement said so:
+
+- The **backdrop** grew from two smooth gradients to three wash fields, a ruled
+  grid, two drifting orbs and a frost grain. Translucency needs something to
+  reveal — over a flat page a 62% pane looks exactly like a 100% one, and a
+  straight line seen through frosted glass is what the eye reads as glass.
+- The **dark sheen** dropped to 4%. A white specular is precisely what lightens a
+  dark pane out of contrast range; it was the binding constraint, not the opacity.
+- **`--ink-3` and the light `--accent`** each stepped once. Both were sitting
+  exactly on the WCAG minimum with nothing to give.
+- Controls got the same material, but as a **1px lit edge rather than a gradient
+  wash** — the wash cost 1.6:1 of contrast where it overlapped the card's own
+  sheen. Hover brightens that edge; only controls carrying strong ink also step
+  their fill.
+
+Each pane carries a masked gradient rim, so the edge facing the light catches it
+and the far edge falls into shadow, plus an under-edge that gives it thickness.
+`prefers-reduced-transparency` turns the whole thing solid.
+
+Content cards deliberately carry **no `backdrop-filter`**: behind them is a
+smooth gradient, and blurring a smooth gradient returns very nearly the same
+gradient — fourteen full-screen filters a frame for a difference you cannot see.
+The chrome and the overlays keep theirs, where the page really does scroll past
+underneath.
 
 Everything else is a scale rather than a decision per screen:
 

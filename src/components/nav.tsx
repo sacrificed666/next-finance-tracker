@@ -25,18 +25,81 @@ interface NavItem {
   icon: IconName;
 }
 
-const NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", short: "Home", icon: "home" },
-  { href: "/transactions", label: "Expenses", short: "Spend", icon: "swapArrows" },
-  { href: "/income", label: "Income", short: "Income", icon: "arrowDown" },
-  { href: "/balance", label: "Balance", short: "Balance", icon: "wallet" },
-  { href: "/forecast", label: "Forecast", short: "Plan", icon: "bars" },
-  { href: "/settings", label: "Settings", short: "More", icon: "gear" },
+/**
+ * Six flat items said every page was a peer of every other. They are not:
+ * four are places you keep money facts, one is the summary of them, and
+ * Settings is machinery. Grouping says which is which before you read a word,
+ * and pulling Settings out of the list leaves the tab bar five comfortable
+ * targets instead of six cramped ones.
+ */
+const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
+  {
+    title: "Overview",
+    items: [{ href: "/", label: "Dashboard", short: "Home", icon: "home" }],
+  },
+  {
+    title: "Money",
+    items: [
+      { href: "/transactions", label: "Expenses", short: "Spend", icon: "swapArrows" },
+      { href: "/income", label: "Income", short: "Income", icon: "arrowDown" },
+    ],
+  },
+  {
+    title: "Wealth",
+    items: [
+      { href: "/balance", label: "Balance", short: "Balance", icon: "wallet" },
+      { href: "/forecast", label: "Forecast", short: "Plan", icon: "bars" },
+    ],
+  },
 ];
 
-/** floating glass command bar — the app's only chrome on desktop */
-/** shows when a write is in flight or the last write to Postgres failed */
-/** a quiet status dot: pulsing while saving, red on failure, hidden when idle */
+const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+
+const SETTINGS: NavItem = {
+  href: "/settings",
+  label: "Settings",
+  short: "More",
+  icon: "gear",
+};
+
+/**
+ * One row, one look, wherever it is. The active state used to be `btn-gradient`
+ * — the very same bright fill as the app's primary action button — so "you are
+ * here" and "press me" were the same object in two places. A destination is not
+ * an action: it gets the glass the rest of the chrome is made of, ink at full
+ * strength, and a marker down its leading edge.
+ */
+function NavRow({ item, active }: { item: NavItem; active: boolean }) {
+  return (
+    <Link
+      href={item.href}
+      // the active item was marked in colour alone; `aria-current` is what says
+      // "you are here" to anything that cannot see it
+      aria-current={active ? "page" : undefined}
+      className={`relative flex items-center gap-3 rounded-field px-3.5 py-2.5 text-sm font-semibold transition-[background-color,color] duration-150 ${
+        active
+          ? "glass-el text-ink-1"
+          : "text-ink-2 hover:bg-fill-hover hover:text-ink-1"
+      }`}
+    >
+      {active && (
+        <span
+          aria-hidden
+          className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-accent-fill"
+        />
+      )}
+      <Icon
+        name={item.icon}
+        size={20}
+        strokeWidth={active ? 2.2 : 1.8}
+        className={active ? "text-accent" : undefined}
+      />
+      <span className="truncate">{item.label}</span>
+    </Link>
+  );
+}
+
+/** a quiet status chip: pulsing while saving, red on failure, hidden when idle */
 function SyncDot({ sync }: { sync: SyncStatus }) {
   if (sync === "idle") return null;
   // "conflict" is louder than a failed write: the data on the server is newer
@@ -104,11 +167,12 @@ function ThemeChoice({ compact = false }: { compact?: boolean }) {
       onKeyDown={onKeyDown}
       role="radiogroup"
       aria-label="Theme"
-      className={`relative flex shrink-0 rounded-full bg-ghost p-1 ${compact ? "" : "w-full"}`}
+      // the same groove-and-thumb the app's other single choices are made of
+      className={`glass-well relative flex shrink-0 rounded-full p-1 ${compact ? "" : "w-full"}`}
     >
       <span
         aria-hidden
-        className="absolute inset-y-1 rounded-full bg-(--card-strong) shadow-[inset_0_1px_0_var(--card-highlight),0_1px_4px_rgba(4,12,24,0.14)] transition-[left] duration-300 ease-[cubic-bezier(0.22,0.68,0.24,1)]"
+        className="absolute inset-y-1 rounded-full bg-(--card-strong) shadow-[inset_0_1px_0_color-mix(in_oklab,var(--rim-light)_70%,transparent),inset_0_-1px_0_var(--under-edge),0_2px_6px_var(--rim-shade)] transition-[left] duration-300 ease-[cubic-bezier(0.22,0.68,0.24,1)]"
         style={{ width: "calc((100% - 0.5rem) / 3)", left: `calc(0.25rem + ${index} * (100% - 0.5rem) / 3)` }}
       />
       {THEME_CHOICES.map((choice) => {
@@ -136,7 +200,14 @@ function ThemeChoice({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** gradient ₴ tile + wordmark + live net worth; the app's identity block */
+/**
+ * Gradient ₴ tile, wordmark, and the live net worth as one quiet line under it.
+ *
+ * It briefly had a panel of its own in the rail — a bordered block with the
+ * figure, a rule, and a cash/invested split. It looked like a card that had lost
+ * its page. The number is chrome here, not content: the dashboard hero says it
+ * properly, and all the rail owes is a glance.
+ */
 function Brand() {
   const { state, hydrated } = useStore();
   const worth = netWorth(state, todayISO());
@@ -170,34 +241,29 @@ export function Sidebar() {
   const { sync } = useStore();
   return (
     <aside className="fixed inset-y-4 left-4 z-40 hidden w-56 md:flex">
-      <div className="glass-strong flex h-full w-full flex-col rounded-card p-3">
+      {/* the rail scrolls on its own when a short window cannot hold it, rather
+          than clipping the theme control off the bottom edge */}
+      <div className="glass-strong flex h-full w-full flex-col overflow-y-auto rounded-card p-3">
         <Brand />
 
-        <nav className="mt-4 flex flex-1 flex-col gap-1">
-          {NAV.map((item) => {
-            const active = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                // the active item was marked in colour alone; `aria-current` is
-                // what says "you are here" to anything that cannot see it
-                aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-field px-3.5 py-2.5 text-sm font-semibold transition-all duration-150 ${
-                  active
-                    ? "btn-gradient"
-                    : "text-ink-2 hover:bg-fill-hover hover:text-ink-1"
-                }`}
-              >
-                <Icon name={item.icon} size={20} strokeWidth={active ? 2.2 : 1.8} />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+        <nav className="mt-4 flex flex-1 flex-col gap-4">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.title}>
+              <p className="card-title px-3.5 pb-1.5">{group.title}</p>
+              <div className="flex flex-col gap-0.5">
+                {group.items.map((item) => (
+                  <NavRow key={item.href} item={item} active={pathname === item.href} />
+                ))}
+              </div>
+            </div>
+          ))}
         </nav>
 
-        <div className="mt-3 space-y-2 border-t border-hairline pt-3">
+        {/* Settings sits with the machinery, not with the money pages, and the
+            sync status sits next to the thing it is the status of */}
+        <div className="mt-4 space-y-2 border-t border-hairline pt-3">
           <SyncDot sync={sync} />
+          <NavRow item={SETTINGS} active={pathname === SETTINGS.href} />
           <ThemeChoice />
         </div>
       </div>
@@ -205,15 +271,27 @@ export function Sidebar() {
   );
 }
 
-/** mobile chrome: a slim top bar (brand + theme); nav lives in the TabBar */
+/** mobile chrome: a slim top bar (brand + settings + theme); nav is the TabBar */
 export function MobileTopBar() {
   const { sync } = useStore();
+  const pathname = usePathname();
+  const settingsActive = pathname === SETTINGS.href;
   return (
     <header className="sticky top-4 z-40 mb-6 md:hidden">
       <div className="glass-strong flex items-center gap-2 rounded-full py-1.5 pl-2 pr-2.5">
         <Brand />
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <SyncDot sync={sync} />
+          {/* the sixth tab, moved up here: it left the bar five comfortable
+              targets, and settings is not something you reach for mid-task */}
+          <Link
+            href={SETTINGS.href}
+            aria-label={SETTINGS.label}
+            aria-current={settingsActive ? "page" : undefined}
+            className={`icon-btn size-8 shrink-0 ${settingsActive ? "text-accent" : ""}`}
+          >
+            <Icon name={SETTINGS.icon} size={17} strokeWidth={settingsActive ? 2.2 : 1.8} />
+          </Link>
           <ThemeChoice compact />
         </div>
       </div>
@@ -237,12 +315,26 @@ export function TabBar() {
             // that are allowed to shrink, so the bar can never be wider than the
             // phone no matter what the labels say. `justify-around` distributes
             // free space and simply overflows when there is none.
-            className={`flex min-w-0 flex-1 basis-0 flex-col items-center gap-0.5 rounded-full px-1 py-1 transition-colors duration-150 ${
-              active ? "text-accent [text-shadow:0_0_12px_var(--glow-a)]" : "text-ink-3"
+            className={`relative flex min-w-0 flex-1 basis-0 flex-col items-center gap-0.5 rounded-full px-1 py-1 transition-colors duration-150 ${
+              active ? "text-accent" : "text-ink-3"
             }`}
           >
-            <Icon name={item.icon} size={20} strokeWidth={active ? 2.2 : 1.8} />
-            <span className="w-full truncate text-center text-[11px] font-semibold">
+            {/* a lit pill behind the active tab, not a text-shadow glow on it:
+                the glow read as a rendering artefact at 11px, and it left the
+                target itself looking exactly like its four neighbours */}
+            {active && (
+              <span
+                aria-hidden
+                className="absolute inset-0 rounded-full bg-accent-soft"
+              />
+            )}
+            <Icon
+              name={item.icon}
+              size={20}
+              strokeWidth={active ? 2.2 : 1.8}
+              className="relative"
+            />
+            <span className="relative w-full truncate text-center text-[11px] font-semibold">
               {item.short}
             </span>
           </Link>

@@ -18,7 +18,7 @@ import {
 import { Icon } from "@/components/icons";
 import { CURRENCIES, CURRENCY_SYMBOL } from "@/lib/constants";
 import { currentMonth, formatMonthCompact, formatMonthShort, todayISO } from "@/lib/date";
-import { averageMonthlyNet, buildProjection } from "@/lib/finmath";
+import { averageMonthlyNet, buildProjection, holdings } from "@/lib/finmath";
 import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
 import { useStore } from "@/lib/store";
 import type { Currency } from "@/lib/types";
@@ -28,8 +28,8 @@ const num = (s: string) => {
   return Number.isFinite(v) && v > 0 ? v : 0;
 };
 
-// Long-run average CPI per currency — the hryvnia erodes far faster than the
-// dollar or euro, so "today's money" is discounted at the *view* currency's rate.
+/** long-run average CPI per currency — the hryvnia erodes far faster than the
+ *  dollar or the euro */
 const INFLATION_PCT: Record<Currency, number> = { UAH: 10, USD: 3, EUR: 2.5 };
 
 export function ForecastPage() {
@@ -44,7 +44,6 @@ export function ForecastPage() {
   const [view, setView] = useState<Currency>(base);
   const [returnPct, setReturnPct] = useState(0);
   const [inflationOn, setInflationOn] = useState(false);
-  const inflationPct = INFLATION_PCT[view]; // depends on the currency being shown
 
   // monthly saving entered per currency — the whole point of a multi-currency plan
   const [saveByCur, setSaveByCur] = useState<Record<Currency, string>>(() => {
@@ -64,6 +63,46 @@ export function ForecastPage() {
     (sum, c) => sum + convert(num(saveByCur[c]), c, base, settings.rates),
     0,
   );
+
+  /*
+   * Inflation weighted by the money you actually hold, not by the currency you
+   * happen to be reading in.
+   *
+   * The old version discounted everything at the *view* currency's rate, which
+   * meant flipping the display from ₴ to $ silently repriced a portfolio that
+   * had not moved: the same euro deposit lost 10%/yr on one tab and 3%/yr on the
+   * next. But this app exists precisely because its user keeps money in three
+   * currencies at once, and a hryvnia balance erodes at the hryvnia's rate no
+   * matter what units you print it in.
+   *
+   * So the rate is a weighted average over the actual composition — every
+   * account and position at its own currency's CPI, plus the monthly savings
+   * split, which is where the money is *going*. Same answer in every view.
+   */
+  const inflationMix = (() => {
+    const weight: Record<Currency, number> = { UAH: 0, USD: 0, EUR: 0 };
+    for (const h of holdings(state, today)) {
+      weight[h.currency] += Math.max(0, h.base);
+    }
+    // a year of planned saving, so an empty portfolio still weights sensibly
+    for (const c of CURRENCIES) {
+      weight[c] += convert(num(saveByCur[c]), c, base, settings.rates) * 12;
+    }
+    const total = CURRENCIES.reduce((sum, c) => sum + weight[c], 0);
+    if (total <= 0) return { pct: INFLATION_PCT[base], shares: null };
+    const pct = CURRENCIES.reduce(
+      (sum, c) => sum + (weight[c] / total) * INFLATION_PCT[c],
+      0,
+    );
+    return {
+      pct,
+      shares: CURRENCIES.filter((c) => weight[c] > 0).map((c) => ({
+        currency: c,
+        share: weight[c] / total,
+      })),
+    };
+  })();
+  const inflationPct = inflationMix.pct;
 
   /* ---------- projection (computed in base, shown in `view`) ---------- */
   // the forecast projects the wealth you are building — accounts + investments.
@@ -95,6 +134,38 @@ export function ForecastPage() {
     a: show(p.savings, i),
     b: show(p.investments, i),
   }));
+  /**
+   * The end total split three ways: what you already hold, what you will pay in
+   * between now and then, and what the returns add on top. Deposits are the
+   * monthly amount times the horizon — a figure the form above already asks
+   * for — so growth is simply the remainder, and the three always sum to the
+   * total by construction.
+   */
+  const contributionSplit = (() => {
+    const start = nowTotal;
+    // The savings fields are not the only thing you pay in: every investment
+    // can carry a monthly top-up, and counting only the former reported those
+    // deposits as though the market had produced them.
+    const investmentTopUps = state.investments.reduce(
+      (sum, inv) =>
+        sum +
+        convert(inv.monthlyContribution ?? 0, inv.currency, base, settings.rates),
+      0,
+    );
+    const perMonth = monthlySavingsBase + investmentTopUps;
+    const deposits = show(perMonth * years * 12, projection.length - 1);
+    const growth = Math.max(0, endTotal - start - deposits);
+    const total = Math.max(1e-9, start + deposits + growth);
+    return {
+      start,
+      deposits,
+      growth,
+      startPct: (start / total) * 100,
+      depositPct: (deposits / total) * 100,
+      growthPct: (growth / total) * 100,
+    };
+  })();
+
   const yearRows = projection
     .map((p, i) => ({ p, i }))
     .filter(({ i }) => i % 12 === 0);
@@ -156,6 +227,46 @@ export function ForecastPage() {
       />
 
       <div className="stagger space-y-4 sm:space-y-5">
+        {/*
+          The answer leads, the controls follow. This page opened on a form —
+          two sliders, three currency fields and a switch — and the numbers they
+          produce were below the fold. But the fields arrive prefilled from real
+          data, so there is a real answer to show before anyone touches
+          anything; "here is where you land, and here is what I assumed" reads
+          in that order, not the reverse.
+        */}
+        <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
+          <StatTile
+            label="Now"
+            value={formatMoney(nowTotal, view, { compact: true })}
+            hint="savings + investments today"
+          />
+          <StatTile
+            label={`In ${years} yr${inflationOn ? " (real)" : ""}`}
+            value={formatMoney(endTotal, view, { compact: true })}
+            spark={points.map((p) => p.a + p.b)}
+            hint={`${formatMoney(endTotal / (years * 12), view, { compact: true })} per month of the way there`}
+          />
+          <StatTile
+            className="col-span-2 md:col-span-1"
+            label="Growth"
+            value={formatMoney(diff, view, { compact: true, sign: true })}
+            tone={diff >= 0 ? "income" : "expense"}
+            // the curve of the gain itself, so the tile carries the same kind
+            // of shape as the one beside it instead of sitting flat
+            spark={points.map((p) => p.a + p.b - nowTotal)}
+            delta={
+              nowTotal > 0
+                ? {
+                    text: `${diff >= 0 ? "+" : ""}${formatPercent((diff / nowTotal) * 100)} over ${years} years`,
+                    good: diff >= 0,
+                  }
+                : undefined
+            }
+          />
+        </div>
+
+
         {/* assumptions */}
         <GlassCard title="Assumptions" subtitle="Tune the projection" icon={<Icon name="sliders" />}>
           <div className="grid gap-x-6 gap-y-5 lg:grid-cols-2">
@@ -220,9 +331,20 @@ export function ForecastPage() {
             <div className="flex items-center justify-between gap-3 lg:col-span-2">
               <div>
                 <p className="body-strong">Show in today’s money</p>
-                <p className="mt-0.5 text-xs text-ink-3">
-                  Real terms — discount {CURRENCY_SYMBOL[view]} by {formatPercent(inflationPct, 1)}/yr,
-                  its long-run inflation
+                <p className="caption mt-0.5">
+                  Real terms — {formatPercent(inflationPct, 1)}/yr, weighted across what
+                  you actually hold
+                  {inflationMix.shares && inflationMix.shares.length > 1 && (
+                    <>
+                      {": "}
+                      {inflationMix.shares
+                        .map(
+                          (sh) =>
+                            `${formatPercent(sh.share * 100, 0)} ${CURRENCY_SYMBOL[sh.currency]}`,
+                        )
+                        .join(" · ")}
+                    </>
+                  )}
                 </p>
               </div>
               <Switch
@@ -235,37 +357,6 @@ export function ForecastPage() {
         </GlassCard>
 
         {/* headline numbers */}
-        <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
-          <StatTile
-            label="Now"
-            value={formatMoney(nowTotal, view, { compact: true })}
-            hint="savings + investments today"
-          />
-          <StatTile
-            label={`In ${years} yr${inflationOn ? " (real)" : ""}`}
-            value={formatMoney(endTotal, view, { compact: true })}
-            spark={points.map((p) => p.a + p.b)}
-            hint={`${formatMoney(endTotal / (years * 12), view, { compact: true })} per month of the way there`}
-          />
-          <StatTile
-            className="col-span-2 md:col-span-1"
-            label="Growth"
-            value={formatMoney(diff, view, { compact: true, sign: true })}
-            tone={diff >= 0 ? "income" : "expense"}
-            // the curve of the gain itself, so the tile carries the same kind
-            // of shape as the one beside it instead of sitting flat
-            spark={points.map((p) => p.a + p.b - nowTotal)}
-            delta={
-              nowTotal > 0
-                ? {
-                    text: `${diff >= 0 ? "+" : ""}${formatPercent((diff / nowTotal) * 100)} over ${years} years`,
-                    good: diff >= 0,
-                  }
-                : undefined
-            }
-          />
-        </div>
-
         {isEmpty ? (
           <GlassCard>
             <EmptyState
@@ -296,6 +387,56 @@ export function ForecastPage() {
                     tickEvery === 12 ? label.slice(0, 4) : formatMonthShort(label)
                   }
                 />
+                {/*
+                  A projection that only shows a total invites the wrong lesson.
+                  Most of a ten-year curve is usually money you put in, not money
+                  the market made — and the split is what tells you whether the
+                  lever worth pulling is saving more or earning more on it. Both
+                  halves come from figures already on the page: what you start
+                  with, what you add, and what is left over.
+                */}
+                {contributionSplit.growth > 0 && (
+                  <div className="mt-4 border-t border-hairline pt-3.5">
+                    <p className="card-title">Where it comes from</p>
+                    <div
+                      className="mt-2 flex h-2 w-full gap-0.5 overflow-hidden rounded-full"
+                      role="img"
+                      aria-label="Starting balance, deposits and growth as shares of the end total"
+                    >
+                      <div
+                        className="bar-slice bg-series-1"
+                        style={{ width: `${contributionSplit.startPct}%` }}
+                      />
+                      <div
+                        className="bar-slice bg-series-2"
+                        style={{ width: `${contributionSplit.depositPct}%` }}
+                      />
+                      <div
+                        className="bar-slice bg-series-3"
+                        style={{ width: `${contributionSplit.growthPct}%` }}
+                      />
+                    </div>
+                    <ul className="mt-2.5 grid gap-x-4 gap-y-1.5 sm:grid-cols-3">
+                      {[
+                        { label: "You have now", value: contributionSplit.start, slot: 1 },
+                        { label: "You will add", value: contributionSplit.deposits, slot: 2 },
+                        { label: "It earns", value: contributionSplit.growth, slot: 3 },
+                      ].map((part) => (
+                        <li key={part.label} className="flex items-baseline gap-2 text-xs">
+                          <span
+                            aria-hidden
+                            className="size-2 shrink-0 translate-y-px rounded-sm"
+                            style={{ background: `var(--series-${part.slot})` }}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-ink-2">{part.label}</span>
+                          <span className="tnum font-semibold text-ink-1">
+                            {formatMoney(part.value, view, { compact: true })}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <p className="mt-3 text-xs text-ink-3">
                   Savings compound at {formatPercent(returnPct)}/yr; payout interest is added as
                   it is received. Investments follow their own terms.

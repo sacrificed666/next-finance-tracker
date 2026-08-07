@@ -1,4 +1,4 @@
-import { DEFAULT_STATE } from "./constants";
+import { DEFAULT_STATE, valuationOf } from "./constants";
 import type {
   AppState,
   Budget,
@@ -59,7 +59,7 @@ export function normalizeState(raw: unknown): AppState {
     rawSubscriptions,
   );
   const savings = asArray(raw.savings).filter(isSavings).map(normalizeAccount);
-  const investments = asArray(raw.investments).filter(isInvestment);
+  const investments = asArray(raw.investments).filter(isInvestment).map(normalizeInvestment);
   const budgets = asArray(raw.budgets).filter(isBudget);
   const debts = asArray(raw.debts).filter(isDebt).map(normalizeDebt);
 
@@ -333,6 +333,8 @@ function isSubscription(v: unknown): v is Subscription {
     isFiniteNumber(v.dayOfMonth) &&
     typeof v.startMonth === "string" &&
     /^\d{4}-\d{2}$/.test(v.startMonth) &&
+    (v.endMonth === undefined ||
+      (typeof v.endMonth === "string" && /^\d{4}-\d{2}$/.test(v.endMonth))) &&
     typeof v.active === "boolean"
   );
 }
@@ -363,6 +365,8 @@ function isSavings(v: unknown): v is SavingsAccount {
   );
 }
 
+const ACCOUNT_KIND_SET = new Set(["card", "cash", "savings", "wallet", "other"]);
+
 /** legacy `balance` → `openingBalance`; balances are derived from transactions now */
 function normalizeAccount(v: SavingsAccount): SavingsAccount {
   const legacy = (v as unknown as { balance?: number }).balance;
@@ -371,10 +375,13 @@ function normalizeAccount(v: SavingsAccount): SavingsAccount {
     : isFiniteNumber(legacy)
       ? legacy
       : 0;
+  // accounts predating kinds were all just "accounts"; card is the common case
+  const kind = ACCOUNT_KIND_SET.has(v.kind as string) ? v.kind : "card";
   return {
     id: v.id,
     name: v.name,
     icon: v.icon,
+    kind,
     currency: v.currency,
     openingBalance: opening,
     goal: v.goal,
@@ -407,6 +414,45 @@ function isInvestment(v: unknown): v is Investment {
     (v.monthlyContribution === undefined ||
       (isFiniteNumber(v.monthlyContribution) && v.monthlyContribution >= 0))
   );
+}
+
+const INVESTMENT_KIND_SET = new Set([
+  "deposit", "bonds", "reit", "stocks", "crypto", "other",
+]);
+
+/**
+ * Fills in what a kind implies. Backups written before kinds existed describe
+ * rate-bearing positions only, so they become deposits; a market-valued kind
+ * with no stated worth falls back to its cost basis rather than showing zero.
+ */
+function normalizeInvestment(v: Investment): Investment {
+  const kind: Investment["kind"] =
+    typeof v.kind === "string" && INVESTMENT_KIND_SET.has(v.kind) ? v.kind : "deposit";
+  const market = valuationOf(kind) === "market";
+  return {
+    ...v,
+    kind,
+    // On a market kind the rate is an assumption about the future rather than
+    // a contract, so it is kept but clamped — it only ever moves the projection.
+    annualRatePct:
+      isFiniteNumber(v.annualRatePct) && v.annualRatePct >= 0 && v.annualRatePct <= 200
+        ? v.annualRatePct
+        : 0,
+    marketValue: market
+      ? isFiniteNumber(v.marketValue) && v.marketValue >= 0
+        ? v.marketValue
+        : v.principal
+      : undefined,
+    // only a crypto position is priced from a feed; carrying a coin on anything
+    // else would let a refresh silently rewrite a holding it does not describe
+    coin: kind === "crypto" && isNonEmptyString(v.coin) ? v.coin : undefined,
+    quantity:
+      kind === "crypto" && isFiniteNumber(v.quantity) && v.quantity >= 0
+        ? v.quantity
+        : undefined,
+    pricedAt:
+      kind === "crypto" && typeof v.pricedAt === "string" ? v.pricedAt : undefined,
+  };
 }
 
 function isBudget(v: unknown): v is Budget {

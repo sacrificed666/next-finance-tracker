@@ -65,7 +65,7 @@ export async function loadState(): Promise<StateEnvelope> {
       ),
       pool.query(
         `SELECT id, name, icon, price, currency, period, account_id,
-                day_of_month, start_month, active, last_applied_month
+                day_of_month, start_month, end_month, active, last_applied_month
            FROM subscriptions ORDER BY name`,
       ),
       pool.query(
@@ -76,12 +76,13 @@ export async function loadState(): Promise<StateEnvelope> {
            FROM transactions ORDER BY date, id`,
       ),
       pool.query(
-        `SELECT id, name, icon, currency, opening_balance, goal_target,
+        `SELECT id, name, icon, kind, currency, opening_balance, goal_target,
                 to_char(goal_deadline, 'YYYY-MM-DD') AS goal_deadline
            FROM savings_accounts ORDER BY name`,
       ),
       pool.query(
-        `SELECT id, name, currency, principal, annual_rate_pct,
+        `SELECT id, name, kind, currency, principal, annual_rate_pct, market_value, coin, quantity,
+                to_char(priced_at, 'YYYY-MM-DD"T"HH24:MI:SS.MSZ') AS priced_at,
                 to_char(start_date, 'YYYY-MM-DD') AS start_date,
                 to_char(end_date, 'YYYY-MM-DD') AS end_date,
                 compounding, compounding_freq, monthly_contribution, note
@@ -145,6 +146,7 @@ export async function loadState(): Promise<StateEnvelope> {
       accountId: r.account_id ?? undefined,
       dayOfMonth: r.day_of_month,
       startMonth: r.start_month,
+      endMonth: r.end_month ?? undefined,
       active: r.active,
       lastAppliedMonth: r.last_applied_month ?? undefined,
     })),
@@ -152,6 +154,7 @@ export async function loadState(): Promise<StateEnvelope> {
       id: r.id,
       name: r.name,
       icon: r.icon,
+      kind: r.kind,
       currency: r.currency,
       openingBalance: r.opening_balance,
       goal:
@@ -162,9 +165,14 @@ export async function loadState(): Promise<StateEnvelope> {
     investments: investments.rows.map((r) => ({
       id: r.id,
       name: r.name,
+      kind: r.kind,
       currency: r.currency,
       principal: r.principal,
       annualRatePct: r.annual_rate_pct,
+      marketValue: r.market_value ?? undefined,
+      coin: r.coin ?? undefined,
+      quantity: r.quantity ?? undefined,
+      pricedAt: r.priced_at ?? undefined,
       startDate: r.start_date,
       endDate: r.end_date ?? undefined,
       compounding: r.compounding,
@@ -296,10 +304,10 @@ export async function saveState(
     await upsert(
       client,
       "subscriptions",
-      ["id", "name", "icon", "price", "currency", "period", "account_id", "day_of_month", "start_month", "active", "last_applied_month"],
+      ["id", "name", "icon", "price", "currency", "period", "account_id", "day_of_month", "start_month", "end_month", "active", "last_applied_month"],
       state.subscriptions.map((s) => [
         s.id, s.name, s.icon, s.price, s.currency, s.period, s.accountId ?? null,
-        s.dayOfMonth, s.startMonth, s.active, s.lastAppliedMonth ?? null,
+        s.dayOfMonth, s.startMonth, s.endMonth ?? null, s.active, s.lastAppliedMonth ?? null,
       ]),
     );
 
@@ -319,9 +327,9 @@ export async function saveState(
     await upsert(
       client,
       "savings_accounts",
-      ["id", "name", "icon", "currency", "opening_balance", "goal_target", "goal_deadline"],
+      ["id", "name", "icon", "kind", "currency", "opening_balance", "goal_target", "goal_deadline"],
       state.savings.map((a) => [
-        a.id, a.name, a.icon, a.currency, a.openingBalance,
+        a.id, a.name, a.icon, a.kind, a.currency, a.openingBalance,
         a.goal?.target ?? null, a.goal?.deadline ?? null,
       ]),
     );
@@ -329,9 +337,11 @@ export async function saveState(
     await upsert(
       client,
       "investments",
-      ["id", "name", "currency", "principal", "annual_rate_pct", "start_date", "end_date", "compounding", "compounding_freq", "monthly_contribution", "note"],
+      ["id", "name", "kind", "currency", "principal", "annual_rate_pct", "market_value", "coin", "quantity", "priced_at", "start_date", "end_date", "compounding", "compounding_freq", "monthly_contribution", "note"],
       state.investments.map((i) => [
-        i.id, i.name, i.currency, i.principal, i.annualRatePct, i.startDate, i.endDate ?? null,
+        i.id, i.name, i.kind, i.currency, i.principal, i.annualRatePct,
+        i.marketValue ?? null, i.coin ?? null, i.quantity ?? null, i.pricedAt ?? null,
+        i.startDate, i.endDate ?? null,
         i.compounding, i.compoundingFreq, i.monthlyContribution ?? null, i.note ?? null,
       ]),
     );

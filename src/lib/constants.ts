@@ -1,4 +1,97 @@
-import type { AppState, Category, Currency } from "./types";
+import type {
+  AccountKind,
+  AppState,
+  Category,
+  Currency,
+  InvestmentKind,
+  Valuation,
+} from "./types";
+
+export const ACCOUNT_KINDS: Array<{
+  value: AccountKind;
+  label: string;
+  icon: string;
+}> = [
+  { value: "card", label: "Card", icon: "💳" },
+  { value: "cash", label: "Cash", icon: "💵" },
+  { value: "savings", label: "Savings", icon: "🏦" },
+  { value: "wallet", label: "E-wallet", icon: "📲" },
+  { value: "other", label: "Other", icon: "📦" },
+];
+
+const ACCOUNT_KIND_BY_VALUE = new Map(ACCOUNT_KINDS.map((k) => [k.value, k]));
+
+export function accountKind(kind: AccountKind) {
+  return ACCOUNT_KIND_BY_VALUE.get(kind) ?? ACCOUNT_KINDS[0];
+}
+
+/**
+ * The kinds a position can be, and what each one implies. `valuation` is the
+ * load-bearing field — see the `Valuation` doc in types.ts. Ordered the way the
+ * picker shows them: the two the app can actually compute first.
+ */
+export const INVESTMENT_KINDS: Array<{
+  value: InvestmentKind;
+  label: string;
+  icon: string;
+  valuation: Valuation;
+  /** one line in the form explaining what the app will and will not do */
+  hint: string;
+}> = [
+  {
+    value: "deposit",
+    label: "Deposit",
+    icon: "🏦",
+    valuation: "accrual",
+    hint: "A bank deposit at a contracted rate — the app compounds it for you.",
+  },
+  {
+    value: "bonds",
+    label: "Bonds",
+    icon: "📜",
+    valuation: "accrual",
+    hint: "Government or corporate bonds held at a stated yield.",
+  },
+  {
+    value: "reit",
+    label: "REIT",
+    icon: "🏢",
+    valuation: "market",
+    hint: "Worth whatever the fund is worth today — update the value when you check it.",
+  },
+  {
+    value: "stocks",
+    label: "Stocks",
+    icon: "📈",
+    valuation: "market",
+    hint: "Shares or an index fund — enter what the position is worth today.",
+  },
+  {
+    value: "crypto",
+    label: "Crypto",
+    icon: "🪙",
+    valuation: "market",
+    hint: "Enter what your coins are worth today; nothing here predicts the next move.",
+  },
+  {
+    value: "other",
+    label: "Other",
+    icon: "📦",
+    valuation: "market",
+    hint: "Anything else you hold — enter what it is worth today.",
+  },
+];
+
+const KIND_BY_VALUE = new Map(INVESTMENT_KINDS.map((k) => [k.value, k]));
+
+export function investmentKind(kind: InvestmentKind) {
+  return KIND_BY_VALUE.get(kind) ?? INVESTMENT_KINDS[0];
+}
+
+/** whether a position's worth is computed from a rate or simply stated */
+export function valuationOf(kind: InvestmentKind): Valuation {
+  return investmentKind(kind).valuation;
+}
 
 export const CURRENCIES: Currency[] = ["UAH", "USD", "EUR"];
 

@@ -112,14 +112,30 @@ export interface Subscription {
   /** day of month the charge lands on */
   dayOfMonth: number;
   startMonth: string; // yyyy-mm
+  /**
+   * Last month to charge for, inclusive. A subscription is rarely forever — a
+   * year of hosting, a course that ends in June — and switching it off by hand
+   * on the right month is a reminder nobody keeps. Empty means open-ended.
+   */
+  endMonth?: string; // yyyy-mm inclusive
   active: boolean;
   lastAppliedMonth?: string;
 }
+
+/**
+ * What sort of place the money sits in. Unlike `InvestmentKind` this changes no
+ * arithmetic — a card and a jar of cash are both spendable today. It exists so
+ * the balance sheet can say *where* the cash is: "Accounts: 27 510" answers
+ * nothing you cannot already see, while "card 18 200, cash 4 300, savings 5 010"
+ * is the shape of your liquidity.
+ */
+export type AccountKind = "card" | "cash" | "savings" | "wallet" | "other";
 
 export interface SavingsAccount {
   id: string;
   name: string;
   icon: string;
+  kind: AccountKind;
   currency: Currency;
   /**
    * What the account held when you started tracking it. The balance shown in
@@ -136,13 +152,61 @@ export interface SavingsAccount {
 export type Compounding = "reinvest" | "payout";
 export type CompoundingFreq = "monthly" | "quarterly" | "annually";
 
+/**
+ * What sort of thing the position is. This is not decoration: it decides how
+ * the position is *valued*, which is the difference between a figure the app
+ * can compute and one only you can know.
+ */
+export type InvestmentKind =
+  | "deposit"
+  | "bonds"
+  | "reit"
+  | "stocks"
+  | "crypto"
+  | "other";
+
+/**
+ * How a position's worth is determined — derived from its kind, never stored
+ * separately, so the two can't disagree.
+ *
+ * `accrual`: a contract pays a stated rate, so the value follows from the
+ * principal, the rate and the time elapsed. Deposits and bonds.
+ *
+ * `market`: worth whatever the market says today, which no formula here can
+ * know. The app holds the figure you last checked and does not grow it — a
+ * compound curve drawn through a crypto holding is a fabrication, not a
+ * forecast.
+ */
+export type Valuation = "accrual" | "market";
+
 export interface Investment {
   id: string;
   name: string;
+  kind: InvestmentKind;
   currency: Currency;
+  /** what you put in, in `currency` — the cost basis */
   principal: number;
-  /** annual nominal rate, percent (e.g. 14 for 14%) */
+  /**
+   * Annual rate, percent (e.g. 14 for 14%). On an accrual kind this is the
+   * contracted rate and it determines the value outright. On a market kind it
+   * is an *expected* return: optional, defaulting to 0, and applied only to
+   * dates in the future — what a REIT or an index fund is assumed to do from
+   * here, never a claim about what it is worth today.
+   */
   annualRatePct: number;
+  /**
+   * What the position is worth right now, on market-valued kinds only. You
+   * restate it when you check; nothing here moves it on its own. On a crypto
+   * holding this is `quantity * price` as of the last refresh, so it is written
+   * by the app rather than typed.
+   */
+  marketValue?: number;
+  /** CoinGecko id of the coin held, on crypto positions */
+  coin?: string;
+  /** units of `coin` held — the figure that actually stays put as the price moves */
+  quantity?: number;
+  /** ISO datetime `marketValue` was last priced from the API */
+  pricedAt?: string;
   startDate: string; // yyyy-mm-dd
   /**
    * Maturity, when the position stops earning: a term deposit pays out on its

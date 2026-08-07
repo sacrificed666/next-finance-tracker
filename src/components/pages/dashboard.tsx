@@ -7,10 +7,7 @@ import {
   Donut,
   MonthlyColumns,
   PeriodTabs,
-  Sparkline,
-  StackedArea,
   StatTile,
-  type AreaPoint,
   type BreakdownSegment,
 } from "@/components/charts";
 import {
@@ -30,14 +27,11 @@ import {
 import { Icon } from "@/components/icons";
 import { CURRENCIES, CURRENCY_SYMBOL } from "@/lib/constants";
 import {
-  addDays,
   addMonths,
   currentMonth,
   dateInMonth,
-  daysBetween,
   formatDateShort,
   formatMonth,
-  formatMonthShort,
   monthOf,
   todayISO,
 } from "@/lib/date";
@@ -45,6 +39,7 @@ import {
   currencyAllocation,
   expensesByCategory,
   holdings,
+  netWorthByKind,
   monthlySeries,
   netWorth,
   spentInCategory,
@@ -147,6 +142,24 @@ export function DashboardPage() {
         ? "24+ mo"
         : `${runwayMonths < 10 ? runwayMonths.toFixed(1) : Math.round(runwayMonths)} mo`;
 
+  /**
+   * How the month's budgets are doing, as one figure. The meters live nested
+   * under the spending breakdown, which answers "is Food over" and never "am I
+   * over" — and that card is on the Expenses page anyway. This also names the
+   * spending that no budget covers, which is where a month usually goes wrong.
+   */
+  const budgetHealth = state.budgets.reduce(
+    (acc, b) => {
+      acc.limit += convert(b.limit, b.currency, base, settings.rates);
+      const spent = spentInCategory(state.transactions, b.categoryId, month, b.currency, settings);
+      acc.spent += convert(spent, b.currency, base, settings.rates);
+      if (spent > b.limit) acc.over++;
+      return acc;
+    },
+    { limit: 0, spent: 0, over: 0 },
+  );
+  const unbudgeted = current.expense - budgetHealth.spent;
+
   const [cashMonths, setCashMonths] = useState(12);
   const cashSeries = monthlySeries(state.transactions, month, cashMonths, settings);
 
@@ -216,6 +229,21 @@ export function DashboardPage() {
     value: h.base,
     colorSlot: holdingSlot.get(h.id) ?? 1,
   }));
+  /*
+   * The same net worth, grouped by what sort of thing it is rather than by
+   * which holding it sits in. "Where is it" and "what is it in" are different
+   * questions, and only the second one answers "am I too concentrated".
+   */
+  const kindRows = netWorthByKind(state, today);
+  const kindSegments: BreakdownSegment[] = kindRows.map((r) => ({
+    id: r.id,
+    label: r.label,
+    icon: r.icon,
+    value: r.base,
+    colorSlot: r.colorSlot,
+  }));
+  const [worthView, setWorthView] = useState<"holding" | "type">("holding");
+
   /** what a foreign-currency holding is worth in its own money */
   const holdingNative = (id: string): ReactNode => {
     const row = holdingRows.find((h) => h.id === id);
@@ -258,31 +286,7 @@ export function DashboardPage() {
    * five-year guess, but nothing in between — and the twelve months you have
    * lived through are the part you can act on.
    */
-  const worthHistory: AreaPoint[] = Array.from({ length: 12 }, (_, i) => {
-    const m = addMonths(month, -(11 - i));
-    // past months close on their last day; the running month stops at today so
-    // postings dated later this month do not inflate the final point
-    const asOf = m === month ? today : dateInMonth(m, 31);
-    const w = netWorth(state, asOf);
-    return { label: m, a: w.savings, b: w.investments };
-  });
-  const worthHistoryHasData = worthHistory.some((p) => p.a + p.b > 0);
-
-  const UPCOMING_DAYS = 30;
-  const upcomingUntil = addDays(today, UPCOMING_DAYS);
-  const upcoming = state.transactions
-    .filter((t) => t.type !== "transfer" && t.date > today && t.date <= upcomingUntil)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-  const upcomingSum = (type: "income" | "expense") =>
-    upcoming
-      .filter((t) => t.type === type)
-      .reduce((sum, t) => sum + convert(t.amount, t.currency, base, settings.rates), 0);
-  const upcomingOut = upcomingSum("expense");
-  const upcomingIn = upcomingSum("income");
-  const shownUpcoming = upcoming.slice(0, 7);
-
   // exclude planned (future-dated) postings so they don't masquerade as recent
-  // — those have their own card now
   const recent = state.transactions
     .filter((t) => t.date <= today)
     .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
@@ -391,42 +395,58 @@ export function DashboardPage() {
                   {formatMoney(subsTotal, base, { compact: true })}/mo
                 </span>
               </div>
-              {worth.assets > 0 && (
+              {worth.assets > 0 && kindRows.length > 0 && (
                 <div className="pt-1">
-                  {/* same two colours the 5-year outlook uses for these
-                      series, so the split reads across both cards */}
-                  <div className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden>
-                    <div
-                      className="bar-slice bg-series-1"
-                      style={{ width: `${(worth.savings / worth.assets) * 100}%` }}
-                    />
-                    <div
-                      className="bar-slice bg-series-2"
-                      style={{ width: `${(worth.investments / worth.assets) * 100}%`, "--i": 1 } as CSSProperties}
-                    />
+                  {/* By asset class, not "accounts vs investments". That split
+                      restated the two rows directly above it and told you
+                      nothing a balance sheet is for; this says what the money
+                      is actually in. Same grouping the Balance hero uses. */}
+                  <div
+                    className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full"
+                    role="img"
+                    aria-label="Net worth by asset class"
+                  >
+                    {kindRows.map((row, i) => (
+                      <div
+                        key={row.id}
+                        className="bar-slice"
+                        title={`${row.label}: ${formatMoney(row.base, base, { compact: true })}`}
+                        style={{
+                          width: `${(row.base / worth.assets) * 100}%`,
+                          background: `var(--series-${row.colorSlot})`,
+                          "--i": i,
+                        } as CSSProperties}
+                      />
+                    ))}
                   </div>
-                  <p className="mt-1.5 text-xs text-ink-3">
-                    {formatPercent((worth.savings / worth.assets) * 100, 0)} accounts ·{" "}
-                    {formatPercent((worth.investments / worth.assets) * 100, 0)} investments
-                  </p>
+                  <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    {kindRows.map((row) => (
+                      <li key={row.id} className="flex items-center gap-1.5 text-xs text-ink-3">
+                        <span
+                          aria-hidden
+                          className="size-2 shrink-0 rounded-sm"
+                          style={{ background: `var(--series-${row.colorSlot})` }}
+                        />
+                        {row.label}
+                        <span className="tnum">
+                          {formatPercent((row.base / worth.assets) * 100, 0)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>
+
             {/* pinned to the bottom edge: the hero spans two rows, so whatever
                 height the tiles and the chart beside it end up with, the slack
                 sits between the blocks rather than pooling under the last one */}
-            <div className="mt-auto flex items-end justify-between gap-3 border-t border-hairline pt-4">
-              <div className="min-w-0">
-                <p className="card-title">Runway</p>
-                <p className="num-sm mt-1 text-ink-1">{runwayLabel}</p>
-                <p className="text-xs text-ink-3">savings cover spending</p>
+            <div className="mt-auto border-t border-hairline pt-4">
+              <p className="card-title">Runway</p>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
+                <p className="num-sm text-ink-1">{runwayLabel}</p>
+                <p className="text-xs text-ink-3">of typical spending, from cash alone</p>
               </div>
-              {series.some((m) => m.net !== 0) && (
-                <div className="text-right">
-                  <p className="card-title mb-1.5">Net flow · 12 mo</p>
-                  <Sparkline values={series.map((m) => m.net)} width={150} height={46} />
-                </div>
-              )}
             </div>
           </GlassCard>
 
@@ -524,28 +544,6 @@ export function DashboardPage() {
             )}
           </GlassCard>
 
-          {/* the second trend, under the first: cash flow is what moved through
-              the month, this is what it left behind */}
-          {worthHistoryHasData && (
-            <GlassCard
-              title="Net worth · last 12 months"
-              subtitle="Accounts and investments, as they stood each month"
-              icon={<Icon name="trend" />}
-              action={<CardLink href="/balance" />}
-              className="col-span-2 lg:col-span-6 xl:col-span-12"
-            >
-              <StackedArea
-                points={worthHistory}
-                currency={base}
-                seriesA="Accounts"
-                seriesB="Investments"
-                height={260}
-                xTickEvery={2}
-                xTickFormat={(label) => formatMonthShort(label)}
-              />
-            </GlassCard>
-          )}
-
           {/* breakdowns row */}
           <GlassCard
             title="Spending by category"
@@ -591,19 +589,44 @@ export function DashboardPage() {
           </GlassCard>
 
           <GlassCard
-            title="Net worth by holding"
+            title={worthView === "type" ? "Net worth by type" : "Net worth by holding"}
             icon={<Icon name="bank" />}
-            action={<CardLink href="/balance" />}
+            action={
+              // only worth offering once there is more than one group to split
+              // into — a switch between two identical lists is furniture
+              kindSegments.length > 1 ? (
+                <SegmentedControl
+                  size="sm"
+                  label="Break net worth down by"
+                  options={[
+                    { value: "holding" as const, label: "Holding" },
+                    { value: "type" as const, label: "Type" },
+                  ]}
+                  value={worthView}
+                  onChange={setWorthView}
+                />
+              ) : (
+                <CardLink href="/balance" />
+              )
+            }
             className="col-span-2 lg:col-span-3 xl:col-span-4"
           >
             {holdingSegments.length > 0 ? (
               <>
-                <CategoryBreakdown
-                  segments={holdingSegments}
-                  currency={base}
-                  maxSegments={7}
-                  rowExtra={holdingNative}
-                />
+                {worthView === "type" ? (
+                  <CategoryBreakdown
+                    segments={kindSegments}
+                    currency={base}
+                    maxSegments={7}
+                  />
+                ) : (
+                  <CategoryBreakdown
+                    segments={holdingSegments}
+                    currency={base}
+                    maxSegments={7}
+                    rowExtra={holdingNative}
+                  />
+                )}
                 {/* the card used to stop at the bars, leaving a third of it
                     blank; the split it is actually about belongs here */}
                 <div className="mt-auto grid grid-cols-2 gap-3 border-t border-hairline pt-3.5">
@@ -696,118 +719,6 @@ export function DashboardPage() {
           </GlassCard>
 
           <GlassCard
-            title="Coming up"
-            subtitle={`Already booked for the next ${UPCOMING_DAYS} days`}
-            icon={<Icon name="calendar" />}
-            action={<CardLink href="/transactions" />}
-            className="col-span-2 lg:col-span-6 xl:col-span-8"
-          >
-            {upcoming.length > 0 ? (
-              <>
-                <div className="mb-4 grid grid-cols-3 gap-3">
-                  <div>
-                    <p className="card-title">Going out</p>
-                    <p className="num-sm mt-1 text-expense">
-                      {formatMoney(upcomingOut, base, { compact: true })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="card-title">Coming in</p>
-                    <p className="num-sm mt-1 text-income">
-                      {formatMoney(upcomingIn, base, { compact: true })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="card-title">Net</p>
-                    <p
-                      className={`num-sm mt-1 ${
-                        upcomingIn - upcomingOut >= 0 ? "text-ink-1" : "text-expense"
-                      }`}
-                    >
-                      {formatMoney(upcomingIn - upcomingOut, base, {
-                        compact: true,
-                        sign: true,
-                      })}
-                    </p>
-                  </div>
-                </div>
-                <ul className="space-y-0.5">
-                  {shownUpcoming.map((tx) => {
-                    const cat = state.categories.find((c) => c.id === tx.categoryId);
-                    const days = daysBetween(today, tx.date);
-                    const source = tx.subscriptionId
-                      ? "subscription"
-                      : tx.recurringId
-                        ? "recurring"
-                        : "one-off";
-                    return (
-                      <li
-                        key={tx.id}
-                        className="flex items-center gap-3 border-b border-hairline px-1 py-2 text-sm last:border-b-0"
-                      >
-                        <span
-                          aria-hidden
-                          className="flex size-9 shrink-0 items-center justify-center rounded-full text-base"
-                          style={{
-                            backgroundColor: `color-mix(in oklab, var(--series-${cat?.colorSlot ?? 3}) 20%, transparent)`,
-                          }}
-                        >
-                          {cat?.icon ?? "❓"}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium text-ink-1">
-                            {tx.note || cat?.name || "Uncategorized"}
-                          </span>
-                          <span className="block truncate text-xs text-ink-3">
-                            {cat?.name ?? "Uncategorized"} · {source}
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-right">
-                          <span className="tnum block whitespace-nowrap text-xs text-ink-2">
-                            {formatDateShort(tx.date)}
-                          </span>
-                          <span className="block text-xs text-ink-3">
-                            {days === 1 ? "tomorrow" : `in ${days} days`}
-                          </span>
-                        </span>
-                        <span className="w-24 shrink-0 text-right">
-                          {tx.type === "income" ? (
-                            <Money
-                              amount={tx.amount}
-                              currency={tx.currency}
-                              sign
-                              className="font-semibold text-income"
-                            />
-                          ) : (
-                            <Money
-                              amount={-tx.amount}
-                              currency={tx.currency}
-                              className="font-semibold text-ink-1"
-                            />
-                          )}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-                {upcoming.length > shownUpcoming.length && (
-                  <p className="mt-auto pt-3 text-xs text-ink-3">
-                    +{upcoming.length - shownUpcoming.length} more before{" "}
-                    {formatDateShort(upcomingUntil)}
-                  </p>
-                )}
-              </>
-            ) : (
-              <EmptyState
-                icon={<Icon name="calendar" />}
-                title="Nothing booked ahead"
-                hint="Recurring payments and subscriptions post themselves in advance — add one and it shows up here."
-                action={<LinkButton href="/transactions">Add a recurring payment</LinkButton>}
-              />
-            )}
-          </GlassCard>
-
-          <GlassCard
             title="Subscriptions"
             icon={<Icon name="device" />}
             action={<CardLink href="/transactions" />}
@@ -892,17 +803,68 @@ export function DashboardPage() {
             )}
           </GlassCard>
 
-          <QuickAdd className="col-span-2 self-start lg:col-span-3 xl:col-span-4" />
 
           {/* eight columns, not twelve: at full width the five columns drifted
               apart and the card read as mostly gaps. Beside the quick-add form
               it stays dense, and what you just entered lands next to it. */}
+          {/*
+            A form, at the end, where a form belongs. It briefly sat sixth —
+            reasoning that the most-used control should be the most reachable —
+            but this page's job is to tell you things, and moving an input above
+            the charts pushed the entire reason for the page below the fold. The
+            tab bar is two taps from the same entry form on Expenses; the
+            dashboard does not need to be a data-entry screen.
+          */}
+          {/* Subscriptions + Budgets + Quick add make one full row of twelve,
+              and Recent takes the next on its own. Removing two cards had left
+              this row four columns short and the page looking half-built. */}
+          {state.budgets.length > 0 && (
+            <GlassCard
+              title="Budgets"
+              subtitle={`${formatMoney(budgetHealth.spent, base, { compact: true })} of ${formatMoney(budgetHealth.limit, base, { compact: true })}`}
+              icon={<Icon name="target" />}
+              action={<CardLink href="/transactions" />}
+              className="col-span-2 self-start lg:col-span-3 xl:col-span-4"
+            >
+              <ProgressMeter
+                value={budgetHealth.spent}
+                max={budgetHealth.limit}
+                tone="budget"
+                label="All budgets this month"
+              />
+              <p
+                className={`num-sm mt-3 ${
+                  budgetHealth.spent > budgetHealth.limit ? "text-expense" : "text-ink-1"
+                }`}
+              >
+                {budgetHealth.limit > budgetHealth.spent
+                  ? `${formatMoney(budgetHealth.limit - budgetHealth.spent, base, { compact: true })} left`
+                  : `${formatMoney(budgetHealth.spent - budgetHealth.limit, base, { compact: true })} over`}
+              </p>
+              <ul className="caption mt-2 space-y-1">
+                <li>
+                  {state.budgets.length} categor{state.budgets.length === 1 ? "y" : "ies"} budgeted
+                  {budgetHealth.over > 0 && (
+                    <span className="text-expense"> · {budgetHealth.over} over the line</span>
+                  )}
+                </li>
+                {unbudgeted > 0.5 && (
+                  <li>
+                    {formatMoney(unbudgeted, base, { compact: true })} spent outside any budget
+                  </li>
+                )}
+              </ul>
+            </GlassCard>
+          )}
+
+          <QuickAdd className="col-span-2 self-start lg:col-span-3 xl:col-span-4" />
+
           <GlassCard
             title="Recent transactions"
             subtitle={`Last ${recent.length} entries`}
             icon={<Icon name="receipt" />}
             action={<CardLink href="/transactions" />}
-            className="col-span-2 lg:col-span-6 xl:col-span-8"
+            className="col-span-2 lg:col-span-6 xl:col-span-12"
           >
             {recent.length > 0 ? (
               // a real table: aligned columns with a header, so amounts and

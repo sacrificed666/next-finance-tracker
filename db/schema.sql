@@ -59,11 +59,14 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     account_id         text,
     day_of_month       smallint NOT NULL CHECK (day_of_month BETWEEN 1 AND 31),
     start_month        char(7) NOT NULL,
+    -- last month to charge for, inclusive; NULL = open-ended
+    end_month          char(7),
     active             boolean NOT NULL DEFAULT true,
     last_applied_month char(7)
 );
 
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS account_id text;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS end_month char(7);
 
 -- ──────────────────────────────── transactions ──────────────────────────────
 CREATE TABLE IF NOT EXISTS transactions (
@@ -105,6 +108,10 @@ CREATE TABLE IF NOT EXISTS savings_accounts (
     id              text PRIMARY KEY,
     name            text NOT NULL,
     icon            text NOT NULL DEFAULT '',
+    -- where the money sits; affects no arithmetic, only how the balance sheet
+    -- groups liquidity
+    kind            text NOT NULL DEFAULT 'card'
+                    CHECK (kind IN ('card', 'cash', 'savings', 'wallet', 'other')),
     currency        text NOT NULL,
     opening_balance double precision NOT NULL DEFAULT 0,
     goal_target     double precision,
@@ -127,11 +134,19 @@ BEGIN
 END $$;
 
 ALTER TABLE savings_accounts ADD COLUMN IF NOT EXISTS opening_balance double precision NOT NULL DEFAULT 0;
+ALTER TABLE savings_accounts ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'card';
+ALTER TABLE savings_accounts DROP CONSTRAINT IF EXISTS savings_accounts_kind_check;
+ALTER TABLE savings_accounts ADD CONSTRAINT savings_accounts_kind_check
+    CHECK (kind IN ('card', 'cash', 'savings', 'wallet', 'other'));
 
 -- ──────────────────────────────── investments ───────────────────────────────
 CREATE TABLE IF NOT EXISTS investments (
     id                   text PRIMARY KEY,
     name                 text NOT NULL,
+    -- what sort of holding it is; decides whether the value is computed from a
+    -- rate (deposit, bonds) or simply stated by the owner (reit, stocks, crypto)
+    kind                 text NOT NULL DEFAULT 'deposit'
+                         CHECK (kind IN ('deposit', 'bonds', 'reit', 'stocks', 'crypto', 'other')),
     currency             text NOT NULL,
     principal            double precision NOT NULL,
     annual_rate_pct      double precision NOT NULL,
@@ -145,6 +160,19 @@ CREATE TABLE IF NOT EXISTS investments (
 );
 
 ALTER TABLE investments ADD COLUMN IF NOT EXISTS end_date date;
+
+-- positions predating kinds were all rate-bearing deposits, which is what the
+-- default says; market_value stays NULL for them and is unused
+ALTER TABLE investments ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'deposit';
+ALTER TABLE investments ADD COLUMN IF NOT EXISTS market_value double precision;
+-- crypto positions hold a quantity of a coin; market_value is that quantity
+-- times the price fetched at priced_at, so the app writes it rather than the user
+ALTER TABLE investments ADD COLUMN IF NOT EXISTS coin text;
+ALTER TABLE investments ADD COLUMN IF NOT EXISTS quantity double precision;
+ALTER TABLE investments ADD COLUMN IF NOT EXISTS priced_at timestamptz;
+ALTER TABLE investments DROP CONSTRAINT IF EXISTS investments_kind_check;
+ALTER TABLE investments ADD CONSTRAINT investments_kind_check
+    CHECK (kind IN ('deposit', 'bonds', 'reit', 'stocks', 'crypto', 'other'));
 
 -- ────────────────────────────────── budgets ─────────────────────────────────
 CREATE TABLE IF NOT EXISTS budgets (

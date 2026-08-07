@@ -22,25 +22,47 @@ import {
   TripleMoney,
 } from "@/components/ui";
 import { Icon } from "@/components/icons";
-import { CURRENCIES, CURRENCY_SYMBOL, ICON_CHOICES } from "@/lib/constants";
+import {
+  ACCOUNT_KINDS,
+  accountKind,
+  CURRENCIES,
+  CURRENCY_SYMBOL,
+  ICON_CHOICES,
+  INVESTMENT_KINDS,
+  investmentKind,
+  valuationOf,
+} from "@/lib/constants";
+import { COINS, coinInfo, fetchCoinPrices } from "@/lib/crypto";
 import {
   addMonths,
   dateInMonth,
+  currentMonth,
   formatDate,
+  formatDateTime,
+  formatMonthCompact,
   monthDiff,
   monthOf,
   todayISO,
 } from "@/lib/date";
-import { accountBalances, investmentAt, netWorth } from "@/lib/finmath";
+import {
+  accountBalances,
+  debtPayoff,
+  investmentAt,
+  investmentProjectedAt,
+  netWorth,
+  netWorthByKind,
+} from "@/lib/finmath";
 import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
 import { accountUsage, deleteAccount, uid, useStore } from "@/lib/store";
 import type {
+  AccountKind,
   Compounding,
   CompoundingFreq,
   Currency,
   Debt,
   DebtKind,
   Investment,
+  InvestmentKind,
   SavingsAccount,
 } from "@/lib/types";
 
@@ -50,6 +72,7 @@ interface AccountForm {
   id: string | null;
   name: string;
   icon: string;
+  kind: AccountKind;
   currency: Currency;
   openingBalance: string;
   goalEnabled: boolean;
@@ -79,7 +102,13 @@ const COMPOUNDING_OPTIONS: Array<{ value: Compounding; label: string }> = [
 interface InvestmentForm {
   id: string | null;
   name: string;
+  kind: InvestmentKind;
   currency: Currency;
+  /** what the holding is worth today, on market-valued kinds */
+  marketValue: string;
+  /** crypto only: which coin, and how many units of it */
+  coin: string;
+  quantity: string;
   principal: string;
   rate: string;
   startDate: string;
@@ -157,10 +186,91 @@ export function BalancePage() {
   /* ---------- investments state ---------- */
   const [invForm, setInvForm] = useState<InvestmentForm | null>(null);
   const [invDeleteId, setInvDeleteId] = useState<string | null>(null);
+  const [pricing, setPricing] = useState(false);
+  const [priceError, setPriceError] = useState<string | null>(null);
+
+  /* ---------- crypto prices ---------- */
+  const cryptoPositions = state.investments.filter(
+    (i) => i.kind === "crypto" && i.coin && (i.quantity ?? 0) > 0,
+  );
+  /** newest moment any crypto position was priced, for the freshness line */
+  const lastPricedAt = cryptoPositions.reduce<string | undefined>(
+    (newest, i) => (i.pricedAt && (!newest || i.pricedAt > newest) ? i.pricedAt : newest),
+    undefined,
+  );
+
+  /**
+   * Re-price every crypto holding from CoinGecko. Coins are quoted directly in
+   * the position's own currency, so nothing is converted twice, and a coin the
+   * response does not carry keeps whatever it was last worth rather than
+   * dropping to zero.
+   */
+  const refreshPrices = async () => {
+    if (cryptoPositions.length === 0) return;
+    setPricing(true);
+    setPriceError(null);
+    try {
+      const byCurrency = new Map<Currency, string[]>();
+      for (const inv of cryptoPositions) {
+        const list = byCurrency.get(inv.currency) ?? [];
+        list.push(inv.coin!);
+        byCurrency.set(inv.currency, list);
+      }
+      const quotes = new Map<string, number>();
+      for (const [currency, ids] of byCurrency) {
+        const prices = await fetchCoinPrices(ids, currency);
+        for (const [id, price] of Object.entries(prices)) {
+          quotes.set(`${currency}:${id}`, price);
+        }
+      }
+      if (quotes.size === 0) throw new Error("No prices came back for these coins.");
+      const pricedAt = new Date().toISOString();
+      update((st) => ({
+        ...st,
+        investments: st.investments.map((inv) => {
+          if (inv.kind !== "crypto" || !inv.coin) return inv;
+          const price = quotes.get(`${inv.currency}:${inv.coin}`);
+          if (price === undefined) return inv;
+          return { ...inv, marketValue: (inv.quantity ?? 0) * price, pricedAt };
+        }),
+      }));
+    } catch (err) {
+      setPriceError(
+        err instanceof Error ? err.message : "Could not reach the price feed.",
+      );
+    } finally {
+      setPricing(false);
+    }
+  };
 
   /* ---------- debts state ---------- */
   const [debtForm, setDebtForm] = useState<DebtForm | null>(null);
   const [debtDeleteId, setDebtDeleteId] = useState<string | null>(null);
+
+  const nowMonth = currentMonth();
+
+  /**
+   * What the debts cost as a schedule rather than as a balance: the monthly
+   * outgoing they commit you to, the month the last of them clears, and the
+   * interest still ahead. All three come out of figures already on each row.
+   */
+  const debtSchedule = state.debts.reduce(
+    (acc, d) => {
+      acc.payment += convert(d.monthlyPayment ?? 0, d.currency, base, settings.rates);
+      const payoff = debtPayoff(d, nowMonth);
+      if (payoff && !payoff.neverPaysOff) {
+        acc.interest += convert(payoff.interest, d.currency, base, settings.rates);
+        if (!acc.lastMonth || payoff.finalMonth > acc.lastMonth) {
+          acc.lastMonth = payoff.finalMonth;
+        }
+      }
+      return acc;
+    },
+    { payment: 0, interest: 0, lastMonth: "" as string },
+  );
+
+  /** net worth grouped by asset class, for the allocation strip in the hero */
+  const kindRows = netWorthByKind(state, today);
 
   /* ---------- investments totals ---------- */
   // `earnedInYear` is what the same positions add over the next twelve months
@@ -171,15 +281,14 @@ export function BalancePage() {
       const snap = investmentAt(inv, today);
       const ahead = investmentAt(inv, oneYearOut);
       const earned = snap.accrued + snap.paidOut;
+      const forward =
+        valuationOf(inv.kind) === "market"
+          ? investmentProjectedAt(inv, today, oneYearOut) - snap.value
+          : ahead.accrued + ahead.paidOut - earned;
       acc.invested += convert(snap.invested, inv.currency, base, settings.rates);
       acc.value += convert(snap.value, inv.currency, base, settings.rates);
       acc.earned += convert(earned, inv.currency, base, settings.rates);
-      acc.earnedInYear += convert(
-        ahead.accrued + ahead.paidOut - earned,
-        inv.currency,
-        base,
-        settings.rates,
-      );
+      acc.earnedInYear += convert(forward, inv.currency, base, settings.rates);
       return acc;
     },
     { invested: 0, value: 0, earned: 0, earnedInYear: 0 },
@@ -192,6 +301,7 @@ export function BalancePage() {
       id: null,
       name: "",
       icon: ICON_CHOICES[0],
+      kind: "card",
       currency: "UAH",
       openingBalance: "",
       goalEnabled: false,
@@ -204,6 +314,7 @@ export function BalancePage() {
       id: acc.id,
       name: acc.name,
       icon: acc.icon,
+      kind: acc.kind,
       currency: acc.currency,
       openingBalance: String(acc.openingBalance),
       goalEnabled: acc.goal != null,
@@ -249,7 +360,15 @@ export function BalancePage() {
         ...s,
         savings: s.savings.map((a) =>
           a.id === id
-            ? { ...a, name, icon: accForm.icon, currency: accForm.currency, openingBalance, goal }
+            ? {
+                ...a,
+                name,
+                icon: accForm.icon,
+                kind: accForm.kind,
+                currency: accForm.currency,
+                openingBalance,
+                goal,
+              }
             : a,
         ),
       }));
@@ -258,6 +377,7 @@ export function BalancePage() {
         id: uid(),
         name,
         icon: accForm.icon,
+        kind: accForm.kind,
         currency: accForm.currency,
         openingBalance,
         goal,
@@ -337,7 +457,11 @@ export function BalancePage() {
     setInvForm({
       id: null,
       name: "",
+      kind: "deposit",
       currency: "UAH",
+      marketValue: "",
+      coin: COINS[0].id,
+      quantity: "",
       principal: "",
       rate: "",
       startDate: today,
@@ -352,7 +476,11 @@ export function BalancePage() {
     setInvForm({
       id: inv.id,
       name: inv.name,
+      kind: inv.kind,
       currency: inv.currency,
+      marketValue: inv.marketValue != null ? String(inv.marketValue) : "",
+      coin: inv.coin ?? COINS[0].id,
+      quantity: inv.quantity != null ? String(inv.quantity) : "",
       principal: String(inv.principal),
       rate: String(inv.annualRatePct),
       startDate: inv.startDate,
@@ -365,16 +493,42 @@ export function BalancePage() {
     });
   };
 
+  // A deposit is valued from a rate; a crypto holding from a quantity and a
+  // live price; everything else from a figure you state. Each branch reads only
+  // its own fields, so switching kind can never smuggle the other kind's data in.
+  const invMarket = invForm != null && valuationOf(invForm.kind) === "market";
+  const invCrypto = invForm?.kind === "crypto";
+
   const invProblem: string | null = (() => {
     if (!invForm) return null;
     if (!invForm.name.trim()) return "Name the investment.";
     const principal = parseAmount(invForm.principal);
     if (!Number.isFinite(principal) || principal <= 0)
-      return "The principal has to be greater than zero.";
+      return "What you put in has to be greater than zero.";
+    if (!invForm.startDate) return "Pick a start date.";
+    if (invMarket && invForm.rate.trim() !== "") {
+      const expected = parseAmount(invForm.rate);
+      if (!Number.isFinite(expected) || expected < 0 || expected > 200)
+        return "The expected return has to be between 0 and 200% a year.";
+    }
+    if (invCrypto) {
+      const q = parseAmount(invForm.quantity);
+      if (!Number.isFinite(q) || q <= 0) return "Enter how many coins you hold.";
+      return null;
+    }
+    if (invForm.contribution.trim() !== "") {
+      const c = parseAmount(invForm.contribution);
+      if (!Number.isFinite(c) || c < 0) return "The monthly top-up has to be zero or more.";
+    }
+    if (invMarket) {
+      if (invForm.marketValue.trim() === "") return null; // falls back to cost
+      const v = parseAmount(invForm.marketValue);
+      if (!Number.isFinite(v) || v < 0) return "The current value has to be zero or more.";
+      return null;
+    }
     const rate = parseAmount(invForm.rate);
     if (!Number.isFinite(rate) || rate < 0 || rate > 200)
       return "The rate has to be between 0 and 200% a year.";
-    if (!invForm.startDate) return "Pick a start date.";
     if (invForm.endDate && invForm.endDate < invForm.startDate)
       return "Maturity has to come after the start date.";
     if (invForm.contribution.trim() !== "") {
@@ -389,10 +543,41 @@ export function BalancePage() {
     if (!invForm || !invValid) return;
     const name = invForm.name.trim();
     const principal = parseAmount(invForm.principal);
-    const rate = parseAmount(invForm.rate);
-    const typed = invForm.contribution.trim() === "" ? 0 : parseAmount(invForm.contribution);
-    const contribution = typed > 0 ? typed : undefined;
     const note = invForm.note.trim();
+    const market = valuationOf(invForm.kind) === "market";
+    const crypto = invForm.kind === "crypto";
+
+    // on a market kind this is an assumption, not a contract — blank means
+    // "no view", which projects the holding flat
+    const typedRate = parseAmount(invForm.rate);
+    const rate =
+      market && (invForm.rate.trim() === "" || !Number.isFinite(typedRate))
+        ? 0
+        : typedRate;
+    const typed =
+      invForm.contribution.trim() === "" ? 0 : parseAmount(invForm.contribution);
+    const contribution = typed > 0 ? typed : undefined;
+    const quantity = crypto ? parseAmount(invForm.quantity) : undefined;
+    // a fresh crypto position has no price yet — it shows its cost basis until
+    // the first refresh, rather than a zero that looks like a wiped-out holding
+    const stated = parseAmount(invForm.marketValue);
+    const marketValue = !market
+      ? undefined
+      : crypto
+        ? (invForm.id ? state.investments.find((i) => i.id === invForm.id)?.marketValue : undefined) ??
+          principal
+        : invForm.marketValue.trim() === "" || !Number.isFinite(stated)
+          ? principal
+          : stated;
+
+    const kindFields = {
+      kind: invForm.kind,
+      marketValue,
+      coin: crypto ? invForm.coin : undefined,
+      quantity: crypto ? quantity : undefined,
+      endDate: invForm.endDate || undefined,
+      monthlyContribution: contribution,
+    };
 
     if (invForm.id) {
       const id = invForm.id;
@@ -407,11 +592,10 @@ export function BalancePage() {
                 principal,
                 annualRatePct: rate,
                 startDate: invForm.startDate,
-                endDate: invForm.endDate || undefined,
                 compounding: invForm.compounding,
                 compoundingFreq: invForm.freq,
-                monthlyContribution: contribution,
                 note: note || undefined,
+                ...kindFields,
               }
             : inv,
         ),
@@ -424,11 +608,10 @@ export function BalancePage() {
         principal,
         annualRatePct: rate,
         startDate: invForm.startDate,
-        endDate: invForm.endDate || undefined,
         compounding: invForm.compounding,
         compoundingFreq: invForm.freq,
-        monthlyContribution: contribution,
         note: note || undefined,
+        ...kindFields,
       };
       update((s) => ({ ...s, investments: [...s.investments, inv] }));
     }
@@ -628,16 +811,45 @@ export function BalancePage() {
                   {formatMoney(worth.investments, base, { compact: true })}
                 </span>
               </div>
-              {worth.assets > 0 && (
-                <div className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden>
+              {/* Two slices said cash-versus-not, which on a balance sheet that
+                  now knows deposits from crypto is the least interesting cut of
+                  it. One strip per asset class answers the question a balance
+                  sheet is for: how concentrated am I, and in what. */}
+              {worth.assets > 0 && kindRows.length > 0 && (
+                <div>
                   <div
-                    className="bar-slice bg-series-1"
-                    style={{ width: `${(worth.savings / worth.assets) * 100}%` }}
-                  />
-                  <div
-                    className="bar-slice bg-series-2"
-                    style={{ width: `${(worth.investments / worth.assets) * 100}%` }}
-                  />
+                    className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full"
+                    role="img"
+                    aria-label="Net worth by asset class"
+                  >
+                    {kindRows.map((row, i) => (
+                      <div
+                        key={row.id}
+                        className="bar-slice"
+                        title={`${row.label}: ${formatMoney(row.base, base, { compact: true })}`}
+                        style={{
+                          width: `${(row.base / worth.assets) * 100}%`,
+                          background: `var(--series-${row.colorSlot})`,
+                          "--i": i,
+                        } as React.CSSProperties}
+                      />
+                    ))}
+                  </div>
+                  <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    {kindRows.map((row) => (
+                      <li key={row.id} className="flex items-center gap-1.5 text-xs text-ink-2">
+                        <span
+                          aria-hidden
+                          className="size-2 shrink-0 rounded-sm"
+                          style={{ background: `var(--series-${row.colorSlot})` }}
+                        />
+                        {row.label}
+                        <span className="tnum text-ink-3">
+                          {formatPercent((row.base / worth.assets) * 100, 0)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
               {worth.debts > 0 && (
@@ -710,7 +922,9 @@ export function BalancePage() {
                               <span className="block truncate text-sm font-medium text-ink-1">
                                 {acc.name}
                               </span>
-                              <span className="block text-xs text-ink-3">{acc.currency}</span>
+                              <span className="block text-xs text-ink-3">
+                                {accountKind(acc.kind).label} · {acc.currency}
+                              </span>
                             </span>
                           </span>
                           <span className="tnum text-right text-sm font-semibold text-ink-1 sm:hidden">
@@ -781,6 +995,9 @@ export function BalancePage() {
                 const principal = debt.principal ?? 0;
                 const hasProgress = principal > 0;
                 const paid = Math.max(0, principal - debt.balance);
+                // the card showed how far you had come and never once said when
+                // it ends — which is the only thing a debt is really asking
+                const payoff = debtPayoff(debt, nowMonth);
                 return (
                   <button
                     key={debt.id}
@@ -834,14 +1051,48 @@ export function BalancePage() {
                         </span>
                       </span>
                     )}
+                    {payoff && (
+                      <span className="mt-1.5 block pl-13 pr-1 text-xs">
+                        {payoff.neverPaysOff ? (
+                          <span className="text-expense">
+                            The payment does not cover the monthly interest — this
+                            balance grows.
+                          </span>
+                        ) : (
+                          <span className="tnum text-ink-2">
+                            Clear by{" "}
+                            <span className="font-semibold text-ink-1">
+                              {formatMonthCompact(payoff.finalMonth)}
+                            </span>{" "}
+                            · {payoff.months} payment{payoff.months === 1 ? "" : "s"}
+                            {payoff.interest > 0.5 && (
+                              <>
+                                {" "}
+                                · {formatMoney(payoff.interest, debt.currency, { compact: true })}{" "}
+                                interest left
+                              </>
+                            )}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </button>
                 );
               })}
-              <div className="mt-1 flex items-center justify-between gap-3 border-t border-hairline px-2 pt-2.5">
+              <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-hairline px-2 pt-2.5">
                 <span className="text-sm font-semibold text-ink-1">Total owed</span>
                 <span className="tnum text-sm font-semibold text-expense">
                   −{formatMoney(worth.debts, base, { exact: true })}
                 </span>
+                {debtSchedule.payment > 0 && (
+                  <span className="caption w-full">
+                    {formatMoney(debtSchedule.payment, base, { compact: true })}/mo scheduled
+                    {debtSchedule.lastMonth &&
+                      ` · last payment ${formatMonthCompact(debtSchedule.lastMonth)}`}
+                    {debtSchedule.interest > 0.5 &&
+                      ` · ${formatMoney(debtSchedule.interest, base, { compact: true })} interest still to pay`}
+                  </span>
+                )}
               </div>
             </div>
           </GlassCard>
@@ -862,6 +1113,32 @@ export function BalancePage() {
             {/* investments */}
             {state.investments.length > 0 && (
               <>
+                {cryptoPositions.length > 0 && (
+                  // Prices are fetched on demand, never per render: the feed is
+                  // rate-limited per IP, and a holding that silently re-priced
+                  // itself while you read the page would make every figure on
+                  // it unreproducible.
+                  <div className="glass flex flex-wrap items-center gap-3 rounded-card px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="body-strong">Crypto prices</p>
+                      <p className="caption">
+                        {priceError
+                          ? priceError
+                          : lastPricedAt
+                            ? `${cryptoPositions.length} ${cryptoPositions.length === 1 ? "holding" : "holdings"} · updated ${formatDateTime(lastPricedAt)}`
+                            : `${cryptoPositions.length} ${cryptoPositions.length === 1 ? "holding" : "holdings"} · never priced — showing what you paid`}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      className="shrink-0"
+                      disabled={pricing}
+                      onClick={() => void refreshPrices()}
+                    >
+                      {pricing ? "Updating…" : "Update prices"}
+                    </Button>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
                   <StatTile
                     label="Invested"
@@ -882,7 +1159,11 @@ export function BalancePage() {
                     label="Earned"
                     value={formatMoney(invTotals.earned, base, { compact: true, sign: true })}
                     tone={invTotals.earned > 0 ? "income" : undefined}
-                    hint={`${formatMoney(invTotals.earnedInYear, base, { compact: true, sign: true })} expected over the next year`}
+                    hint={
+                      invTotals.earnedInYear !== 0
+                        ? `${formatMoney(invTotals.earnedInYear, base, { compact: true, sign: true })} expected over the next year`
+                        : "market holdings are shown at what they are worth, not projected"
+                    }
                   />
                 </div>
 
@@ -900,16 +1181,33 @@ export function BalancePage() {
                       inv,
                       dateInMonth(addMonths(monthOf(today), 12), Number(today.slice(8, 10))),
                     );
+                    const market = valuationOf(inv.kind) === "market";
+                    const coin = coinInfo(inv.coin);
                     const matured = inv.endDate != null && inv.endDate <= today;
-                    const caption = matured
-                      ? `Matured ${formatDate(inv.endDate!)} · no longer earning`
-                      : inv.compounding === "reinvest"
-                        ? `Compound interest · ${FREQ_ADVERB[inv.compoundingFreq]} reinvestment`
-                        : "Simple interest · paid out to you";
+                    const caption = market && inv.annualRatePct > 0 && !matured
+                      ? `${formatPercent(inv.annualRatePct)}/yr expected · ${
+                          inv.compounding === "reinvest" ? "reinvested" : "paid out"
+                        }`
+                      : market
+                      ? coin && inv.quantity
+                        ? `${inv.quantity} ${coin.symbol} · ${
+                            inv.pricedAt
+                              ? `priced ${formatDateTime(inv.pricedAt)}`
+                              : "not priced yet"
+                          }`
+                        : "Valued at what you last said it was worth"
+                      : matured
+                        ? `Matured ${formatDate(inv.endDate!)} · no longer earning`
+                        : inv.compounding === "reinvest"
+                          ? `Compound interest · ${FREQ_ADVERB[inv.compoundingFreq]} reinvestment`
+                          : "Simple interest · paid out to you";
                     const earned = snap.accrued + snap.paidOut;
                     const gainPct = snap.invested > 0 ? (earned / snap.invested) * 100 : 0;
+                    const projValue = investmentProjectedAt(inv, today, oneYearOut);
                     const projGain =
-                      inYear.accrued - snap.accrued + (inYear.paidOut - snap.paidOut);
+                      valuationOf(inv.kind) === "market"
+                        ? projValue - snap.value
+                        : inYear.accrued - snap.accrued + (inYear.paidOut - snap.paidOut);
                     return (
                       <GlassCard key={inv.id} className="flex flex-col">
                         <div className="flex items-start justify-between gap-3">
@@ -920,8 +1218,13 @@ export function BalancePage() {
                             <h2 className="truncate font-semibold text-ink-1">{inv.name}</h2>
                             <p className="mt-0.5 text-xs text-ink-2">{caption}</p>
                           </div>
-                          <span className="shrink-0 rounded-full bg-ghost px-2 py-0.5 text-xs font-medium text-ink-2">
-                            {inv.currency}
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <span className="rounded-full bg-ghost px-2 py-0.5 text-xs font-medium text-ink-2">
+                              {investmentKind(inv.kind).icon} {investmentKind(inv.kind).label}
+                            </span>
+                            <span className="rounded-full bg-ghost px-2 py-0.5 text-xs font-medium text-ink-2">
+                              {inv.currency}
+                            </span>
                           </span>
                         </div>
 
@@ -946,7 +1249,7 @@ export function BalancePage() {
                               </span>
                             </div>
                           </div>
-                          <Sparkline values={sparkValues(inv, today)} width={116} height={46} />
+                          {!market && <Sparkline values={sparkValues(inv, today)} width={116} height={46} />}
                         </div>
 
                         {/* a lone position owns the full page width, and a
@@ -960,8 +1263,29 @@ export function BalancePage() {
                               : "space-y-1.5"
                           }`}
                         >
-                          <InfoRow label="Rate">{formatPercent(inv.annualRatePct)} / year</InfoRow>
-                          <InfoRow label="Invested">
+                          {/* a market holding has no rate and no projection —
+                              printing either would be inventing a return the
+                              app has no way to know */}
+                          {(!market || inv.annualRatePct > 0) && (
+                            <InfoRow label={market ? "Expected" : "Rate"}>
+                              {formatPercent(inv.annualRatePct)} / year
+                            </InfoRow>
+                          )}
+                          {coin && inv.quantity ? (
+                            <InfoRow label="Holding">
+                              {inv.quantity} {coin.symbol}
+                            </InfoRow>
+                          ) : null}
+                          {coin && inv.quantity && inv.marketValue ? (
+                            <InfoRow label="Price">
+                              <Money
+                                amount={inv.marketValue / inv.quantity}
+                                currency={inv.currency}
+                                exact
+                              />
+                            </InfoRow>
+                          ) : null}
+                          <InfoRow label={market ? "Paid" : "Invested"}>
                             <Money amount={snap.invested} currency={inv.currency} exact />
                           </InfoRow>
                           {inv.monthlyContribution != null && inv.monthlyContribution > 0 && (
@@ -972,10 +1296,17 @@ export function BalancePage() {
                           {/* a matured position has no "in 1 year" — it is
                               finished, and printing +0 beside it read as a
                               rounding error rather than as the end of a term */}
-                          {!matured && (
+                          {/* a projection needs something to project with: a
+                              contracted rate, or an expected return you stated.
+                              A market holding with no view stays where it is. */}
+                          {!matured && (!market || inv.annualRatePct > 0) && (
                             <InfoRow label="In 1 year">
                               <span>
-                                <Money amount={inYear.value} currency={inv.currency} exact />{" "}
+                                <Money
+                                  amount={market ? projValue : inYear.value}
+                                  currency={inv.currency}
+                                  exact
+                                />{" "}
                                 <span className="text-income">
                                   (+{formatMoney(projGain, inv.currency)})
                                 </span>
@@ -1058,6 +1389,22 @@ export function BalancePage() {
               onChange={(e) => setAccForm({ ...accForm, name: e.target.value })}
               placeholder="Monobank card"
             />
+          </Field>
+          {/* changes no arithmetic — it is what lets the balance sheet say where
+              the cash is instead of lumping every account into one figure */}
+          <Field label="Kind">
+            <Select
+              value={accForm.kind}
+              onChange={(e) =>
+                setAccForm({ ...accForm, kind: e.target.value as AccountKind })
+              }
+            >
+              {ACCOUNT_KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.icon} {k.label}
+                </option>
+              ))}
+            </Select>
           </Field>
           <FieldSet label="Icon">
             <OptionChips
@@ -1204,11 +1551,28 @@ export function BalancePage() {
             </>
           }
         >
+          {/* the kind comes first because it decides what the rest of the form
+              is even allowed to ask: a deposit has a rate, a coin has a
+              quantity, and neither should be able to hold the other's data */}
+          <Field label="Type" hint={investmentKind(invForm.kind).hint}>
+            <Select
+              value={invForm.kind}
+              onChange={(e) =>
+                setInvForm({ ...invForm, kind: e.target.value as InvestmentKind })
+              }
+            >
+              {INVESTMENT_KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.icon} {k.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Name">
             <TextInput
               value={invForm.name}
               onChange={(e) => setInvForm({ ...invForm, name: e.target.value })}
-              placeholder="Government bonds"
+              placeholder={invCrypto ? "Cold wallet" : "Government bonds"}
             />
           </Field>
           <FieldSet label="Currency">
@@ -1219,7 +1583,36 @@ export function BalancePage() {
               onChange={(v) => setInvForm({ ...invForm, currency: v })}
             />
           </FieldSet>
-          <Field label="Principal">
+
+          {invCrypto && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Coin">
+                <Select
+                  value={invForm.coin}
+                  onChange={(e) => setInvForm({ ...invForm, coin: e.target.value })}
+                >
+                  {COINS.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.symbol} — {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="How many" hint="units held, not their value">
+                <TextInput
+                  inputMode="decimal"
+                  value={invForm.quantity}
+                  onChange={(e) => setInvForm({ ...invForm, quantity: e.target.value })}
+                  placeholder="0.25"
+                />
+              </Field>
+            </div>
+          )}
+
+          <Field
+            label={invMarket ? "What you paid" : "Principal"}
+            hint={invMarket ? "your cost basis — the gain is measured against it" : undefined}
+          >
             <TextInput
               inputMode="decimal"
               prefix={CURRENCY_SYMBOL[invForm.currency]}
@@ -1228,24 +1621,50 @@ export function BalancePage() {
               placeholder="50 000"
             />
           </Field>
-          <Field label="Rate" hint="% per year">
+
+          {invMarket && !invCrypto && (
+            <Field
+              label="Worth today"
+              hint="restate it whenever you check — nothing here moves it on its own"
+            >
+              <TextInput
+                inputMode="decimal"
+                prefix={CURRENCY_SYMBOL[invForm.currency]}
+                value={invForm.marketValue}
+                onChange={(e) => setInvForm({ ...invForm, marketValue: e.target.value })}
+                placeholder={invForm.principal || "0"}
+              />
+            </Field>
+          )}
+
+          <Field
+            label={invMarket ? "Expected return" : "Rate"}
+            hint={
+              invMarket
+                ? "% per year · optional — used only to project forward, never to value it today"
+                : "% per year"
+            }
+          >
             <TextInput
               inputMode="decimal"
               value={invForm.rate}
               onChange={(e) => setInvForm({ ...invForm, rate: e.target.value })}
-              placeholder="15.3"
+              placeholder={invMarket ? "0" : "15.3"}
             />
           </Field>
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Start date">
+            <Field label={invMarket ? "Bought on" : "Start date"}>
               <TextInput
                 type="date"
                 value={invForm.startDate}
                 onChange={(e) => setInvForm({ ...invForm, startDate: e.target.value })}
               />
             </Field>
+            {/* a fund you plan to sell in 2030 has an end as surely as a deposit
+                does — this was accrual-only for no reason */}
             <Field
-              label="Matures"
+              label={invMarket ? "Held until" : "Matures"}
               hint="optional · leave empty for an open-ended holding"
             >
               <TextInput
@@ -1256,15 +1675,26 @@ export function BalancePage() {
               />
             </Field>
           </div>
-          <FieldSet label="Interest type">
+
+          {/* a REIT's dividend either buys more units or lands in your account,
+              and the two make very different curves — the same choice a deposit
+              has always had */}
+          <FieldSet
+            label={invMarket ? "Returns" : "Interest type"}
+            hint={
+              invMarket
+                ? "Reinvest buys more of the position; payout sends it to your savings"
+                : undefined
+            }
+          >
             <SegmentedControl
-              label="Interest type"
+              label={invMarket ? "Returns" : "Interest type"}
               options={COMPOUNDING_OPTIONS}
               value={invForm.compounding}
               onChange={(v) => setInvForm({ ...invForm, compounding: v })}
             />
           </FieldSet>
-          {invForm.compounding === "reinvest" && (
+          {!invMarket && invForm.compounding === "reinvest" && (
             <Field label="Compounding frequency">
               <Select
                 value={invForm.freq}
@@ -1280,7 +1710,14 @@ export function BalancePage() {
               </Select>
             </Field>
           )}
-          <Field label="Monthly top-up" hint="optional">
+          <Field
+            label="Monthly top-up"
+            hint={
+              invMarket
+                ? "optional · what you keep buying each month, used by the forecast"
+                : "optional"
+            }
+          >
             <TextInput
               inputMode="decimal"
               prefix={CURRENCY_SYMBOL[invForm.currency]}

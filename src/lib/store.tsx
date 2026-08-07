@@ -596,7 +596,9 @@ export function syncSchedule(state: AppState, kind: ScheduleKind, id: string): A
   // so it describes the arrangement rather than how far it happens to have run
   const covered = new Set(
     dueMonths(
-      { startMonth: schedule.startMonth, endMonth: rule?.endMonth },
+      // both kinds carry an end now: a subscription that ran out in June should
+      // stop posting in June, not keep filling the planning horizon
+      { startMonth: schedule.startMonth, endMonth: schedule.endMonth },
       1,
       horizon,
     ),

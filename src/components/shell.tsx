@@ -39,6 +39,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="app-backdrop" aria-hidden />
+      {/* the second drifting field; its own element rather than a third
+          pseudo on the backdrop, which is already carrying the first orb
+          and the frost grain */}
+      <div className="orb-b" aria-hidden />
       <Sidebar />
       <div className="md:pl-64">
         <div className="mx-auto w-full max-w-[1600px] px-4 pb-28 pt-4 md:px-8 md:pb-10 md:pt-8">

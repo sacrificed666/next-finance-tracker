@@ -122,6 +122,8 @@ interface SubscriptionForm {
   /** the month charges start posting from — a service you signed up to in
    *  March should show its March charge, not start the month you typed it in */
   startMonth: string;
+  /** last month to charge for; "" = open-ended */
+  endMonth: string;
 }
 
 const PERIOD_OPTIONS: Array<{ value: SubscriptionPeriod; label: string }> = [
@@ -148,7 +150,6 @@ export function TransactionsPage() {
   /* ledger search: a query, a type filter, and whether to look past this month */
   const [query, setQuery] = useState("");
   const [ledgerType, setLedgerType] = useState<TxType | "all">("all");
-  const [searchAll, setSearchAll] = useState(false);
   const [txForm, setTxForm] = useState<TxForm | null>(null);
   const [confirmTxDelete, setConfirmTxDelete] = useState(false);
   const [recForm, setRecForm] = useState<RecurringForm | null>(null);
@@ -218,7 +219,15 @@ export function TransactionsPage() {
    * The query reads every field a row shows: note, category, either account,
    * and the amount as typed.
    */
+  /**
+   * Digits only, so a typed "14 000" or "14,000" finds a stored 14000. The
+   * amount is the thing people search a ledger for most, and it is the one
+   * field whose formatting never matches what is in the database.
+   */
+  const digits = (v: string) => v.replace(/[^\d]/g, "");
+
   const q = query.trim().toLowerCase();
+  const qDigits = digits(q);
   const filtering = q !== "" || ledgerType !== "all";
   const matchesFilter = (tx: Transaction) => {
     if (ledgerType !== "all" && tx.type !== ledgerType) return false;
@@ -226,21 +235,26 @@ export function TransactionsPage() {
     const cat = catById.get(tx.categoryId);
     const from = tx.accountId ? accountById.get(tx.accountId) : undefined;
     const to = tx.toAccountId ? accountById.get(tx.toAccountId) : undefined;
-    return [tx.note, cat?.name, from?.name, to?.name, String(tx.amount), tx.currency].some(
-      (field) => field?.toLowerCase().includes(q),
-    );
+    const text = [tx.note, cat?.name, from?.name, to?.name, tx.currency, formatDate(tx.date)];
+    if (text.some((field) => field?.toLowerCase().includes(q))) return true;
+    return qDigits.length > 0 && digits(String(tx.amount)).includes(qDigits);
   };
 
   const monthTx = state.transactions.filter((t) => monthOf(t.date) === month);
   const monthTxCount = monthTx.length;
-  // searching the whole ledger is opt-in, so paging months stays the default
-  // reading and a query never silently drags rows in from other years
-  const spanningAll = searchAll && filtering;
+  /*
+   * A typed query searches the WHOLE ledger; the type filter alone stays inside
+   * the month you are reading.
+   *
+   * The first cut had search stay in the month too, with a "found 12 elsewhere,
+   * search everywhere?" prompt underneath. That is defensible on paper and wrong
+   * in the hand: you type a shop name, get nothing, and conclude the search is
+   * broken — which is exactly what happened. Nobody searching for a payment
+   * means "only if it happened in the month I am looking at". A filter is a
+   * view of the current month; a query is a question about the ledger.
+   */
+  const spanningAll = q !== "";
   const ledgerTx = (spanningAll ? state.transactions : monthTx).filter(matchesFilter);
-  const elsewhereCount =
-    filtering && !spanningAll
-      ? state.transactions.filter((t) => monthOf(t.date) !== month && matchesFilter(t)).length
-      : 0;
 
   const byDay = new Map<string, Transaction[]>();
   for (const tx of ledgerTx) {
@@ -249,6 +263,28 @@ export function TransactionsPage() {
     else byDay.set(tx.date, [tx]);
   }
   const days = [...byDay.keys()].sort().reverse();
+
+  /**
+   * What the budgets add up to. Each row said how one category was doing and
+   * the card never once said how the *month* was doing — so the answer to "am I
+   * within budget overall" was to add six progress bars in your head. It also
+   * names the part nobody budgets: spending in categories with no limit at all,
+   * which is where a month usually actually goes wrong.
+   */
+  const budgetTotals = state.budgets.reduce(
+    (acc, b) => {
+      acc.limit += convert(b.limit, b.currency, base, settings.rates);
+      acc.spent += convert(
+        spentInCategory(state.transactions, b.categoryId, month, b.currency, settings),
+        b.currency,
+        base,
+        settings.rates,
+      );
+      return acc;
+    },
+    { limit: 0, spent: 0 },
+  );
+  const unbudgeted = totals.expense - budgetTotals.spent;
 
   const expenseCats = state.categories.filter((c) => c.kind === "expense");
   const budgetedIds = new Set(state.budgets.map((b) => b.categoryId));
@@ -544,6 +580,7 @@ export function TransactionsPage() {
       accountId: state.savings[0]?.id ?? "",
       day: "1",
       startMonth: nowMonth,
+      endMonth: "",
     });
 
   const openEditSub = (sub: Subscription) =>
@@ -557,6 +594,7 @@ export function TransactionsPage() {
       accountId: sub.accountId ?? "",
       day: String(sub.dayOfMonth),
       startMonth: sub.startMonth,
+      endMonth: sub.endMonth ?? "",
     });
 
   const subPrice = subForm ? parseAmount(subForm.price) : NaN;
@@ -569,7 +607,8 @@ export function TransactionsPage() {
     Number.isInteger(subDay) &&
     subDay >= 1 &&
     subDay <= 31 &&
-    /^\d{4}-\d{2}$/.test(subForm.startMonth);
+    /^\d{4}-\d{2}$/.test(subForm.startMonth) &&
+    (subForm.endMonth === "" || subForm.endMonth >= subForm.startMonth);
 
   const subProblem: string | null =
     subForm === null || subValid
@@ -578,7 +617,9 @@ export function TransactionsPage() {
         ? "Name the service."
         : !Number.isFinite(subPrice) || subPrice <= 0
           ? "Enter a price greater than zero."
-          : "The charge day has to be a whole number between 1 and 31.";
+          : !Number.isInteger(subDay) || subDay < 1 || subDay > 31
+            ? "The charge day has to be a whole number between 1 and 31."
+            : "The end month cannot come before the first billing month.";
 
   const saveSub = () => {
     if (!subForm || !subValid) return;
@@ -591,6 +632,7 @@ export function TransactionsPage() {
       accountId: subForm.accountId || undefined,
       dayOfMonth: Math.min(31, Math.max(1, subDay)),
       startMonth: subForm.startMonth,
+      endMonth: subForm.endMonth || undefined,
     };
     // a new price, billing day or start month rewrites every charge this
     // subscription has posted, not just the planned ones
@@ -903,7 +945,6 @@ export function TransactionsPage() {
                 onClick={() => {
                   setQuery("");
                   setLedgerType("all");
-                  setSearchAll(false);
                 }}
               >
                 Clear
@@ -918,26 +959,20 @@ export function TransactionsPage() {
                 icon={<Icon name="search" />}
                 title="Nothing matches"
                 hint={
-                  elsewhereCount > 0
-                    ? `No match in ${formatMonth(month)}, but ${elsewhereCount} elsewhere.`
-                    : "Try a different word, or clear the filter."
+                  spanningAll
+                    ? "Nothing in the whole ledger matches that."
+                    : `Nothing in ${formatMonth(month)} is of that kind.`
                 }
                 action={
-                  elsewhereCount > 0 ? (
-                    <Button variant="ghost" onClick={() => setSearchAll(true)}>
-                      Search every month
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        setQuery("");
-                        setLedgerType("all");
-                      }}
-                    >
-                      Clear filter
-                    </Button>
-                  )
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setQuery("");
+                      setLedgerType("all");
+                    }}
+                  >
+                    Clear filter
+                  </Button>
                 }
               />
             ) : (
@@ -971,19 +1006,6 @@ export function TransactionsPage() {
               </Button>
             }
           >
-            {elsewhereCount > 0 && (
-              <p className="mb-3 flex flex-wrap items-center gap-2 rounded-field bg-ghost px-3 py-2 text-xs text-ink-2">
-                {elsewhereCount} more match{elsewhereCount === 1 ? "" : "es"} outside{" "}
-                {formatMonth(month)}.
-                <button
-                  type="button"
-                  onClick={() => setSearchAll(true)}
-                  className="font-semibold text-accent underline-offset-2 hover:underline"
-                >
-                  Search every month
-                </button>
-              </p>
-            )}
             <div className="-mx-1.5">
               {days.map((day) => {
                 const planned = day > today;
@@ -1129,6 +1151,7 @@ export function TransactionsPage() {
                           {sub.period === "yearly"
                             ? `${formatMoney(sub.price, sub.currency)}/yr · split into 12`
                             : `day ${sub.dayOfMonth} of each month`}
+                          {sub.endMonth && ` · until ${formatMonth(sub.endMonth)}`}
                         </span>
                       </span>
                       <span className="shrink-0 text-right">
@@ -1221,7 +1244,11 @@ export function TransactionsPage() {
         {/* budgets */}
         <GlassCard
           title="Monthly budgets"
-          subtitle="Per-category limits"
+          subtitle={
+            state.budgets.length > 0
+              ? `${formatMoney(budgetTotals.spent, base, { compact: true })} of ${formatMoney(budgetTotals.limit, base, { compact: true })} used`
+              : "Per-category limits"
+          }
           icon={<Icon name="target" />}
           action={
             <Button
@@ -1233,6 +1260,32 @@ export function TransactionsPage() {
             </Button>
           }
         >
+          {state.budgets.length > 0 && (
+            <div className="mb-4 border-b border-hairline pb-3.5">
+              <ProgressMeter
+                value={budgetTotals.spent}
+                max={budgetTotals.limit}
+                tone="budget"
+                label="All budgets this month"
+              />
+              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span
+                  className={`tnum text-sm font-semibold ${
+                    budgetTotals.spent > budgetTotals.limit ? "text-expense" : "text-ink-1"
+                  }`}
+                >
+                  {budgetTotals.limit > budgetTotals.spent
+                    ? `${formatMoney(budgetTotals.limit - budgetTotals.spent, base, { compact: true })} left`
+                    : `${formatMoney(budgetTotals.spent - budgetTotals.limit, base, { compact: true })} over`}
+                </span>
+                {unbudgeted > 0.5 && (
+                  <span className="caption">
+                    + {formatMoney(unbudgeted, base, { compact: true })} spent outside any budget
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
           {state.budgets.length === 0 ? (
             <EmptyState
               icon={<Icon name="target" />}
@@ -1704,6 +1757,18 @@ export function TransactionsPage() {
               name="Billing from"
               value={subForm.startMonth}
               onChange={(startMonth) => setSubForm({ ...subForm, startMonth })}
+            />
+          </FieldSet>
+          {/* A year of hosting, a course that ends in June. Switching it off by
+              hand on the right month is a reminder nobody keeps — and switching
+              it off is not the same thing anyway: `active` stops it everywhere,
+              an end month stops it *from* a month and keeps the history. */}
+          <FieldSet label="Until (optional)" hint="Leave empty to keep it running">
+            <MonthInput
+              name="Until"
+              allowEmpty
+              value={subForm.endMonth}
+              onChange={(endMonth) => setSubForm({ ...subForm, endMonth })}
             />
           </FieldSet>
         </Sheet>

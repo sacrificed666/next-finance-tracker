@@ -38,6 +38,7 @@ import {
   breakdownTotal,
   incomeByCategory,
   monthlySeries,
+  taxPaid,
   taxedNet,
 } from "@/lib/finmath";
 import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
@@ -175,6 +176,15 @@ export function IncomePage() {
     };
   }).filter((c) => c.native > 0);
   const byCurrencyTotal = byCurrency.reduce((s, c) => s + c.base, 0);
+
+  /*
+   * Every taxed row already carries its gross and the rate applied, so the app
+   * has always known this figure exactly — it just never added it up. On a
+   * simplified scheme the year turns on it, and until now the only way to see it
+   * was to open each entry in turn.
+   */
+  const yearStart = `${nowMonth.slice(0, 4)}-01`;
+  const tax = taxPaid(state.transactions, yearStart, nowMonth, settings);
 
   /* ---------- form handlers ---------- */
 
@@ -341,7 +351,7 @@ export function IncomePage() {
 
       <div className="stagger grid grid-cols-2 items-start gap-4 sm:gap-5 xl:grid-cols-12">
         <StatTile
-          className="xl:col-span-4"
+          className="xl:col-span-3"
           label="This month"
           value={formatMoney(thisMonth, base, { compact: true })}
           tone="income"
@@ -352,7 +362,7 @@ export function IncomePage() {
           }}
         />
         <StatTile
-          className="xl:col-span-4"
+          className="xl:col-span-3"
           label="Average (6 mo)"
           value={formatMoney(avg6, base, { compact: true })}
           spark={series.slice(-6).map((m) => m.income)}
@@ -363,10 +373,23 @@ export function IncomePage() {
           }
         />
         <StatTile
-          className="col-span-2 xl:col-span-4"
+          className="xl:col-span-3"
           label={`${nowMonth.slice(0, 4)} year to date`}
           value={formatMoney(ytd, base, { compact: true })}
           hint={`${formatMoney(ytd / monthsSoFar, base, { compact: true })}/mo across ${monthsSoFar} month${monthsSoFar === 1 ? "" : "s"}`}
+        />
+
+        {/* the fourth tile: what the ФОП toggle has actually cost this year */}
+        <StatTile
+          className="xl:col-span-3"
+          label={`${nowMonth.slice(0, 4)} tax`}
+          value={tax.entries > 0 ? formatMoney(tax.tax, base, { compact: true }) : "—"}
+          tone={tax.entries > 0 ? "expense" : undefined}
+          hint={
+            tax.entries > 0
+              ? `${formatPercent((tax.tax / tax.gross) * 100)} of ${formatMoney(tax.gross, base, { compact: true })} gross · ${tax.entries} taxed`
+              : "no taxed income recorded this year"
+          }
         />
 
         <GlassCard
@@ -420,7 +443,9 @@ export function IncomePage() {
           // word and an amount separated by half a metre of nothing. It leads
           // its row in the markup too — `order` used to put it there visually
           // while the tab key still went to the two summary cards first.
-          className="col-span-2 xl:col-span-8"
+          // second in the DOM so the summaries reach a phone first, first in
+          // the row on a wide screen where both are visible at once
+          className="order-2 col-span-2 xl:order-1 xl:col-span-8"
         >
           {!hasIncome ? (
             <EmptyState
@@ -520,7 +545,7 @@ export function IncomePage() {
 
         {/* the side column: both summaries stack beside the ledger rather than
             each starting a row of its own with empty page next to it */}
-        <div className="col-span-2 flex flex-col gap-4 self-start sm:gap-5 xl:col-span-4">
+        <div className="order-1 col-span-2 flex flex-col gap-4 self-start sm:gap-5 xl:order-2 xl:col-span-4">
         <GlassCard
           title="By source"
           subtitle="Last 12 months"

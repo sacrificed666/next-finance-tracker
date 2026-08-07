@@ -6,10 +6,17 @@ import {
   wholeMonthsBetween,
   yearsBetween,
 } from "./date";
+import {
+  ACCOUNT_KINDS,
+  INVESTMENT_KINDS,
+  investmentKind,
+  valuationOf,
+} from "./constants";
 import { convert } from "./money";
 import type {
   AppState,
   Currency,
+  Debt,
   IncomeBreakdown,
   Investment,
   SavingsAccount,
@@ -43,6 +50,21 @@ export interface InvestmentSnapshot {
  * keep compounding was quietly promising money the bank never will.
  */
 export function investmentAt(inv: Investment, atISO: string): InvestmentSnapshot {
+  // A market-valued holding is worth what you last said it was worth, at every
+  // date. There is no rate to compound and no history to interpolate, so the
+  // only honest answer is a flat line — see `Valuation` in types.ts. Gain is
+  // then simply what it is worth now against what went in.
+  if (valuationOf(inv.kind) === "market") {
+    const value = inv.marketValue ?? inv.principal;
+    return {
+      invested: inv.principal,
+      value,
+      accrued: value - inv.principal,
+      paidOut: 0,
+    };
+  }
+
+
   const asOf = inv.endDate && atISO > inv.endDate ? inv.endDate : atISO;
   const t = yearsBetween(inv.startDate, asOf); // fractional years
   const r = inv.annualRatePct / 100;
@@ -75,6 +97,68 @@ export function investmentAt(inv: Investment, atISO: string): InvestmentSnapshot
   const contribInterest = c * r * ((n * (n - 1)) / 2 / 12);
   const paidOut = inv.principal * r * t + contribInterest;
   return { invested, value: invested, accrued: 0, paidOut };
+}
+
+/**
+ * What a position is worth at a future date, in its own currency.
+ *
+ * The split matters. `investmentAt` answers "what is this worth", and for a
+ * market holding the only honest answer is the last figure you had — an
+ * expected return must never inflate today's net worth. This answers "what
+ * might it be worth later", so it applies that expected return, but strictly
+ * forward of `todayISO`: at today it returns exactly the known value, and the
+ * assumption only ever compounds over time you have not lived through yet.
+ */
+export function projectedSnapshot(
+  inv: Investment,
+  todayISO: string,
+  atISO: string,
+): { value: number; paidOut: number } {
+  if (valuationOf(inv.kind) !== "market") {
+    const snap = investmentAt(inv, atISO);
+    return { value: snap.value, paidOut: snap.paidOut };
+  }
+
+  // a market holding can mature too: a fund you plan to sell in 2030, a
+  // position you have already closed. Past that date nothing further accrues.
+  const end = inv.endDate && atISO > inv.endDate ? inv.endDate : atISO;
+  const known = investmentAt(inv, end).value;
+  const years = Math.max(0, yearsBetween(todayISO, end));
+  const months = wholeMonthsBetween(todayISO, end);
+  const r = inv.annualRatePct / 100;
+  const c = inv.monthlyContribution ?? 0;
+  if (r === 0 && c === 0) return { value: known, paidOut: 0 };
+
+  /*
+   * Reinvest and payout are as real here as on a deposit — a REIT's dividend
+   * either buys more units or lands in your account, and the two produce very
+   * different curves. Treating every market holding as reinvesting quietly
+   * assumed a DRIP nobody had switched on.
+   */
+  if (inv.compounding === "payout") {
+    // the position itself only grows by what you put in; the return leaves it
+    const value = known + c * months;
+    // simple interest on the balance as it builds, the same shape the accrual
+    // payout branch uses
+    const paidOut = known * r * years + c * r * ((months * (months - 1)) / 2 / 12);
+    return { value, paidOut };
+  }
+
+  const grown = known * Math.pow(1 + r, years);
+  if (c === 0) return { value: grown, paidOut: 0 };
+  // each contribution compounds from the month it lands
+  const im = Math.pow(1 + r, 1 / 12) - 1;
+  const contribFV = im === 0 ? c * months : c * ((Math.pow(1 + im, months) - 1) / im);
+  return { value: grown + contribFV, paidOut: 0 };
+}
+
+/** what a position is worth at a future date, in its own currency */
+export function investmentProjectedAt(
+  inv: Investment,
+  todayISO: string,
+  atISO: string,
+): number {
+  return projectedSnapshot(inv, todayISO, atISO).value;
 }
 
 /** value of one investment converted to the base currency */
@@ -233,7 +317,10 @@ export function buildProjection(
     let value = 0;
     let paidOut = 0;
     for (const inv of state.investments) {
-      const snap = investmentAt(inv, atISO);
+      // market holdings ride their expected return forward from today; accrual
+      // ones already carry their own contracted growth. Either way a payout
+      // position hands its return to savings rather than keeping it.
+      const snap = projectedSnapshot(inv, todayISO, atISO);
       value += convert(snap.value, inv.currency, settings.baseCurrency, settings.rates);
       paidOut += convert(snap.paidOut, inv.currency, settings.baseCurrency, settings.rates);
     }
@@ -501,7 +588,7 @@ export function holdings(state: AppState, todayISO: string): Holding[] {
     rows.push({
       id: inv.id,
       label: inv.name,
-      icon: "📈",
+      icon: investmentKind(inv.kind).icon,
       currency: inv.currency,
       native: value,
       base: convert(value, inv.currency, settings.baseCurrency, settings.rates),
@@ -509,6 +596,141 @@ export function holdings(state: AppState, todayISO: string): Holding[] {
     });
   }
   return rows;
+}
+
+export interface DebtPayoff {
+  /** whole months until the balance reaches zero */
+  months: number;
+  /** yyyy-mm the last payment lands in */
+  finalMonth: string;
+  /** interest paid between now and then, in the debt's currency */
+  interest: number;
+  /** true when the payment does not even cover the monthly interest */
+  neverPaysOff: boolean;
+}
+
+/**
+ * How long a debt takes to clear at its scheduled payment, and what the
+ * interest costs on the way.
+ *
+ * The app already stores the three numbers this needs — balance, rate and
+ * monthly payment — and showed a progress bar against the original amount,
+ * which says where you have been and nothing about where you are going. The
+ * question a debt actually raises is "when is this over".
+ *
+ * Returns null when there is no payment to amortise. `neverPaysOff` is the case
+ * worth naming out loud: below the monthly interest the balance grows forever,
+ * and a progress bar would happily imply otherwise.
+ */
+export function debtPayoff(debt: Debt, fromMonth: string): DebtPayoff | null {
+  const payment = debt.monthlyPayment ?? 0;
+  if (payment <= 0 || debt.balance <= 0) return null;
+  const monthlyRate = (debt.annualRatePct ?? 0) / 100 / 12;
+  const firstInterest = debt.balance * monthlyRate;
+  if (payment <= firstInterest) {
+    return { months: Infinity, finalMonth: "", interest: Infinity, neverPaysOff: true };
+  }
+  let balance = debt.balance;
+  let interest = 0;
+  let months = 0;
+  // walked rather than solved in closed form: the last payment is a partial one,
+  // and the log formula quietly rounds it into a whole extra month
+  while (balance > 0 && months < 1200) {
+    const charge = balance * monthlyRate;
+    interest += charge;
+    balance = balance + charge - payment;
+    months++;
+  }
+  return {
+    months,
+    finalMonth: addMonths(fromMonth, months - 1),
+    interest,
+    neverPaysOff: false,
+  };
+}
+
+/**
+ * How much ФОП tax a period cost, and what it was charged on.
+ *
+ * Every taxed income row already stores its gross and the rate applied, so the
+ * app knows this figure exactly — it simply never added it up. For anyone on a
+ * simplified tax scheme that total is the number the year turns on.
+ */
+export function taxPaid(
+  transactions: Transaction[],
+  fromMonth: string,
+  toMonth: string,
+  settings: Settings,
+): { tax: number; gross: number; entries: number } {
+  let tax = 0;
+  let gross = 0;
+  let entries = 0;
+  for (const tx of transactions) {
+    if (tx.type !== "income" || !tx.tax) continue;
+    const m = monthOf(tx.date);
+    if (m < fromMonth || m > toMonth) continue;
+    const to = settings.baseCurrency;
+    tax += convert(tx.tax.gross - tx.amount, tx.currency, to, settings.rates);
+    gross += convert(tx.tax.gross, tx.currency, to, settings.rates);
+    entries++;
+  }
+  return { tax, gross, entries };
+}
+
+/**
+ * Net worth grouped by what sort of thing it is: cash in accounts, then one
+ * group per kind of investment held. A list of individual holdings answers
+ * "where is it"; this answers "what is it in", which is the question behind
+ * "am I too concentrated in one asset class".
+ *
+ * Groups with nothing in them are dropped, so the breakdown only ever shows
+ * kinds you actually own.
+ */
+export function netWorthByKind(
+  state: AppState,
+  todayISO: string,
+): Array<{ id: string; label: string; icon: string; base: number; colorSlot: number }> {
+  const { settings } = state;
+  const balances = accountBalances(state, todayISO);
+
+  // Cash used to be one group called "Accounts", which is the same answer as
+  // the total above it. A card, a jar of cash and a savings account are three
+  // different kinds of liquidity, and which of them holds the money is the
+  // whole point of asking.
+  const byKind = new Map<string, number>();
+  for (const acc of state.savings) {
+    const value = convert(
+      balances.get(acc.id) ?? 0,
+      acc.currency,
+      settings.baseCurrency,
+      settings.rates,
+    );
+    byKind.set(`acc:${acc.kind}`, (byKind.get(`acc:${acc.kind}`) ?? 0) + value);
+  }
+  for (const inv of state.investments) {
+    const value = investmentValueInBase(inv, todayISO, settings);
+    byKind.set(`inv:${inv.kind}`, (byKind.get(`inv:${inv.kind}`) ?? 0) + value);
+  }
+
+  // One fixed slot order across both families, so a kind keeps its colour
+  // whether or not the kinds above it happen to be present. Colour follows the
+  // entity, never its rank.
+  const rows = [
+    ...ACCOUNT_KINDS.map((k, i) => ({
+      id: `acc:${k.value}`,
+      label: k.label,
+      icon: k.icon,
+      colorSlot: (i % 8) + 1,
+    })),
+    ...INVESTMENT_KINDS.map((k, i) => ({
+      id: `inv:${k.value}`,
+      label: k.label,
+      icon: k.icon,
+      colorSlot: ((i + ACCOUNT_KINDS.length) % 8) + 1,
+    })),
+  ].map((r) => ({ ...r, base: byKind.get(r.id) ?? 0 }));
+
+  return rows.filter((r) => r.base > 0).sort((a, b) => b.base - a.base);
 }
 
 /** net worth grouped by the currency the money is actually held in */
