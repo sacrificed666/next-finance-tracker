@@ -282,7 +282,7 @@ export function SettingsPage() {
       {/* CSS columns balance the cards by height on their own — hand-packed
           columns always left one side short */}
       <div className="stagger min-w-0 xl:columns-2 xl:gap-5 *:mb-4 sm:*:mb-5 *:break-inside-avoid">
-        <GlassCard title="General" subtitle="Currency and appearance" icon={<Icon name="gear" />}>
+        <GlassCard title="General" subtitle="Currency and appearance" icon="gear">
           <div className="min-w-0 space-y-4">
             <FieldSet label="Base currency" hint="Totals and charts are shown in it">
               <SegmentedControl
@@ -307,7 +307,7 @@ export function SettingsPage() {
           </div>
         </GlassCard>
 
-        <GlassCard title="Exchange rates" subtitle="How ₴ / $ / € convert" icon={<Icon name="exchange" />}>
+        <GlassCard title="Exchange rates" subtitle="How ₴ / $ / € convert" icon="exchange">
           {/* the two read-only tiles that used to sit here printed the same two
               numbers as the fields directly below them */}
           <div className="grid gap-4 sm:grid-cols-2">
@@ -339,7 +339,7 @@ export function SettingsPage() {
           {ratesError && <p className="mt-2 text-sm text-expense">{ratesError}</p>}
         </GlassCard>
 
-        <GlassCard title="Salary tax (ФОП)" subtitle="Deductions applied to income" icon={<Icon name="receipt" />}>
+        <GlassCard title="Salary tax (ФОП)" subtitle="Deductions applied to income" icon="percent">
           <div className="grid gap-4 sm:grid-cols-2">
             <NumericSetting
               label="Tax rate"
@@ -366,7 +366,7 @@ export function SettingsPage() {
         <GlassCard
           title="Categories"
           subtitle={`${state.categories.length} total · tap a row to edit`}
-          icon={<Icon name="tag" />}
+          icon="tag"
           action={
             <Button variant="ghost" onClick={openAddCategory}>
               + Add
@@ -436,7 +436,7 @@ export function SettingsPage() {
           </ul>
         </GlassCard>
 
-        <GlassCard title="Data" subtitle="Backup, restore, reset" icon={<Icon name="database" />}>
+        <GlassCard title="Data" subtitle="Backup, restore, reset" icon="database">
           <div className="divide-y divide-hairline">
             <DataRow
               title="Export to file"
@@ -474,7 +474,7 @@ export function SettingsPage() {
           />
         </GlassCard>
 
-        <GlassCard title="About" subtitle="What lives in your database" icon={<Icon name="info" />}>
+        <GlassCard title="About" subtitle="What lives in your database" icon="info">
           {/* "Categories" moved out — the card above already counts them, and
               "Holdings" lumped two different things into one number */}
           <div className="mb-4 grid grid-cols-3 gap-2 text-center">

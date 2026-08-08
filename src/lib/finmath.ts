@@ -8,7 +8,9 @@ import {
 } from "./date";
 import {
   ACCOUNT_KINDS,
+  accountColorSlot,
   INVESTMENT_KINDS,
+  investmentColorSlot,
   investmentKind,
   valuationOf,
 } from "./constants";
@@ -716,17 +718,17 @@ export function netWorthByKind(
   // whether or not the kinds above it happen to be present. Colour follows the
   // entity, never its rank.
   const rows = [
-    ...ACCOUNT_KINDS.map((k, i) => ({
+    ...ACCOUNT_KINDS.map((k) => ({
       id: `acc:${k.value}`,
       label: k.label,
       icon: k.icon,
-      colorSlot: (i % 8) + 1,
+      colorSlot: accountColorSlot(k.value),
     })),
-    ...INVESTMENT_KINDS.map((k, i) => ({
+    ...INVESTMENT_KINDS.map((k) => ({
       id: `inv:${k.value}`,
       label: k.label,
       icon: k.icon,
-      colorSlot: ((i + ACCOUNT_KINDS.length) % 8) + 1,
+      colorSlot: investmentColorSlot(k.value),
     })),
   ].map((r) => ({ ...r, base: byKind.get(r.id) ?? 0 }));
 

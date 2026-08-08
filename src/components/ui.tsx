@@ -13,7 +13,7 @@ import {
   type SelectHTMLAttributes,
 } from "react";
 import Link from "next/link";
-import { Icon } from "./icons";
+import { Icon, SUBJECT_SLOT, type IconName } from "./icons";
 import { CURRENCIES } from "@/lib/constants";
 import { currentMonth, MONTH_NAMES, pad } from "@/lib/date";
 import { convert, formatMoney } from "@/lib/money";
@@ -52,7 +52,13 @@ export function GlassCard({
 }: {
   title?: string;
   subtitle?: string;
-  icon?: ReactNode;
+  /**
+   * The glyph, by name — not a rendered element. The card owns how its icon is
+   * drawn (size, disc, tint), and twenty-five call sites each passing their own
+   * `<Icon>` meant the card could not colour it without inspecting a React
+   * element. Colour comes from `SUBJECT_SLOT`.
+   */
+  icon?: IconName;
   action?: ReactNode;
   children: ReactNode;
   /** pinned to the bottom edge, above the padding — for totals and captions */
@@ -67,12 +73,12 @@ export function GlassCard({
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex min-w-0 items-center gap-2.5">
             {icon && (
-              <span
-                aria-hidden
-                className="flex size-8 shrink-0 items-center justify-center rounded-chip bg-ghost text-ink-2"
+              <IconDisc
+                colorSlot={SUBJECT_SLOT[icon]}
+                className={`size-9 rounded-chip ${SUBJECT_SLOT[icon] ? "" : "text-ink-2"}`}
               >
-                {icon}
-              </span>
+                <Icon name={icon} size={17} />
+              </IconDisc>
             )}
             {(title || subtitle) && (
               <div className="min-w-0">
@@ -92,6 +98,47 @@ export function GlassCard({
   );
 }
 
+/**
+ * The disc an entity wears at the head of its row.
+ *
+ * It is tinted with the chart colour that entity already owns — an account by
+ * its kind, a transaction by its category, a position by its asset class — so a
+ * row and its slice in the chart above it are visibly the same object. Every
+ * one of these used to be the same flat grey circle, which meant the icon was
+ * the only thing distinguishing a row and the colour was doing no work at all.
+ *
+ * `colorSlot` is optional on purpose: a transfer belongs to no category, and
+ * inventing a colour for it would say something untrue. Those fall back to the
+ * app's plain control material.
+ */
+export function IconDisc({
+  colorSlot,
+  className = "",
+  children,
+}: {
+  colorSlot?: number;
+  /** sizing and radius — the caller owns those, they differ per list */
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      aria-hidden
+      className={`flex shrink-0 items-center justify-center ${colorSlot ? "" : "glass-el"} ${className}`}
+      style={
+        colorSlot
+          ? {
+              background: `color-mix(in oklab, var(--series-${colorSlot}) 14%, transparent)`,
+              boxShadow: `inset 0 0 0 1px color-mix(in oklab, var(--series-${colorSlot}) 30%, transparent), inset 0 1px 0 color-mix(in oklab, var(--rim-light) 50%, transparent)`,
+            }
+          : undefined
+      }
+    >
+      {children}
+    </span>
+  );
+}
+
 export function EmptyState({
   icon,
   title,
@@ -107,9 +154,11 @@ export function EmptyState({
     <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
       {/* a quiet disc in the page's own ink, not a 36px emoji: an empty state is
           an explanation, and the loudest thing on it should not be decoration */}
+      {/* recessed rather than raised: an empty state's icon is an
+          illustration, not something you can press */}
       <span
         aria-hidden
-        className="mb-1 flex size-12 items-center justify-center rounded-full bg-ghost text-ink-3 [&_svg]:size-6"
+        className="glass-well mb-1 flex size-12 items-center justify-center rounded-full text-ink-3 [&_svg]:size-6"
       >
         {icon}
       </span>

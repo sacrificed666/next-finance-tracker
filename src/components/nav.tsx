@@ -40,7 +40,7 @@ const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
   {
     title: "Money",
     items: [
-      { href: "/transactions", label: "Expenses", short: "Spend", icon: "swapArrows" },
+      { href: "/transactions", label: "Expenses", short: "Spend", icon: "spend" },
       { href: "/income", label: "Income", short: "Income", icon: "arrowDown" },
     ],
   },
@@ -48,7 +48,7 @@ const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: "Wealth",
     items: [
       { href: "/balance", label: "Balance", short: "Balance", icon: "wallet" },
-      { href: "/forecast", label: "Forecast", short: "Plan", icon: "bars" },
+      { href: "/forecast", label: "Forecast", short: "Plan", icon: "trend" },
     ],
   },
 ];
@@ -209,19 +209,43 @@ function ThemeChoice({ compact = false }: { compact?: boolean }) {
  * properly, and all the rail owes is a glance.
  */
 function Brand() {
-  const { state, hydrated } = useStore();
+  const { state, hydrated, sync } = useStore();
   const worth = netWorth(state, todayISO());
+  const bad = sync === "error" || sync === "conflict";
   return (
     <Link
       href="/"
       className="row-tap flex shrink-0 items-center gap-3 p-2"
       aria-label="Dashboard"
     >
-      <span
-        aria-hidden
-        className="btn-gradient flex size-9 items-center justify-center rounded-chip text-base font-black shadow-md"
-      >
-        ₴
+      {/*
+        The save status lives on the badge, and it costs no layout at all.
+        In the footer it did: rendered only when saving, it added a row and
+        shoved the divider above Settings; reserved always, it left the divider
+        hanging over an empty band. A dot pinned to a corner is outside flow, so
+        the rail never moves whichever way the status goes.
+      */}
+      <span className="relative shrink-0">
+        <span
+          aria-hidden
+          className="btn-gradient flex size-9 items-center justify-center rounded-chip text-base font-black shadow-md"
+        >
+          ₴
+        </span>
+        {sync !== "idle" && (
+          <span
+            title={
+              sync === "conflict"
+                ? "Another tab saved after this one loaded — reload to catch up"
+                : sync === "error"
+                  ? "Could not save — your last changes are only in this tab"
+                  : "Saving…"
+            }
+            className={`absolute -right-0.5 -top-0.5 size-2.5 rounded-full ring-2 ring-(--card) ${
+              bad ? "bg-expense" : "animate-pulse bg-income"
+            }`}
+          />
+        )}
       </span>
       <span className="min-w-0 leading-tight">
         <span className="block text-sm font-bold tracking-tight text-ink-1">Finances</span>
@@ -238,12 +262,20 @@ function Brand() {
 /** desktop chrome: a floating glass rail down the left edge */
 export function Sidebar() {
   const pathname = usePathname();
-  const { sync } = useStore();
   return (
     <aside className="fixed inset-y-4 left-4 z-40 hidden w-56 md:flex">
       {/* the rail scrolls on its own when a short window cannot hold it, rather
           than clipping the theme control off the bottom edge */}
-      <div className="glass-strong flex h-full w-full flex-col overflow-y-auto rounded-card p-3">
+      {/*
+        `.glass`, not `.glass-strong` — the same material as every card on the
+        page, which is the point. The chrome tier exists for surfaces with the
+        page scrolling underneath, and the rail has none: the content column is
+        `md:pl-64` and the rail ends at 240px, so the only thing behind it is
+        the backdrop. Blurring that averaged two smooth gradients into flat
+        milk, and milk beside a card you can see through is exactly why the rail
+        never looked like it belonged to the same app.
+      */}
+      <div className="glass flex h-full w-full flex-col overflow-y-auto rounded-card p-3">
         <Brand />
 
         <nav className="mt-4 flex flex-1 flex-col gap-4">
@@ -262,7 +294,6 @@ export function Sidebar() {
         {/* Settings sits with the machinery, not with the money pages, and the
             sync status sits next to the thing it is the status of */}
         <div className="mt-4 space-y-2 border-t border-hairline pt-3">
-          <SyncDot sync={sync} />
           <NavRow item={SETTINGS} active={pathname === SETTINGS.href} />
           <ThemeChoice />
         </div>

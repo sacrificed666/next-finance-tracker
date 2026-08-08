@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CURRENCIES, CURRENCY_SYMBOL, ICON_CHOICES } from "@/lib/constants";
+import {
+  CURRENCIES,
+  CURRENCY_SYMBOL,
+  ICON_CHOICES,
+  SUBSCRIPTION_SLOT,
+} from "@/lib/constants";
 import {
   addMonths,
   currentMonth,
@@ -47,6 +52,7 @@ import {
   Field,
   FieldSet,
   GlassCard,
+  IconDisc,
   MonthInput,
   Money,
   OptionChips,
@@ -564,10 +570,37 @@ export function TransactionsPage() {
 
   /* ---------- subscriptions ---------- */
 
-  const subsTotal = subscriptionsMonthlyTotal(state.subscriptions, base, settings);
-  const sortedSubs = [...state.subscriptions].sort((a, b) =>
-    a.active === b.active ? a.name.localeCompare(b.name) : a.active ? -1 : 1,
-  );
+  /**
+   * A subscription belongs to the month it actually bills in. The card listed
+   * every one ever created regardless of which month the page was showing, so
+   * paging back to March advertised a service started in July and a total that
+   * matched no month at all.
+   *
+   * `active` is the switch you flip today; the start and end months are what the
+   * schedule says. A month before the start, or after the end, simply has no
+   * charge — and an inactive subscription posts nothing anywhere.
+   */
+  const billsIn = (sub: Subscription, m: string) =>
+    sub.active && sub.startMonth <= m && (!sub.endMonth || sub.endMonth >= m);
+  /*
+   * Every subscription is one category — the Subscriptions category — so they
+   * all wear its colour rather than a per-service one. Inventing a colour per
+   * row would look livelier and mean nothing; this way the discs in this card
+   * match that slice in "Spending by category".
+   */
+  const subsSlot =
+    state.categories.find((c) => c.id === "cat-subs")?.colorSlot ?? SUBSCRIPTION_SLOT;
+
+  const monthSubs = state.subscriptions.filter((sub) => billsIn(sub, month));
+  const subsTotal = subscriptionsMonthlyTotal(monthSubs, base, settings);
+  // the ones that do not bill this month still belong on the page — you manage
+  // them here — but below the ones that do, and dimmed
+  const sortedSubs = [...state.subscriptions].sort((a, b) => {
+    const aNow = billsIn(a, month);
+    const bNow = billsIn(b, month);
+    if (aNow !== bNow) return aNow ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
 
   const openAddSub = () =>
     setSubForm({
@@ -847,7 +880,7 @@ export function TransactionsPage() {
             <GlassCard
               title="Where it went"
               subtitle={formatMonth(month)}
-              icon={<Icon name="pie" />}
+              icon="pie"
               className="flex flex-col"
             >
               {spendSegments.length > 0 ? (
@@ -881,7 +914,7 @@ export function TransactionsPage() {
             <GlassCard
               title="Cash flow"
               subtitle="Income vs expenses"
-              icon={<Icon name="chart" />}
+              icon="chart"
               action={<PeriodTabs value={flowMonths} onChange={setFlowMonths} />}
             >
               <MonthlyColumns
@@ -999,7 +1032,7 @@ export function TransactionsPage() {
                   }`
                 : `${monthTxCount} entr${monthTxCount === 1 ? "y" : "ies"} in ${formatMonth(month)}`
             }
-            icon={<Icon name="receipt" />}
+            icon="receipt"
             action={
               <Button variant="ghost" onClick={openAddTx}>
                 + Add
@@ -1052,12 +1085,14 @@ export function TransactionsPage() {
                         onClick={() => openEditTx(tx)}
                         className="row-tap flex w-full items-center gap-3 px-1.5 py-2 text-left"
                       >
-                        <span
-                          aria-hidden
-                          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ghost text-base"
+                        {/* a transfer belongs to no category, so it gets no
+                            colour rather than a borrowed one */}
+                        <IconDisc
+                          colorSlot={isTransfer ? undefined : cat?.colorSlot}
+                          className="size-9 rounded-full text-base"
                         >
                           {isTransfer ? "⇄" : (cat?.icon ?? "❓")}
-                        </span>
+                        </IconDisc>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium text-ink-1">
                             {isTransfer
@@ -1101,7 +1136,7 @@ export function TransactionsPage() {
         <GlassCard
           title="Subscriptions"
           subtitle="Recurring services"
-          icon={<Icon name="device" />}
+          icon="device"
           action={
             <Button variant="ghost" onClick={openAddSub}>
               + Add
@@ -1122,10 +1157,11 @@ export function TransactionsPage() {
           ) : (
             <>
               <p className="mb-3 text-sm text-ink-2">
-                Active total:{" "}
+                Billing in {formatMonth(month)}:{" "}
                 <span className="tnum font-semibold text-ink-1">
-                  {formatMoney(subsTotal, base, { exact: true })}/mo
+                  {formatMoney(subsTotal, base, { exact: true })}
                 </span>
+                <span className="caption"> · {monthSubs.length} of {state.subscriptions.length}</span>
               </p>
               <ul className="space-y-0.5">
                 {sortedSubs.map((sub) => (
@@ -1134,15 +1170,12 @@ export function TransactionsPage() {
                       type="button"
                       onClick={() => openEditSub(sub)}
                       className={`row-tap flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left ${
-                        sub.active ? "" : "opacity-50"
+                        billsIn(sub, month) ? "" : "opacity-45"
                       }`}
                     >
-                      <span
-                        aria-hidden
-                        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ghost text-base"
-                      >
+                      <IconDisc colorSlot={subsSlot} className="size-9 rounded-full text-base">
                         {sub.icon}
-                      </span>
+                      </IconDisc>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-ink-1">
                           {sub.name}
@@ -1182,7 +1215,7 @@ export function TransactionsPage() {
         <GlassCard
           title="Recurring"
           subtitle="Auto-posted each month"
-          icon={<Icon name="repeat" />}
+          icon="repeat"
           action={
             <Button variant="ghost" onClick={openAddRec}>
               + Add
@@ -1211,12 +1244,12 @@ export function TransactionsPage() {
                       onClick={() => openEditRec(rule)}
                       className="row-tap flex w-full items-center gap-3 px-3 py-2.5 text-left"
                     >
-                      <span
-                        aria-hidden
-                        className="flex size-10 shrink-0 items-center justify-center rounded-full bg-ghost text-lg"
+                      <IconDisc
+                        colorSlot={cat?.colorSlot}
+                        className="size-10 rounded-full text-lg"
                       >
                         {cat?.icon ?? "❓"}
-                      </span>
+                      </IconDisc>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-ink-1">
                           {cat?.name ?? "Uncategorized"}
@@ -1243,13 +1276,13 @@ export function TransactionsPage() {
 
         {/* budgets */}
         <GlassCard
-          title="Monthly budgets"
+          title="Budgets"
           subtitle={
             state.budgets.length > 0
-              ? `${formatMoney(budgetTotals.spent, base, { compact: true })} of ${formatMoney(budgetTotals.limit, base, { compact: true })} used`
-              : "Per-category limits"
+              ? `${formatMonth(month)} · ${formatMoney(budgetTotals.spent, base, { compact: true })} of ${formatMoney(budgetTotals.limit, base, { compact: true })}`
+              : "Per-category limits, measured against the month you are reading"
           }
-          icon={<Icon name="target" />}
+          icon="target"
           action={
             <Button
               variant="ghost"

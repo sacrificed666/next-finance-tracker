@@ -10,6 +10,7 @@ import {
   GlassCard,
   LinkButton,
   PageHeader,
+  ProgressMeter,
   SegmentedControl,
   Slider,
   Switch,
@@ -169,6 +170,9 @@ export function ForecastPage() {
   const yearRows = projection
     .map((p, i) => ({ p, i }))
     .filter(({ i }) => i % 12 === 0);
+  // the yardstick the bars in the Total column are drawn against. Inflation is
+  // applied per row, so the largest is not necessarily the last one.
+  const maxYearTotal = Math.max(0, ...yearRows.map(({ p, i }) => show(p.total, i)));
 
   /* ---------- goal calculator ---------- */
   const [goalAmount, setGoalAmount] = useState("");
@@ -236,19 +240,28 @@ export function ForecastPage() {
           in that order, not the reverse.
         */}
         <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
+          {/* "Now" has no curve to draw — there is no stored history of net
+              worth — so it shows what it is made of instead of an empty half
+              card beside two tiles that do. */}
           <StatTile
             label="Now"
+            icon="wallet"
             value={formatMoney(nowTotal, view, { compact: true })}
-            hint="savings + investments today"
+            bar={[
+              { label: "Savings", value: show(projection[0].savings, 0), colorSlot: 1 },
+              { label: "Investments", value: show(projection[0].investments, 0), colorSlot: 6 },
+            ]}
           />
           <StatTile
             label={`In ${years} yr${inflationOn ? " (real)" : ""}`}
+            icon="calendar"
             value={formatMoney(endTotal, view, { compact: true })}
             spark={points.map((p) => p.a + p.b)}
             hint={`${formatMoney(endTotal / (years * 12), view, { compact: true })} per month of the way there`}
           />
           <StatTile
             className="col-span-2 md:col-span-1"
+            icon="trend"
             label="Growth"
             value={formatMoney(diff, view, { compact: true, sign: true })}
             tone={diff >= 0 ? "income" : "expense"}
@@ -268,7 +281,7 @@ export function ForecastPage() {
 
 
         {/* assumptions */}
-        <GlassCard title="Assumptions" subtitle="Tune the projection" icon={<Icon name="sliders" />}>
+        <GlassCard title="Assumptions" subtitle="Tune the projection" icon="sliders">
           <div className="grid gap-x-6 gap-y-5 lg:grid-cols-2">
             <div>
               <div className="mb-2 flex items-baseline justify-between">
@@ -377,7 +390,7 @@ export function ForecastPage() {
                 goal form owned a full-width row and spread a short input, three
                 presets and one milestone across it */}
             <div className="grid items-start gap-4 sm:gap-5 lg:grid-cols-3">
-              <GlassCard title={`Wealth projection · ${view}`} icon={<Icon name="trend" />} className="lg:col-span-2">
+              <GlassCard title={`Wealth projection · ${view}`} icon="trend" className="lg:col-span-2">
                 <StackedArea
                   points={points}
                   currency={view}
@@ -445,7 +458,7 @@ export function ForecastPage() {
               </GlassCard>
 
               {/* goal calculator */}
-              <GlassCard title="Reach a goal" subtitle="When you hit a target" icon={<Icon name="target" />}>
+              <GlassCard title="Reach a goal" subtitle="When you hit a target" icon="target">
                 <p className="mb-3 text-sm text-ink-2">
                   How long until you have a certain amount?
                 </p>
@@ -485,7 +498,26 @@ export function ForecastPage() {
                   ))}
                 </div>
 
-                <div className="mt-4 rounded-field bg-ghost p-4 text-center">
+                {/* how far along you already are: the card asked "when do I
+                    get there" and never said "and where am I now", which is
+                    half of the same question */}
+                {goalBase > 0 && !alreadyThere && (
+                  <div className="mt-4">
+                    <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
+                      <span className="text-ink-2">Progress today</span>
+                      <span className="tnum font-semibold text-ink-1">
+                        {formatPercent(Math.min(100, (assetsNow / goalBase) * 100), 0)}
+                      </span>
+                    </div>
+                    <ProgressMeter
+                      value={assetsNow}
+                      max={goalBase}
+                      label={`Progress toward ${formatMoney(goalBase, base, { compact: true })}`}
+                    />
+                  </div>
+                )}
+
+                <div className="glass-well mt-4 rounded-field p-4 text-center">
                   {goalBase <= 0 ? (
                     <p className="text-sm text-ink-3">Enter a target to see when you reach it.</p>
                   ) : alreadyThere ? (
@@ -542,7 +574,7 @@ export function ForecastPage() {
               </GlassCard>
             </div>
 
-            <GlassCard title={`Year by year · ${view}`} icon={<Icon name="calendar" />}>
+            <GlassCard title={`Year by year · ${view}`} icon="calendar">
               <div className="-mx-1 overflow-x-auto px-1">
                 <table className="w-full min-w-104 text-sm">
                   <thead>
@@ -562,9 +594,20 @@ export function ForecastPage() {
                       const prev = idx > 0 ? yearRows[idx - 1] : null;
                       const added = prev ? show(p.total, i) - show(prev.p.total, prev.i) : 0;
                       return (
-                      <tr key={p.month} className="border-b border-hairline last:border-b-0">
-                        <td className="py-2.5 pr-3 text-ink-1">
-                          {i === 0 ? "Now" : p.month.slice(0, 4)}
+                      <tr
+                        key={p.month}
+                        className="table-row border-b border-hairline last:border-b-0"
+                      >
+                        <td className="py-2.5 pr-3">
+                          {/* today is the row every other one is measured
+                              against, so it is not just another year label */}
+                          <span
+                            className={
+                              i === 0 ? "font-semibold text-ink-1" : "text-ink-2"
+                            }
+                          >
+                            {i === 0 ? "Now" : p.month.slice(0, 4)}
+                          </span>
                         </td>
                         <td className="tnum px-3 py-2.5 text-right text-ink-2">
                           {formatMoney(show(p.savings, i), view, { compact: true })}
@@ -572,8 +615,23 @@ export function ForecastPage() {
                         <td className="tnum px-3 py-2.5 text-right text-ink-2">
                           {formatMoney(show(p.investments, i), view, { compact: true })}
                         </td>
-                        <td className="tnum px-3 py-2.5 text-right font-semibold text-ink-1">
-                          {formatMoney(show(p.total, i), view, { compact: true })}
+                        {/* The column doubles as a chart. Fourteen rows of
+                            compact money is a shape you have to reconstruct by
+                            reading; the bar is each year's share of the last
+                            one, so the curve is legible at a glance and the
+                            figures are still exact underneath. */}
+                        <td className="relative px-3 py-2.5 text-right">
+                          <span
+                            aria-hidden
+                            className="absolute inset-y-1.5 right-3 rounded-sm bg-accent/12"
+                            style={{
+                              width: `${maxYearTotal > 0 ? (show(p.total, i) / maxYearTotal) * 100 : 0}%`,
+                              maxWidth: "calc(100% - 1.5rem)",
+                            }}
+                          />
+                          <span className="tnum relative font-semibold text-ink-1">
+                            {formatMoney(show(p.total, i), view, { compact: true })}
+                          </span>
                         </td>
                         <td
                           className={`tnum py-2.5 pl-3 text-right ${

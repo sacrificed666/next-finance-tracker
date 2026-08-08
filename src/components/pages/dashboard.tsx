@@ -16,6 +16,7 @@ import {
   Field,
   FieldSet,
   GlassCard,
+  IconDisc,
   LinkButton,
   Money,
   PageHeader,
@@ -25,7 +26,7 @@ import {
   TextInput,
 } from "@/components/ui";
 import { Icon } from "@/components/icons";
-import { CURRENCIES, CURRENCY_SYMBOL } from "@/lib/constants";
+import { CURRENCIES, CURRENCY_SYMBOL, SUBSCRIPTION_SLOT } from "@/lib/constants";
 import {
   addMonths,
   currentMonth,
@@ -60,11 +61,12 @@ function CardLink({ href }: { href: string }) {
   return (
     <Link
       href={href}
-      // Ink, not accent. The brand green already means "this is the chip / row /
-      // tab you picked" *and* "this number went up"; spending it on navigation
-      // as well left no way to tell a verdict from a control at a glance. The
-      // chip's border and its arrow are enough to say this goes somewhere.
-      className="group inline-flex items-center gap-1 rounded-full border border-hairline bg-ghost px-3 py-1.5 text-xs font-semibold text-ink-2 transition-colors hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-ghost-2 hover:text-ink-1"
+      // Ink, not accent: the brand green already means "the chip you picked"
+      // and "this number went up", so spending it on navigation too would leave
+      // no way to tell a verdict from a control. The material is the app's own
+      // small-control tier — this chip was the last one still made of a bare
+      // border and a flat fill, which is why it read as unfinished.
+      className="glass-el group inline-flex min-h-9 items-center gap-1.5 rounded-full border border-hairline px-3 text-xs font-semibold text-ink-2 transition-[background-color,border-color,box-shadow,color] duration-150 hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-fill-hover hover:text-ink-1"
     >
       All
       {/* the arrow leads the way on hover — the one bit of motion that says
@@ -76,6 +78,77 @@ function CardLink({ href }: { href: string }) {
         className="transition-transform duration-200 group-hover:translate-x-0.5"
       />
     </Link>
+  );
+}
+
+/**
+ * One family in the net-worth hero: a subtotal, then the asset classes it is
+ * made of. The percentages are of total assets, not of the group, so a row's
+ * figure matches the width of its own slice in the bar above.
+ */
+function WorthGroup({
+  label,
+  total,
+  rows,
+  base,
+}: {
+  label: string;
+  total: number;
+  rows: Array<{ id: string; label: string; colorSlot: number; base: number }>;
+  base: Currency;
+}) {
+  if (rows.length === 0) return null;
+  const groupTotal = rows.reduce((sum, r) => sum + r.base, 0);
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3 text-sm">
+        <span className="text-ink-2">{label}</span>
+        <Money amount={total} currency={base} className="font-semibold text-ink-1" />
+      </div>
+      {/* One bar per family, not one bar for everything. Eleven asset kinds in a
+          single strip meant any two of them could end up adjacent, which is a
+          separation problem twelve colours cannot solve inside a sane gamut.
+          Split by family and the requirement drops to five colours in one bar
+          and six in the other — which the palette clears with room. */}
+      <div
+        className="mt-2 flex h-2 w-full gap-0.5 overflow-hidden rounded-full"
+        role="img"
+        aria-label={`${label} by kind`}
+      >
+        {rows.map((row, i) => (
+          <div
+            key={row.id}
+            className="bar-slice"
+            title={`${row.label}: ${formatMoney(row.base, base, { compact: true })}`}
+            style={{
+              width: `${(row.base / groupTotal) * 100}%`,
+              background: `var(--series-${row.colorSlot})`,
+              "--i": i,
+            } as CSSProperties}
+          />
+        ))}
+      </div>
+      <ul className="mt-2.5 space-y-1.5">
+        {rows.map((row) => (
+          <li key={row.id} className="flex items-center gap-2 text-[13px]">
+            <span
+              aria-hidden
+              className="size-2 shrink-0 rounded-full"
+              style={{ background: `var(--series-${row.colorSlot})` }}
+            />
+            <span className="min-w-0 flex-1 truncate text-ink-3">{row.label}</span>
+            <span className="tnum text-ink-2">
+              {formatMoney(row.base, base, { compact: true })}
+            </span>
+            {/* fixed rail, so the percentages line up down the column instead
+                of floating wherever the amount beside them happened to end */}
+            <span className="tnum w-8 shrink-0 text-right text-ink-3">
+              {formatPercent((row.base / groupTotal) * 100, 0)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -128,19 +201,6 @@ export function DashboardPage() {
   const avgKept = earningMonths.length
     ? earningMonths.reduce((s, m) => s + m.net, 0) / earningMonths.length
     : 0;
-
-  // liquid runway: how many months your cash covers typical spending
-  const monthsWithExpense = series.filter((m) => m.expense > 0);
-  const avgExpense = monthsWithExpense.length
-    ? monthsWithExpense.reduce((s, m) => s + m.expense, 0) / monthsWithExpense.length
-    : 0;
-  const runwayMonths = avgExpense > 0 ? worth.savings / avgExpense : 0;
-  const runwayLabel =
-    avgExpense <= 0 || worth.savings <= 0
-      ? "—"
-      : runwayMonths >= 24
-        ? "24+ mo"
-        : `${runwayMonths < 10 ? runwayMonths.toFixed(1) : Math.round(runwayMonths)} mo`;
 
   /**
    * How the month's budgets are doing, as one figure. The meters live nested
@@ -218,7 +278,7 @@ export function DashboardPage() {
   // it lands in this sort: colour follows the entity, never its rank (see
   // Category.colorSlot). Keyed on rank, a deposit maturing past a savings
   // account swapped both their colours between two visits to the page.
-  const holdingSlot = new Map(allHoldings.map((h, i) => [h.id, (i % 8) + 1]));
+  const holdingSlot = new Map(allHoldings.map((h, i) => [h.id, (i % 12) + 1]));
   const holdingRows = allHoldings
     .filter((h) => h.base > 0)
     .sort((a, b) => b.base - a.base);
@@ -235,6 +295,11 @@ export function DashboardPage() {
    * questions, and only the second one answers "am I too concentrated".
    */
   const kindRows = netWorthByKind(state, today);
+  // `netWorthByKind` returns both families in one list keyed `acc:` / `inv:`.
+  // The hero shows them grouped, so each class sits under the subtotal it
+  // belongs to instead of in one flat legend where Cash and Crypto were peers.
+  const accKindRows = kindRows.filter((r) => r.id.startsWith("acc:"));
+  const invKindRows = kindRows.filter((r) => r.id.startsWith("inv:"));
   const kindSegments: BreakdownSegment[] = kindRows.map((r) => ({
     id: r.id,
     label: r.label,
@@ -258,6 +323,15 @@ export function DashboardPage() {
   /* subscriptions */
   const activeSubs = state.subscriptions.filter((s) => s.active);
   const subsTotal = subscriptionsMonthlyTotal(state.subscriptions, base, settings);
+  /*
+   * Every subscription is one category — the Subscriptions category — so they
+   * all wear its colour rather than a per-service one. Inventing a colour per
+   * row would look livelier and mean nothing; this way the discs in this card
+   * match that slice in "Spending by category".
+   */
+  const subsSlot =
+    state.categories.find((c) => c.id === "cat-subs")?.colorSlot ?? SUBSCRIPTION_SLOT;
+
   const topSubs = [...activeSubs]
     .sort(
       (a, b) =>
@@ -271,6 +345,10 @@ export function DashboardPage() {
     return thisMonth >= today ? thisMonth : dateInMonth(addMonths(month, 1), sub.dayOfMonth);
   };
   // what share of a typical month's spending is already committed to subs
+  const monthsWithExpense = series.filter((m) => m.expense > 0);
+  const avgExpense = monthsWithExpense.length
+    ? monthsWithExpense.reduce((s, m) => s + m.expense, 0) / monthsWithExpense.length
+    : 0;
   const subsShare = avgExpense > 0 ? (subsTotal / avgExpense) * 100 : 0;
 
   /*
@@ -286,12 +364,6 @@ export function DashboardPage() {
    * five-year guess, but nothing in between — and the twelve months you have
    * lived through are the part you can act on.
    */
-  // exclude planned (future-dated) postings so they don't masquerade as recent
-  const recent = state.transactions
-    .filter((t) => t.date <= today)
-    .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
-    .slice(0, 9);
-
   const hasAnyData =
     state.transactions.length > 0 ||
     state.savings.length > 0 ||
@@ -342,10 +414,13 @@ export function DashboardPage() {
         // read as mostly empty.
         <div className="stagger grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-6 xl:grid-cols-12">
           {/* hero: net worth, spans two rows next to tiles + cash flow */}
-          <GlassCard className="glow col-span-2 lg:col-span-6 xl:col-span-4 xl:row-span-2">
+          <GlassCard
+            title="Net worth"
+            icon="wallet"
+            className="glow col-span-2 lg:col-span-6 xl:col-span-4 xl:row-span-2"
+          >
             <div>
-              <p className="card-title">Net worth</p>
-              <p className="hero-number num-hero mt-3">{formatMoney(worth.total, base)}</p>
+              <p className="hero-number num-hero">{formatMoney(worth.total, base)}</p>
               <p className="tnum mt-2 text-[15px] text-ink-2">
                 {otherCurrencies
                   .map((c) =>
@@ -369,85 +444,46 @@ export function DashboardPage() {
                 </p>
               )}
             </div>
-            {/* centred in whatever height the hero inherits from the two rows
-                beside it, so the breathing room sits above and below the list
-                instead of collecting under it */}
-            <div className="mt-6 flex flex-1 flex-col justify-center space-y-2.5 border-t border-hairline pb-2 pt-4 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-ink-2">Accounts</span>
-                <Money amount={worth.savings} currency={base} className="font-semibold text-ink-1" />
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-ink-2">Investments</span>
-                <Money amount={worth.investments} currency={base} className="font-semibold text-ink-1" />
-              </div>
-              {worth.debts > 0 && (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-ink-2">Debts</span>
-                  <span className="tnum font-semibold text-expense">
-                    −{formatMoney(worth.debts, base, { compact: true })}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-ink-2">Subscriptions</span>
-                <span className="tnum font-semibold text-ink-1">
-                  {formatMoney(subsTotal, base, { compact: true })}/mo
-                </span>
-              </div>
-              {worth.assets > 0 && kindRows.length > 0 && (
-                <div className="pt-1">
-                  {/* By asset class, not "accounts vs investments". That split
-                      restated the two rows directly above it and told you
-                      nothing a balance sheet is for; this says what the money
-                      is actually in. Same grouping the Balance hero uses. */}
-                  <div
-                    className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full"
-                    role="img"
-                    aria-label="Net worth by asset class"
-                  >
-                    {kindRows.map((row, i) => (
-                      <div
-                        key={row.id}
-                        className="bar-slice"
-                        title={`${row.label}: ${formatMoney(row.base, base, { compact: true })}`}
-                        style={{
-                          width: `${(row.base / worth.assets) * 100}%`,
-                          background: `var(--series-${row.colorSlot})`,
-                          "--i": i,
-                        } as CSSProperties}
-                      />
-                    ))}
+            {/*
+              The hero is two grid rows tall, and what filled it was two total
+              lines, a 2px bar and a wrapped legend of percentages — so most of
+              the height was blank and the only way to learn what a slice was
+              worth was to hover it. The classes now carry their own figures and
+              sit under the subtotal they belong to, which is both the missing
+              information and the thing that fills the panel.
+            */}
+            <div className="mt-6 flex flex-1 flex-col border-t border-hairline pb-1 pt-4">
+              <div className="flex flex-1 flex-col justify-evenly gap-5">
+                <WorthGroup
+                  label="Accounts"
+                  total={worth.savings}
+                  rows={accKindRows}
+                  base={base}
+                />
+                <WorthGroup
+                  label="Investments"
+                  total={worth.investments}
+                  rows={invKindRows}
+                  base={base}
+                />
+                {worth.debts > 0 && (
+                  <div className="flex items-center justify-between gap-3 border-t border-hairline pt-3 text-sm">
+                    <span className="text-ink-2">Debts</span>
+                    <span className="tnum font-semibold text-expense">
+                      −{formatMoney(worth.debts, base, { compact: true })}
+                    </span>
                   </div>
-                  <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-                    {kindRows.map((row) => (
-                      <li key={row.id} className="flex items-center gap-1.5 text-xs text-ink-3">
-                        <span
-                          aria-hidden
-                          className="size-2 shrink-0 rounded-sm"
-                          style={{ background: `var(--series-${row.colorSlot})` }}
-                        />
-                        {row.label}
-                        <span className="tnum">
-                          {formatPercent((row.base / worth.assets) * 100, 0)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-            {/* pinned to the bottom edge: the hero spans two rows, so whatever
-                height the tiles and the chart beside it end up with, the slack
-                sits between the blocks rather than pooling under the last one */}
-            <div className="mt-auto border-t border-hairline pt-4">
-              <p className="card-title">Runway</p>
-              <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
-                <p className="num-sm text-ink-1">{runwayLabel}</p>
-                <p className="text-xs text-ink-3">of typical spending, from cash alone</p>
-              </div>
-            </div>
+            {/*
+              What used to sit here — a subscriptions total and a runway figure —
+              was not about net worth. Subscriptions have their own card two rows
+              down, and runway is a spending statistic wearing a balance-sheet
+              costume. The hero is now one thing all the way through: what you
+              are worth, in every currency, and what it is made of.
+            */}
           </GlassCard>
 
           {/* month tiles — one skeleton, each with its own trend and a line of
@@ -520,7 +556,7 @@ export function DashboardPage() {
           {/* cash flow — beside the hero on xl */}
           <GlassCard
             title="Cash flow"
-            icon={<Icon name="chart" />}
+            icon="chart"
             action={<PeriodTabs value={cashMonths} onChange={setCashMonths} />}
             className="col-span-2 lg:col-span-6 xl:col-span-8"
           >
@@ -547,7 +583,7 @@ export function DashboardPage() {
           {/* breakdowns row */}
           <GlassCard
             title="Spending by category"
-            icon={<Icon name="spend" />}
+            icon="spend"
             action={<CardLink href="/transactions" />}
             // the longest of the three breakdowns: it takes the full laptop row
             // and lets the two shorter ones pair up underneath
@@ -590,7 +626,7 @@ export function DashboardPage() {
 
           <GlassCard
             title={worthView === "type" ? "Net worth by type" : "Net worth by holding"}
-            icon={<Icon name="bank" />}
+            icon="bank"
             action={
               // only worth offering once there is more than one group to split
               // into — a switch between two identical lists is furniture
@@ -661,7 +697,7 @@ export function DashboardPage() {
             )}
           </GlassCard>
 
-          <GlassCard title="Currency allocation" icon={<Icon name="globe" />} className="col-span-2 lg:col-span-3 xl:col-span-4">
+          <GlassCard title="Currency allocation" icon="globe" className="col-span-2 lg:col-span-3 xl:col-span-4">
             {allocationSegments.some((s) => s.value > 0) ? (
               <>
                 <Donut
@@ -720,7 +756,7 @@ export function DashboardPage() {
 
           <GlassCard
             title="Subscriptions"
-            icon={<Icon name="device" />}
+            icon="device"
             action={<CardLink href="/transactions" />}
             // fixed-length content: a short list of services and a form have
             // nothing to fill a taller neighbour's height with
@@ -758,12 +794,12 @@ export function DashboardPage() {
                       <tr key={sub.id} className="border-b border-hairline last:border-b-0">
                         <td className="py-2 pr-3">
                           <span className="flex items-center gap-2.5">
-                            <span
-                              aria-hidden
-                              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-ghost text-sm"
+                            <IconDisc
+                              colorSlot={subsSlot}
+                              className="size-8 rounded-full text-sm"
                             >
                               {sub.icon}
-                            </span>
+                            </IconDisc>
                             <span className="min-w-0">
                               <span className="block truncate text-ink-1">{sub.name}</span>
                               {sub.period === "yearly" && (
@@ -822,7 +858,7 @@ export function DashboardPage() {
             <GlassCard
               title="Budgets"
               subtitle={`${formatMoney(budgetHealth.spent, base, { compact: true })} of ${formatMoney(budgetHealth.limit, base, { compact: true })}`}
-              icon={<Icon name="target" />}
+              icon="target"
               action={<CardLink href="/transactions" />}
               className="col-span-2 self-start lg:col-span-3 xl:col-span-4"
             >
@@ -858,93 +894,6 @@ export function DashboardPage() {
           )}
 
           <QuickAdd className="col-span-2 self-start lg:col-span-3 xl:col-span-4" />
-
-          <GlassCard
-            title="Recent transactions"
-            subtitle={`Last ${recent.length} entries`}
-            icon={<Icon name="receipt" />}
-            action={<CardLink href="/transactions" />}
-            className="col-span-2 lg:col-span-6 xl:col-span-12"
-          >
-            {recent.length > 0 ? (
-              // a real table: aligned columns with a header, so amounts and
-              // dates line up down the card instead of drifting per row
-              <div className="-mx-1 overflow-x-auto px-1">
-                <table className="w-full min-w-120 border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-hairline text-left text-xs font-semibold uppercase tracking-wide text-ink-3">
-                      <th className="py-2 pr-3 font-semibold">Category</th>
-                      <th className="hidden py-2 pr-3 font-semibold sm:table-cell">Account</th>
-                      <th className="py-2 pr-3 text-right font-semibold">Date</th>
-                      <th className="py-2 text-right font-semibold">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recent.map((tx) => {
-                      const cat = state.categories.find((c) => c.id === tx.categoryId);
-                      const account = state.savings.find((a) => a.id === tx.accountId);
-                      return (
-                        <tr
-                          key={tx.id}
-                          className="table-row border-b border-hairline last:border-b-0"
-                        >
-                          <td className="py-2.5 pr-3">
-                            <span className="flex items-center gap-2.5">
-                              <span
-                                aria-hidden
-                                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-ghost text-sm"
-                              >
-                                {cat?.icon ?? "❓"}
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block truncate font-medium text-ink-1">
-                                  {cat?.name ?? "Uncategorized"}
-                                </span>
-                                {tx.note && (
-                                  <span className="block truncate text-xs text-ink-3">
-                                    {tx.note}
-                                  </span>
-                                )}
-                              </span>
-                            </span>
-                          </td>
-                          <td className="hidden py-2.5 pr-3 text-ink-2 sm:table-cell">
-                            <span className="block truncate">{account?.name ?? "—"}</span>
-                          </td>
-                          <td className="tnum whitespace-nowrap py-2.5 pr-3 text-right text-xs text-ink-2">
-                            {formatDateShort(tx.date)}
-                          </td>
-                          <td className="py-2.5 text-right">
-                            {tx.type === "income" ? (
-                              <Money
-                                amount={tx.amount}
-                                currency={tx.currency}
-                                sign
-                                className="font-semibold text-income"
-                              />
-                            ) : (
-                              <Money
-                                amount={-tx.amount}
-                                currency={tx.currency}
-                                className="font-semibold text-ink-1"
-                              />
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <EmptyState
-                icon={<Icon name="spend" />}
-                title="No transactions yet"
-                hint="Use quick add on the right — it takes seconds."
-              />
-            )}
-          </GlassCard>
-
         </div>
       )}
     </>
@@ -1025,7 +974,7 @@ function QuickAdd({ className = "" }: { className?: string }) {
   };
 
   return (
-    <GlassCard title="Quick add" icon={<Icon name="bolt" />} className={className}>
+    <GlassCard title="Quick add" icon="bolt" className={className}>
       {/* Labelled like every other form in the app. This one carried its names
           in `aria-label` only, so what you actually saw was two adjacent
           dropdowns reading "🍽️ Food" and "💳 Mono" with nothing to say which

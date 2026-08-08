@@ -13,8 +13,8 @@ import Link from "next/link";
 import { formatMonthShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import type { Currency } from "@/lib/types";
-import { SegmentedControl } from "./ui";
-import { Icon } from "./icons";
+import { IconDisc, SegmentedControl } from "./ui";
+import { Icon, SUBJECT_SLOT, type IconName } from "./icons";
 
 /* ---------- shared plumbing ---------- */
 
@@ -67,7 +67,7 @@ function axisFormatter(top: number): (v: number) => string {
   };
 }
 
-const SERIES_VAR = (slot: number) => `var(--series-${((slot - 1) % 8) + 1})`;
+const SERIES_VAR = (slot: number) => `var(--series-${((slot - 1) % 12) + 1})`;
 
 function Tooltip({
   x,
@@ -80,14 +80,21 @@ function Tooltip({
   containerWidth: number;
   children: ReactNode;
 }) {
-  const flip = x > containerWidth - 150;
+  const flip = x > containerWidth - 132;
   return (
+    /*
+     * Sized like a label, not like a card. It was 128px wide before its content
+     * had a say, at card padding and card radius, so reading one figure off a
+     * chart put a small panel over the very bars you were pointing at. Now the
+     * padding, the radius and the type are all one tier down, and the width is
+     * whatever the widest row actually needs.
+     */
     <div
-      className="glass-strong pointer-events-none absolute z-10 min-w-32 rounded-field px-3 py-2 text-xs"
+      className="glass-strong pointer-events-none absolute z-10 w-max rounded-chip px-2.5 py-1.5 text-[11px] leading-tight"
       style={{
-        left: flip ? undefined : x + 12,
-        right: flip ? containerWidth - x + 12 : undefined,
-        top: Math.max(0, y - 8),
+        left: flip ? undefined : x + 10,
+        right: flip ? containerWidth - x + 10 : undefined,
+        top: Math.max(0, y - 6),
       }}
     >
       {children}
@@ -105,7 +112,7 @@ function TooltipRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-0.5">
+    <div className="flex items-center justify-between gap-2.5 py-px">
       <span className="flex items-center gap-1.5 text-ink-2">
         {color && (
           <span
@@ -320,8 +327,10 @@ export function StatTile({
   delta,
   hint,
   spark,
+  bar,
   tone,
   href,
+  icon,
   className = "",
 }: {
   label: string;
@@ -330,23 +339,59 @@ export function StatTile({
   /** neutral context line, under the delta when there is one */
   hint?: string;
   spark?: number[];
+  /**
+   * What the figure is made of, when it has no history to draw. "Now" on the
+   * forecast is one number with no past — the app has no month-by-month record
+   * of net worth — so it sat flat and empty beside two tiles carrying curves.
+   * Its composition is the thing it does know.
+   */
+  bar?: Array<{
+    label: string;
+    value: number;
+    /** a chart slot, for segments that are categories */
+    colorSlot?: number;
+    /** an explicit colour, for segments that are verdicts (gains vs losses) */
+    color?: string;
+  }>;
   tone?: "income" | "expense";
   /** where the figure comes from; makes the tile a link */
   href?: string;
+  /** sits in the tile's top-right corner, which was otherwise dead space */
+  icon?: IconName;
   className?: string;
 }) {
   const sparkTone: Tone = tone ?? "accent";
+  const barTotal = bar ? bar.reduce((sum, seg) => sum + Math.max(0, seg.value), 0) : 0;
   // the lift is reserved for tiles that lead somewhere — every tile used to
   // rise under the pointer and then do nothing when clicked
   // the sparkline is a 40px band pinned to the bottom edge, so the text block
   // has to end above it — a second context line used to be drawn straight
   // across the curve
-  const shell = `glass ${href ? "glass-hover" : ""} relative flex min-h-31 flex-col overflow-hidden rounded-card p-4 ${
+  // `p-4 sm:p-5` is GlassCard's padding. A tile sitting in the same grid row
+  // as a card was inset 4px less on every side, so nothing lined up across the
+  // row — labels, figures and the tops of the two blocks all sat off by 4.
+  const shell = `glass ${href ? "glass-hover" : ""} relative flex min-h-31 flex-col overflow-hidden rounded-card p-4 sm:p-5 ${
     spark && spark.length > 1 ? "pb-11" : ""
   } ${className}`;
   const body = (
     <>
-      <p className="card-title">{label}</p>
+      {/* Left of the label, exactly like GlassCard's header. It was pinned
+          top-right, which meant a page of cards and tiles had its icons down
+          two different edges — the tiles' discs floated in the corner while
+          every card's sat against its title. */}
+      {icon ? (
+        <div className="flex items-center gap-2.5">
+          <IconDisc
+            colorSlot={SUBJECT_SLOT[icon]}
+            className={`size-8 rounded-chip ${SUBJECT_SLOT[icon] ? "" : "text-ink-3"}`}
+          >
+            <Icon name={icon} size={16} />
+          </IconDisc>
+          <p className="card-title truncate">{label}</p>
+        </div>
+      ) : (
+        <p className="card-title">{label}</p>
+      )}
       <p
         className={`num-md mt-2 whitespace-nowrap ${
           tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-ink-1"
@@ -371,6 +416,34 @@ export function StatTile({
         </p>
       )}
       {spark && spark.length > 1 && <SparkArea values={spark} tone={sparkTone} height={40} />}
+      {bar && barTotal > 0 && (
+        <div className="mt-auto pt-3">
+          <div className="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full">
+            {bar.map((seg) => (
+              <div
+                key={seg.label}
+                style={{
+                  width: `${(seg.value / barTotal) * 100}%`,
+                  background: seg.color ?? `var(--series-${seg.colorSlot})`,
+                }}
+              />
+            ))}
+          </div>
+          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5">
+            {bar.map((seg) => (
+              <li key={seg.label} className="flex items-center gap-1.5 text-[11px] text-ink-3">
+                <span
+                  aria-hidden
+                  className="size-1.5 shrink-0 rounded-full"
+                  style={{ background: seg.color ?? `var(--series-${seg.colorSlot})` }}
+                />
+                {seg.label}
+                <span className="tnum">{Math.round((seg.value / barTotal) * 100)}%</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </>
   );
   return href ? (
@@ -496,7 +569,7 @@ export function MonthlyColumns({
         )}
         {hover !== null && data[hover] && (
           <Tooltip x={pad.left + band * hover + band / 2} y={pad.top} containerWidth={width}>
-            <p className="mb-1 font-semibold text-ink-1">{formatMonthShort(data[hover].month)}</p>
+            <p className="mb-0.5 font-semibold text-ink-1">{formatMonthShort(data[hover].month)}</p>
             <TooltipRow color="var(--income)" label="Income" value={formatMoney(data[hover].income, currency, { compact: true })} />
             <TooltipRow color="var(--expense)" label="Expenses" value={formatMoney(data[hover].expense, currency, { compact: true })} />
             <TooltipRow label="Net" value={formatMoney(data[hover].income - data[hover].expense, currency, { compact: true, sign: true })} />
@@ -959,7 +1032,7 @@ export function StackedArea({
         )}
         {hover !== null && points[hover] && (
           <Tooltip x={x(hover)} y={pad.top} containerWidth={width}>
-            <p className="mb-1 font-semibold text-ink-1">{points[hover].label}</p>
+            <p className="mb-0.5 font-semibold text-ink-1">{points[hover].label}</p>
             <TooltipRow color="var(--series-2)" label={seriesB} value={formatMoney(points[hover].b, currency, { compact: true })} />
             <TooltipRow color="var(--series-1)" label={seriesA} value={formatMoney(points[hover].a, currency, { compact: true })} />
             <TooltipRow label="Total" value={formatMoney(points[hover].a + points[hover].b, currency, { compact: true })} />

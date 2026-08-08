@@ -3,6 +3,7 @@ import type {
   AppState,
   Category,
   Currency,
+  DebtKind,
   InvestmentKind,
   Valuation,
 } from "./types";
@@ -87,6 +88,59 @@ const KIND_BY_VALUE = new Map(INVESTMENT_KINDS.map((k) => [k.value, k]));
 export function investmentKind(kind: InvestmentKind) {
   return KIND_BY_VALUE.get(kind) ?? INVESTMENT_KINDS[0];
 }
+
+/**
+ * The chart slot a kind owns, shared by everything that draws it: the asset-class
+ * bars in both heroes, and the icon disc on a row or a position card. One source,
+ * so a REIT is the same rose wherever it appears.
+ *
+ * These are explicit tables rather than `index % n`. The modulo version wrapped
+ * the eleventh kind back onto the first and quietly gave Cash and Crypto the
+ * same colour in a chart that shows both; an explicit table cannot wrap, and it
+ * makes the two families' ranges legible at a glance (see the note on
+ * `--series-*` in globals.css for how the twelve were chosen and validated).
+ */
+const ACCOUNT_SLOT: Record<AccountKind, number> = {
+  card: 1,
+  cash: 2,
+  savings: 3,
+  wallet: 4,
+  other: 5,
+};
+
+const INVESTMENT_SLOT: Record<InvestmentKind, number> = {
+  deposit: 6,
+  bonds: 7,
+  reit: 8,
+  stocks: 9,
+  crypto: 10,
+  other: 11,
+};
+
+/**
+ * Debts reuse three slots, and may: a debt is never drawn in the same chart as
+ * an asset. This trio was validated all-pairs on its own in both themes.
+ */
+const DEBT_SLOT: Record<DebtKind, number> = {
+  mortgage: 12,
+  loan: 5,
+  card: 9,
+};
+
+export function accountColorSlot(kind: AccountKind): number {
+  return ACCOUNT_SLOT[kind] ?? 5;
+}
+
+export function investmentColorSlot(kind: InvestmentKind): number {
+  return INVESTMENT_SLOT[kind] ?? 11;
+}
+
+export function debtColorSlot(kind: DebtKind): number {
+  return DEBT_SLOT[kind] ?? 12;
+}
+
+/** the Subscriptions category's slot, for rows that are all one category */
+export const SUBSCRIPTION_SLOT = 8;
 
 /** whether a position's worth is computed from a rate or simply stated */
 export function valuationOf(kind: InvestmentKind): Valuation {

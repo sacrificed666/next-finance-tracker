@@ -15,6 +15,7 @@ import {
   Field,
   FieldSet,
   GlassCard,
+  IconDisc,
   PageHeader,
   SegmentedControl,
   Select,
@@ -395,7 +396,7 @@ export function IncomePage() {
         <GlassCard
           title="Income by month"
           subtitle="What came in each month"
-          icon={<Icon name="chart" />}
+          icon="chart"
           action={<PeriodTabs value={chartMonths} onChange={setChartMonths} />}
           className="col-span-2 xl:col-span-12"
         >
@@ -423,7 +424,7 @@ export function IncomePage() {
                 ? "Received and planned, newest first"
                 : "Newest first"
           }
-          icon={<Icon name="receipt" />}
+          icon="banknote"
           action={
             plannedCount > 0 ? (
               <SegmentedControl
@@ -500,12 +501,12 @@ export function IncomePage() {
                               onClick={() => openEdit(tx)}
                               className="row-tap flex w-full items-center gap-3 px-2 py-2 text-left"
                             >
-                              <span
-                                aria-hidden
-                                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ghost text-base"
+                              <IconDisc
+                                colorSlot={cat?.colorSlot}
+                                className="size-9 rounded-full text-base"
                               >
                                 {cat?.icon ?? "💰"}
-                              </span>
+                              </IconDisc>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-medium text-ink-1">
                                   {tx.note || cat?.name || "Income"}
@@ -549,7 +550,7 @@ export function IncomePage() {
         <GlassCard
           title="By source"
           subtitle="Last 12 months"
-          icon={<Icon name="pie" />}
+          icon="pie"
         >
           {catSegments.length > 0 ? (
             <>
@@ -577,7 +578,7 @@ export function IncomePage() {
           <GlassCard
             title="By currency"
             subtitle="Last 12 months, as received"
-            icon={<Icon name="exchange" />}
+            icon="exchange"
           >
             <ul className="space-y-3">
               {byCurrency.map((c) => (

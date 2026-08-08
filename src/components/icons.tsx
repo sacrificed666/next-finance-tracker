@@ -106,7 +106,14 @@ const PATHS = {
     "M3.5 10.5h17",
     "M7 14.5h3",
   ],
-  spend: ["M12 3.5v13m0 0-4-4m4 4 4-4", "M4.5 20.5h15"],
+  /*
+   * Money leaving: an arrow rising OUT of the baseline. It used to be an arrow
+   * falling ONTO the baseline — which is `arrowDown`, the glyph the rail uses
+   * for Income. Two icons a few pixels apart meaning opposite things, and in
+   * the rail they sat two rows apart. As a pair they now oppose properly:
+   * income drops into the line, spending climbs out of it.
+   */
+  spend: ["M12 17V3m0 0 5 5m-5-5-5 5", "M4 21h16"],
   banknote: [
     "M3.5 7.5a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-9Z",
     "M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z",
@@ -123,6 +130,18 @@ const PATHS = {
     "M15 3.5v5",
     "M6.5 8.5h11v2.8a5.5 5.5 0 0 1-11 0V8.5Z",
     "M12 16.8v3.7",
+  ],
+  /* a deduction taken as a share — the tax card was wearing a shop receipt */
+  percent: [
+    "M7 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z",
+    "M17 14.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z",
+    "M18.5 5.5 5.5 18.5",
+  ],
+  /* money resting in a cupped hand: borrowed, and owed back. Debts wore `card`,
+     on a page that lists Card as one of the account kinds you can own. */
+  debt: [
+    "M12 4.2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z",
+    "M4 13.5a8.5 8.5 0 0 0 16 0",
   ],
   ellipsis: ["M6 12h.01", "M12 12h.01", "M18 12h.01"],
   check: ["m5 13 4 4L19 7"],
@@ -146,6 +165,37 @@ const PATHS = {
 } as const;
 
 export type IconName = keyof typeof PATHS;
+
+/**
+ * The colour a subject wears when it heads a card.
+ *
+ * Keyed on the glyph, not on the card, so the same subject is the same colour
+ * everywhere it appears: Cash flow is teal on the dashboard and teal again on
+ * Expenses, because it is the same chart. Picking per call site would have been
+ * twenty-five independent decisions that drift the moment a card moves.
+ *
+ * On a card the tint is identity, not encoding — nothing reads a value off it.
+ * The slots are still chosen so no two cards on the same page collide, which is
+ * the only property a reader can actually perceive here.
+ *
+ * Deliberately partial: a glyph with no subject colour gets the plain control
+ * material, which is the honest answer for one that heads nothing.
+ */
+export const SUBJECT_SLOT: Partial<Record<IconName, number>> = {
+  chart: 1,
+  spend: 2, trend: 2,
+  bank: 3, sliders: 3, gear: 3,
+  globe: 4, exchange: 4,
+  device: 5,
+  target: 6, arrowDown: 6,
+  bolt: 7, card: 7,
+  wallet: 8,
+  pie: 9, calendar: 9, tag: 9,
+  receipt: 10, percent: 10,
+  repeat: 11, database: 11,
+  banknote: 12, debt: 12,
+  info: 1,
+};
 
 export function Icon({
   name,

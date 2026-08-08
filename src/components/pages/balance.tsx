@@ -10,6 +10,7 @@ import {
   Field,
   FieldSet,
   GlassCard,
+  IconDisc,
   Money,
   OptionChips,
   PageHeader,
@@ -30,6 +31,9 @@ import {
   ICON_CHOICES,
   INVESTMENT_KINDS,
   investmentKind,
+  investmentColorSlot,
+  accountColorSlot,
+  debtColorSlot,
   valuationOf,
 } from "@/lib/constants";
 import { COINS, coinInfo, fetchCoinPrices } from "@/lib/crypto";
@@ -64,6 +68,7 @@ import type {
   Investment,
   InvestmentKind,
   SavingsAccount,
+  Settings,
 } from "@/lib/types";
 
 /* ---------- account form ---------- */
@@ -165,6 +170,36 @@ function sparkValues(inv: Investment, today: string): number[] {
     values.push(investmentAt(inv, at).value);
   }
   return values;
+}
+
+/**
+ * Each asset class's share of the portfolio, in base currency.
+ *
+ * The first attempt here drew a twelve-month sparkline per tile, and it was
+ * wrong: a position contributes nothing before its start date, so a portfolio
+ * opened this month renders as twelve zeros and a cliff — a chart saying "you
+ * had nothing for a year", which is not what the data means. Composition needs
+ * no history and is true on day one.
+ */
+function investmentsByKind(
+  investments: Investment[],
+  today: string,
+  settings: Settings,
+): Array<{ kind: InvestmentKind; invested: number; value: number; earned: number }> {
+  const acc = new Map<InvestmentKind, { invested: number; value: number; earned: number }>();
+  for (const inv of investments) {
+    const snap = investmentAt(inv, today);
+    const to = (n: number) =>
+      convert(n, inv.currency, settings.baseCurrency, settings.rates);
+    const row = acc.get(inv.kind) ?? { invested: 0, value: 0, earned: 0 };
+    row.invested += to(snap.invested);
+    row.value += to(snap.value);
+    row.earned += to(snap.accrued + snap.paidOut);
+    acc.set(inv.kind, row);
+  }
+  return [...acc.entries()]
+    .map(([kind, row]) => ({ kind, ...row }))
+    .sort((x, y) => y.value - x.value);
 }
 
 export function BalancePage() {
@@ -293,6 +328,25 @@ export function BalancePage() {
     },
     { invested: 0, value: 0, earned: 0, earnedInYear: 0 },
   );
+  const invByKind = investmentsByKind(state.investments, today, settings);
+  /*
+   * Gross movement, split. A per-class bar here printed "Bonds 100%" while the
+   * tile above it read −6: the losing class was filtered out by the same
+   * `value > 0` rule that keeps a bar from rendering backwards, so the chart
+   * silently claimed everything was up. Gains against losses is the honest
+   * decomposition, and it is the one that explains the net figure.
+   */
+  const gains = invByKind.reduce((sum, row) => sum + Math.max(0, row.earned), 0);
+  const losses = invByKind.reduce((sum, row) => sum + Math.max(0, -row.earned), 0);
+
+  const kindBar = (pick: "invested" | "value" | "earned") =>
+    invByKind
+      .filter((row) => row[pick] > 0)
+      .map((row) => ({
+        label: investmentKind(row.kind).label,
+        value: row[pick],
+        colorSlot: investmentColorSlot(row.kind),
+      }));
 
   /* ---------- account handlers ---------- */
 
@@ -765,6 +819,25 @@ export function BalancePage() {
         subtitle="Everything you own and owe — net worth at a glance"
         action={
           <div className="flex flex-wrap gap-2">
+            {/* a whole glass panel to hold one button and a timestamp was three
+                times the height of the thing it did; the timestamp is a title
+                and the action is just an action */}
+            {cryptoPositions.length > 0 && (
+              <Button
+                variant="ghost"
+                disabled={pricing}
+                title={
+                  priceError ??
+                  (lastPricedAt
+                    ? `Crypto priced ${formatDateTime(lastPricedAt)}`
+                    : "Crypto has never been priced — showing what you paid")
+                }
+                onClick={() => void refreshPrices()}
+              >
+                <Icon name="repeat" size={15} />
+                {pricing ? "Pricing…" : "Prices"}
+              </Button>
+            )}
             <Button variant="ghost" onClick={openAddDebt}>
               + Debt
             </Button>
@@ -782,13 +855,12 @@ export function BalancePage() {
             instead — see the grid inside it. */}
         <div className="grid items-start gap-4 sm:gap-5 xl:grid-cols-3">
           {/* net worth hero */}
-          <GlassCard className="glow xl:col-span-1">
+          <GlassCard title="Net worth" icon="wallet" className="glow xl:col-span-1">
             {/* side by side while the card owns a wide row, stacked again once
                 it is one narrow column of three */}
             <div className="sm:grid sm:grid-cols-2 sm:items-center sm:gap-8 xl:block">
             <div>
-            <p className="card-title">Net worth</p>
-            <div className="mt-2">
+            <div>
               <TripleMoney amount={worth.total} currency={base} settings={settings} size="lg" />
             </div>
             </div>
@@ -877,7 +949,7 @@ export function BalancePage() {
             <GlassCard
               title="Accounts"
               subtitle="Where your money sits"
-              icon={<Icon name="bank" />}
+              icon="bank"
               action={
                 <Button variant="ghost" onClick={openAddAccount}>
                   + Add
@@ -912,12 +984,12 @@ export function BalancePage() {
                       >
                         <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_repeat(3,7.5rem)]">
                           <span className="flex min-w-0 items-center gap-3">
-                            <span
-                              aria-hidden
-                              className="flex size-10 shrink-0 items-center justify-center rounded-field bg-ghost text-lg"
+                            <IconDisc
+                              colorSlot={accountColorSlot(acc.kind)}
+                              className="size-10 rounded-field text-lg"
                             >
                               {acc.icon}
-                            </span>
+                            </IconDisc>
                             <span className="min-w-0">
                               <span className="block truncate text-sm font-medium text-ink-1">
                                 {acc.name}
@@ -983,7 +1055,7 @@ export function BalancePage() {
           <GlassCard
             title="Debts"
             subtitle={`You owe ${formatMoney(worth.debts, base, { compact: true })} across ${state.debts.length} ${state.debts.length === 1 ? "liability" : "liabilities"}`}
-            icon={<Icon name="card" />}
+            icon="debt"
             action={
               <Button variant="ghost" onClick={openAddDebt}>
                 + Add
@@ -1007,12 +1079,12 @@ export function BalancePage() {
                   >
                     <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                       <span className="flex min-w-0 items-center gap-3">
-                        <span
-                          aria-hidden
-                          className="flex size-10 shrink-0 items-center justify-center rounded-field bg-ghost text-lg"
+                        <IconDisc
+                          colorSlot={debtColorSlot(debt.kind)}
+                          className="size-10 rounded-field text-lg"
                         >
                           {debt.icon}
-                        </span>
+                        </IconDisc>
                         <span className="min-w-0">
                           <span className="block truncate text-sm font-medium text-ink-1">
                             {debt.name}
@@ -1113,52 +1185,49 @@ export function BalancePage() {
             {/* investments */}
             {state.investments.length > 0 && (
               <>
-                {cryptoPositions.length > 0 && (
-                  // Prices are fetched on demand, never per render: the feed is
-                  // rate-limited per IP, and a holding that silently re-priced
-                  // itself while you read the page would make every figure on
-                  // it unreproducible.
-                  <div className="glass flex flex-wrap items-center gap-3 rounded-card px-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="body-strong">Crypto prices</p>
-                      <p className="caption">
-                        {priceError
-                          ? priceError
-                          : lastPricedAt
-                            ? `${cryptoPositions.length} ${cryptoPositions.length === 1 ? "holding" : "holdings"} · updated ${formatDateTime(lastPricedAt)}`
-                            : `${cryptoPositions.length} ${cryptoPositions.length === 1 ? "holding" : "holdings"} · never priced — showing what you paid`}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      className="shrink-0"
-                      disabled={pricing}
-                      onClick={() => void refreshPrices()}
-                    >
-                      {pricing ? "Updating…" : "Update prices"}
-                    </Button>
-                  </div>
-                )}
                 <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
+                  {/* Three parts of one sentence: what went in, what it is
+                      worth, what the difference is. The middle tile carries the
+                      return as a `delta` rather than a grey hint — it is a
+                      verdict, and it was the one number here printed in the same
+                      ink as the boilerplate under it. */}
                   <StatTile
                     label="Invested"
+                    icon="arrowDown"
                     value={formatMoney(invTotals.invested, base, { compact: true })}
+                    bar={kindBar("invested")}
                     hint={`across ${state.investments.length} position${state.investments.length === 1 ? "" : "s"}`}
                   />
                   <StatTile
                     label="Current value"
+                    icon="banknote"
                     value={formatMoney(invTotals.value, base, { compact: true })}
-                    hint={
+                    bar={[
+                      { label: "Paid in", value: invTotals.invested, colorSlot: 6 },
+                      { label: "Earned", value: Math.max(0, invTotals.earned), colorSlot: 4 },
+                    ]}
+                    delta={
                       invTotals.invested > 0
-                        ? `${formatPercent((invTotals.value / invTotals.invested - 1) * 100)} on what you put in`
+                        ? {
+                            text: `${formatPercent((invTotals.value / invTotals.invested - 1) * 100)} on what you put in`,
+                            good: invTotals.value >= invTotals.invested,
+                          }
                         : undefined
                     }
                   />
                   <StatTile
                     className="col-span-2 md:col-span-1"
                     label="Earned"
+                    icon="trend"
                     value={formatMoney(invTotals.earned, base, { compact: true, sign: true })}
-                    tone={invTotals.earned > 0 ? "income" : undefined}
+                    bar={[
+                      { label: "Gains", value: gains, color: "var(--income)" },
+                      { label: "Losses", value: losses, color: "var(--expense)" },
+                    ]}
+                    // a loss was printed in the same ink as a gain
+                    tone={
+                      invTotals.earned > 0 ? "income" : invTotals.earned < 0 ? "expense" : undefined
+                    }
                     hint={
                       invTotals.earnedInYear !== 0
                         ? `${formatMoney(invTotals.earnedInYear, base, { compact: true, sign: true })} expected over the next year`
@@ -1170,9 +1239,17 @@ export function BalancePage() {
                 {/* one position keeps the full width — half a card with an empty
                     half-page beside it reads worse than a wide one — and lays
                     its details out in two columns instead; from two they pair */}
+                {/* Positions are a list of small facts, not a set of hero
+                    cards: a 28px figure and five label/value rows do not need
+                    half a desktop each. Three across from `xl`, two from `md`,
+                    and a lone position stops at half — the table inside it has
+                    fixed rails, so a card a metre wide just stretches the gap
+                    between every label and its own number. */}
                 <div
                   className={`grid gap-4 sm:gap-5 ${
-                    state.investments.length > 1 ? "xl:grid-cols-2" : ""
+                    state.investments.length > 1
+                      ? "md:grid-cols-2 xl:grid-cols-3"
+                      : "md:grid-cols-2"
                   }`}
                 >
                   {state.investments.map((inv) => {
@@ -1184,49 +1261,91 @@ export function BalancePage() {
                     const market = valuationOf(inv.kind) === "market";
                     const coin = coinInfo(inv.coin);
                     const matured = inv.endDate != null && inv.endDate <= today;
-                    const caption = market && inv.annualRatePct > 0 && !matured
-                      ? `${formatPercent(inv.annualRatePct)}/yr expected · ${
-                          inv.compounding === "reinvest" ? "reinvested" : "paid out"
-                        }`
-                      : market
-                      ? coin && inv.quantity
-                        ? `${inv.quantity} ${coin.symbol} · ${
-                            inv.pricedAt
-                              ? `priced ${formatDateTime(inv.pricedAt)}`
-                              : "not priced yet"
-                          }`
-                        : "Valued at what you last said it was worth"
-                      : matured
-                        ? `Matured ${formatDate(inv.endDate!)} · no longer earning`
-                        : inv.compounding === "reinvest"
-                          ? `Compound interest · ${FREQ_ADVERB[inv.compoundingFreq]} reinvestment`
-                          : "Simple interest · paid out to you";
+                    const kindMeta = investmentKind(inv.kind);
+                    const slot = investmentColorSlot(inv.kind);
+    /*
+     * The sentence that used to sit under the table said almost nothing the
+     * table did not already say: it repeated the rate, the quantity and the
+     * maturity date, and wrapped them in prose. What was genuinely only in
+     * there is how the return behaves — compounded or simple, kept or paid out
+     * — and when a live-priced holding was last valued. Both are facts, so both
+     * are rows now, and the paragraph is gone.
+     */
+                    const returnMode = market
+                      ? inv.compounding === "reinvest"
+                        ? "Reinvested"
+                        : "Paid out"
+                      : inv.compounding === "reinvest"
+                        ? `Compound · ${FREQ_ADVERB[inv.compoundingFreq]}`
+                        : "Simple · paid out";
                     const earned = snap.accrued + snap.paidOut;
                     const gainPct = snap.invested > 0 ? (earned / snap.invested) * 100 : 0;
                     const projValue = investmentProjectedAt(inv, today, oneYearOut);
+                    /*
+                     * The RETURN, not the change in value. On a position with a
+                     * monthly top-up those are wildly different numbers: a REIT
+                     * worth $250 that you pay $100 a month into reaches $1,540 in
+                     * a year, and calling the $1,291 difference "gain" credits
+                     * the market with twelve deposits you made yourself.
+                     *
+                     * The accrual branch never had the bug — `accrued` is value
+                     * minus invested, and invested already counts contributions.
+                     * The market branch had no such subtraction.
+                     */
+                    const yearDeposits = (inv.monthlyContribution ?? 0) * 12;
                     const projGain =
                       valuationOf(inv.kind) === "market"
-                        ? projValue - snap.value
+                        ? projValue - snap.value - yearDeposits
                         : inYear.accrued - snap.accrued + (inYear.paidOut - snap.paidOut);
                     return (
                       <GlassCard key={inv.id} className="flex flex-col">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
+                        <div className="flex items-start gap-3">
+                          {/* The kind wearing its own chart colour — the same
+                              one it owns in the asset-class strip on both
+                              heroes, so a position is recognisable before you
+                              have read its name. */}
+                          <IconDisc colorSlot={slot} className="size-11 rounded-field text-xl">
+                            {kindMeta.icon}
+                          </IconDisc>
+                          <div className="min-w-0 flex-1">
                             {/* h2, like every other card title on the page: as
                                 an h3 under a page whose only other heading is
                                 the h1 it skipped a level */}
                             <h2 className="truncate font-semibold text-ink-1">{inv.name}</h2>
-                            <p className="mt-0.5 text-xs text-ink-2">{caption}</p>
+                            <p className="mt-0.5 truncate text-xs font-medium text-ink-3">
+                              {kindMeta.label} · {inv.currency}
+                            </p>
                           </div>
-                          <span className="flex shrink-0 items-center gap-1.5">
-                            <span className="rounded-full bg-ghost px-2 py-0.5 text-xs font-medium text-ink-2">
-                              {investmentKind(inv.kind).icon} {investmentKind(inv.kind).label}
-                            </span>
-                            <span className="rounded-full bg-ghost px-2 py-0.5 text-xs font-medium text-ink-2">
-                              {inv.currency}
-                            </span>
+                          {/* The verdict, in the corner two grey pills used to
+                              waste. It was buried under the figure, which is
+                              where you look last; the corner is where the eye
+                              lands after the name. */}
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ring-1 ring-inset ${
+                              earned >= 0
+                                ? "bg-income/12 text-income ring-income/20"
+                                : "bg-expense/12 text-expense ring-expense/20"
+                            }`}
+                          >
+                            {/* the trend glyph, mirrored for a fall: the same
+                                line going the other way */}
+                            <Icon
+                              name="trend"
+                              size={13}
+                              className={earned >= 0 ? "" : "-scale-y-100"}
+                            />
+                            {formatPercent(Math.abs(gainPct))}
                           </span>
                         </div>
+
+                        {/* the one line on the card that is genuinely prose —
+                            yours, not the app's — so it sits with the name
+                            rather than stranded below the table */}
+                        {inv.note && (
+                          <p className="mt-2.5 line-clamp-2 text-xs leading-relaxed text-ink-3 italic">
+                            {inv.note}
+                          </p>
+                        )}
 
                         <div className="mt-3 flex items-end justify-between gap-3">
                           <div className="min-w-0">
@@ -1234,35 +1353,28 @@ export function BalancePage() {
                               amount={snap.value}
                               currency={inv.currency}
                               exact
-                              className="num-lg block text-ink-1"
+                              className="num-md block text-ink-1"
                             />
-                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                              <span
-                                className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                  earned >= 0 ? "bg-income/12 text-income" : "bg-expense/12 text-expense"
-                                }`}
-                              >
-                                {earned >= 0 ? "▲" : "▼"} {formatPercent(Math.abs(gainPct))}
-                              </span>
-                              <span className="tnum text-xs text-ink-3">
-                                {formatMoney(earned, inv.currency, { sign: true, compact: true })} earned
-                              </span>
-                            </div>
+                            <p className="tnum mt-1.5 text-xs text-ink-3">
+                              {formatMoney(earned, inv.currency, { sign: true, compact: true })}{" "}
+                              earned
+                            </p>
                           </div>
                           {!market && <Sparkline values={sparkValues(inv, today)} width={116} height={46} />}
                         </div>
 
-                        {/* a lone position owns the full page width, and a
-                            single column of label-on-the-left rows then spans a
-                            metre of nothing; split it in two so the figures
-                            stay next to their labels */}
-                        <div
-                          className={`mt-4 text-sm ${
-                            state.investments.length === 1
-                              ? "grid gap-x-10 gap-y-1.5 sm:grid-cols-2"
-                              : "space-y-1.5"
-                          }`}
-                        >
+                        {/* A real table rather than a stack of floating pairs:
+                            one recessed well, a hairline between rows, labels
+                            and figures on fixed rails. Eight facts in a bare
+                            column with nothing between them made the eye count
+                            lines to keep a label with its number. */}
+                        {/* `mb-4` is load-bearing: the actions below use
+                            `mt-auto`, which collapses to zero the moment the
+                            card's content fills its height — and then the
+                            footer's hairline landed flush on the well's own
+                            bottom edge and read as a line drawn through the
+                            table. */}
+                        <dl className="glass-well mt-4 mb-4 divide-y divide-hairline overflow-hidden rounded-field text-sm">
                           {/* a market holding has no rate and no projection —
                               printing either would be inventing a return the
                               app has no way to know */}
@@ -1270,6 +1382,12 @@ export function BalancePage() {
                             <InfoRow label={market ? "Expected" : "Rate"}>
                               {formatPercent(inv.annualRatePct)} / year
                             </InfoRow>
+                          )}
+                          {/* how the return behaves, not just how big it is:
+                              a deposit that pays out and one that compounds
+                              are different instruments at the same rate */}
+                          {!matured && (!market || inv.annualRatePct > 0) && (
+                            <InfoRow label="Return">{returnMode}</InfoRow>
                           )}
                           {coin && inv.quantity ? (
                             <InfoRow label="Holding">
@@ -1285,6 +1403,9 @@ export function BalancePage() {
                               />
                             </InfoRow>
                           ) : null}
+                          {inv.pricedAt && (
+                            <InfoRow label="Priced">{formatDateTime(inv.pricedAt)}</InfoRow>
+                          )}
                           <InfoRow label={market ? "Paid" : "Invested"}>
                             <Money amount={snap.invested} currency={inv.currency} exact />
                           </InfoRow>
@@ -1299,7 +1420,7 @@ export function BalancePage() {
                           {/* a projection needs something to project with: a
                               contracted rate, or an expected return you stated.
                               A market holding with no view stays where it is. */}
-                          {!matured && (!market || inv.annualRatePct > 0) && (
+                          {!matured && (!market || inv.annualRatePct > 0 || yearDeposits > 0) && (
                             <InfoRow label="In 1 year">
                               <span>
                                 <Money
@@ -1307,10 +1428,19 @@ export function BalancePage() {
                                   currency={inv.currency}
                                   exact
                                 />{" "}
-                                <span className="text-income">
-                                  (+{formatMoney(projGain, inv.currency)})
-                                </span>
+                                {projGain > 0.5 && (
+                                  <span className="text-income">
+                                    (+{formatMoney(projGain, inv.currency)} earned)
+                                  </span>
+                                )}
                               </span>
+                            </InfoRow>
+                          )}
+                          {/* deposits are yours, so they are named as yours
+                              rather than folded into the figure beside them */}
+                          {yearDeposits > 0 && (
+                            <InfoRow label="You add">
+                              {formatMoney(yearDeposits, inv.currency, { compact: true })} a year
                             </InfoRow>
                           )}
                           <InfoRow label="Since">{formatDate(inv.startDate)}</InfoRow>
@@ -1319,17 +1449,29 @@ export function BalancePage() {
                               {formatDate(inv.endDate)}
                             </InfoRow>
                           )}
-                        </div>
+                        </dl>
 
-                        {inv.note && <p className="mt-3 text-xs text-ink-3">{inv.note}</p>}
-
-                        {/* actions sized to their words: stretched across the
-                            card they read as the main thing on it */}
-                        <div className="mt-auto flex justify-end gap-2 pt-4">
-                          <Button variant="ghost" onClick={() => openEditInvestment(inv)}>
+                        {/* Stretched to the card's own edges and split evenly.
+                            Huddled at the right they left a bar of dead space
+                            under the table and read as an afterthought; at full
+                            width the pair reads as the card's footer, and the
+                            hairline above says where the facts stop and the
+                            actions begin. */}
+                        <div className="mt-auto grid grid-cols-2 gap-2 border-t border-hairline pt-4">
+                          <Button
+                            variant="ghost"
+                            className="w-full"
+                            onClick={() => openEditInvestment(inv)}
+                          >
+                            <Icon name="edit" size={15} />
                             Edit
                           </Button>
-                          <Button variant="danger" onClick={() => setInvDeleteId(inv.id)}>
+                          <Button
+                            variant="danger"
+                            className="w-full"
+                            onClick={() => setInvDeleteId(inv.id)}
+                          >
+                            <Icon name="trash" size={15} />
                             Delete
                           </Button>
                         </div>
@@ -1337,12 +1479,13 @@ export function BalancePage() {
                     );
                   })}
 
-                {/* spans the pair only when there is a pair to span: in the
-                    single-column case col-span-2 conjured a second implicit
-                    column and squeezed the position card into half the row */}
+                {/* Spans the full row when there are cards above it to span.
+                    With a single position it stays one cell wide instead and
+                    sits beside that card, which is the only thing left to fill
+                    the empty half of the row. */}
                 <details
                   className={`glass rounded-card px-5 py-3.5 ${
-                    state.investments.length > 1 ? "xl:col-span-2" : ""
+                    state.investments.length > 1 ? "md:col-span-2 xl:col-span-3" : ""
                   }`}
                 >
                   <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-ink-2 transition-colors hover:text-ink-1">
@@ -1871,11 +2014,15 @@ export function BalancePage() {
   );
 }
 
+/**
+ * One row of a position's table. A wrapping div around dt/dd is valid inside a
+ * `<dl>`, and it gives the divider between rows something to sit on.
+ */
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-ink-2">{label}</span>
-      <span className="tnum text-right font-medium text-ink-1">{children}</span>
+    <div className="flex items-baseline justify-between gap-3 px-3 py-2">
+      <dt className="text-ink-2">{label}</dt>
+      <dd className="tnum text-right font-medium text-ink-1">{children}</dd>
     </div>
   );
 }
