@@ -1,0 +1,38 @@
+$ease: cubic-bezier(0.22, 0.68, 0.24, 1);
+
+@mixin hover {
+  @media (hover: hover) {
+    @content;
+  }
+}
+
+@mixin card-shadow {
+  box-shadow:
+    inset 0 1px 0 var(--card-highlight),
+    inset 0 -1px 0 var(--under-edge),
+    var(--card-shadow);
+}
+
+@mixin rim {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    150deg,
+    var(--rim-light),
+    color-mix(in oklab, var(--rim-light) 22%, transparent) 30%,
+    transparent 55%,
+    var(--rim-shade)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}

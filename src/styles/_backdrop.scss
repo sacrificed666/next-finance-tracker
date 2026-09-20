@@ -1,0 +1,87 @@
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  --orb-b: color-mix(in oklab, var(--glow-b) 90%, transparent);
+  background:
+    linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0 / 100% var(--grid-size),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0 / var(--grid-size) 100%,
+    radial-gradient(120% 75% at 12% -12%, var(--wash-strong), transparent 58%),
+    radial-gradient(70% 50% at 30% 62%, var(--wash-soft), transparent 66%),
+    radial-gradient(85% 55% at 105% 105%, var(--wash-soft), transparent 62%),
+    radial-gradient(140% 120% at 50% 40%, transparent 55%, var(--vignette)),
+    var(--bg);
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+
+  &::before {
+    top: -30vmax;
+    left: -18vmax;
+    width: 70vmax;
+    height: 70vmax;
+    background: radial-gradient(
+      closest-side at 50% 50%,
+      var(--glow-a) 0%,
+      color-mix(in oklab, var(--glow-a) 62%, transparent) 34%,
+      color-mix(in oklab, var(--glow-a) 30%, transparent) 58%,
+      color-mix(in oklab, var(--glow-a) 9%, transparent) 78%,
+      transparent 88%
+    );
+    opacity: 0.55;
+    animation: drift-a 52s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+
+  &::after {
+    inset: 0;
+    opacity: var(--grain);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+.orb-b {
+  position: fixed;
+  right: -22vmax;
+  bottom: -26vmax;
+  width: 62vmax;
+  height: 62vmax;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side at 50% 50%,
+    var(--orb-b) 0%,
+    color-mix(in oklab, var(--glow-b) 52%, transparent) 38%,
+    color-mix(in oklab, var(--glow-b) 18%, transparent) 64%,
+    transparent 86%
+  );
+  opacity: 0.5;
+  animation: drift-b 71s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes drift-a {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(10vmax, 8vmax, 0) scale(1.15);
+  }
+}
+
+@keyframes drift-b {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(-9vmax, -7vmax, 0) scale(1.12);
+  }
+}

@@ -1,0 +1,41 @@
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --card: #ffffff;
+    --card-strong: #ffffff;
+    --sheen: transparent;
+    --grain: 0;
+  }
+
+  [data-theme="dark"] {
+    --card: #1b1e1f;
+    --card-strong: #222627;
+    --sheen: transparent;
+    --grain: 0;
+  }
+
+  .glass-strong {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .app-backdrop::before,
+  .orb-b {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (min-width: 40rem) {
+  .currency-row {
+    grid-template-columns: minmax(0, 1fr) repeat(var(--currency-cols, 3), 7.25rem);
+  }
+}

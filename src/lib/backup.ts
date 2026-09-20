@@ -1,15 +1,26 @@
 import { DEFAULT_STATE, valuationOf } from "./constants";
+import { BANKABLE_KINDS, BRANDS } from "./brands";
+import { COINS } from "./crypto";
+import { CUSTOM_GAME_ID, GAMES } from "./games";
+import { INZHUR_FUNDS } from "./inzhur";
+import { returnPolicy } from "./returns";
+import { LOCALES } from "./i18n/locales";
+import { DEFAULT_TAX_PROFILE, taxRegime, TAX_REGIMES } from "./tax";
 import type {
   AppState,
   Budget,
   Category,
+  CoinHolding,
   Currency,
   Debt,
   IncomeBreakdown,
   Investment,
+  Locale,
   RecurringRule,
   SavingsAccount,
   Subscription,
+  TaxProfile,
+  TaxRegimeId,
   Transaction,
 } from "./types";
 
@@ -31,11 +42,6 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/**
- * Coerce arbitrary parsed JSON into a valid AppState: keep well-formed
- * entries, drop the rest, fall back to defaults for missing sections.
- * Used both for localStorage loads and user-imported backups.
- */
 export function normalizeState(raw: unknown): AppState {
   if (!isRecord(raw)) return DEFAULT_STATE;
 
@@ -43,9 +49,9 @@ export function normalizeState(raw: unknown): AppState {
     asArray(raw.transactions).filter(isTransaction).map(normalizeTransaction),
     raw.incomeEntries,
   );
-  const categories = asArray(raw.categories)
-    .filter(isCategory)
-    .map(translateLegacyCategory);
+  const categories = normalizeCategoryTree(
+    asArray(raw.categories).filter(isCategory).map(translateLegacyCategory),
+  );
   const recurring = asArray(raw.recurring).filter(isRecurring);
   const rawSubscriptions = asArray(raw.subscriptions)
     .filter(isSubscription)
@@ -53,7 +59,6 @@ export function normalizeState(raw: unknown): AppState {
       ...s,
       period: s.period === "yearly" ? "yearly" : "monthly",
     }));
-  // amortize any yearly subscription still stored as a single lump-sum charge
   const { transactions, subscriptions } = migrateYearlySubscriptions(
     rawTransactions,
     rawSubscriptions,
@@ -80,16 +85,8 @@ export function normalizeState(raw: unknown): AppState {
     settings: {
       baseCurrency: isCurrency(s.baseCurrency) ? s.baseCurrency : "UAH",
       theme: s.theme === "light" || s.theme === "dark" ? s.theme : "system",
-      tax: {
-        ratePct:
-          isFiniteNumber(tax.ratePct) && tax.ratePct >= 0 && tax.ratePct < 100
-            ? tax.ratePct
-            : DEFAULT_STATE.settings.tax.ratePct,
-        fixedUAH:
-          isFiniteNumber(tax.fixedUAH) && tax.fixedUAH >= 0
-            ? tax.fixedUAH
-            : DEFAULT_STATE.settings.tax.fixedUAH,
-      },
+      locale: isLocale(s.locale) ? s.locale : DEFAULT_STATE.settings.locale,
+      tax: normalizeTaxProfile(tax),
       rates: {
         USD: isFiniteNumber(rates.USD) && rates.USD > 0 ? rates.USD : DEFAULT_STATE.settings.rates.USD,
         EUR: isFiniteNumber(rates.EUR) && rates.EUR > 0 ? rates.EUR : DEFAULT_STATE.settings.rates.EUR,
@@ -126,12 +123,67 @@ function asArray(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
 }
 
-/**
- * The first release shipped Ukrainian default category names; they live on
- * inside users' localStorage. Translate a stored category to English only
- * when it is an untouched legacy default (same id, same original name) —
- * user-renamed categories are left alone.
- */
+const LOCALE_SET = new Set<string>(LOCALES.map((l) => l.code));
+
+function isLocale(v: unknown): v is Locale {
+  return typeof v === "string" && LOCALE_SET.has(v);
+}
+
+const REGIME_SET = new Set<string>(TAX_REGIMES.map((r) => r.id));
+
+function isRegime(v: unknown): v is TaxRegimeId {
+  return typeof v === "string" && REGIME_SET.has(v);
+}
+
+function normalizeTaxProfile(tax: Record<string, unknown>): TaxProfile {
+  const regimeId: TaxRegimeId = isRegime(tax.regime)
+    ? tax.regime
+    : isFiniteNumber(tax.ratePct) &&
+        (tax.ratePct !== DEFAULT_TAX_PROFILE.ratePct ||
+          tax.fixedUAH !== DEFAULT_TAX_PROFILE.fixedUAH)
+      ? "custom"
+      : DEFAULT_TAX_PROFILE.regime;
+  const regime = taxRegime(regimeId);
+  if (!regime.editable) {
+    return {
+      regime: regimeId,
+      ratePct: regime.ratePct,
+      fixedUAH: regime.fixedUAH,
+      vatPct: regime.vatPct,
+      label: "",
+    };
+  }
+  return {
+    regime: regimeId,
+    ratePct:
+      isFiniteNumber(tax.ratePct) && tax.ratePct >= 0 && tax.ratePct < 100
+        ? tax.ratePct
+        : regime.ratePct,
+    fixedUAH:
+      isFiniteNumber(tax.fixedUAH) && tax.fixedUAH >= 0 ? tax.fixedUAH : regime.fixedUAH,
+    vatPct:
+      isFiniteNumber(tax.vatPct) && tax.vatPct >= 0 && tax.vatPct < 100 ? tax.vatPct : 0,
+    label: typeof tax.label === "string" ? tax.label.slice(0, 60) : "",
+  };
+}
+
+function normalizeCategoryTree(categories: Category[]): Category[] {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  return categories.map((c) => {
+    if (!c.parentId) return c;
+    const parent = byId.get(c.parentId);
+    const valid =
+      parent !== undefined &&
+      parent.id !== c.id &&
+      parent.kind === c.kind &&
+      !parent.parentId;
+    if (valid) return c;
+    const { parentId: _drop, ...rest } = c;
+    void _drop;
+    return rest;
+  });
+}
+
 const LEGACY_CATEGORY_NAMES: Record<string, { uk: string; en: string }> = {
   "cat-groceries": { uk: "Продукти", en: "Groceries" },
   "cat-cafe": { uk: "Кафе й ресторани", en: "Cafes & Restaurants" },
@@ -177,7 +229,10 @@ function isIncomeTax(v: unknown): v is NonNullable<Transaction["tax"]> {
     isFiniteNumber(v.fixedUAH) &&
     v.fixedUAH >= 0 &&
     isFiniteNumber(v.gross) &&
-    v.gross > 0
+    v.gross > 0 &&
+    (v.regime === undefined || isRegime(v.regime)) &&
+    (v.vatPct === undefined || (isFiniteNumber(v.vatPct) && v.vatPct >= 0 && v.vatPct < 100)) &&
+    (v.label === undefined || typeof v.label === "string")
   );
 }
 
@@ -190,7 +245,6 @@ function isTransaction(v: unknown): v is Transaction {
     isFiniteNumber(v.amount) &&
     v.amount > 0 &&
     isCurrency(v.currency) &&
-    // a transfer carries no category but must name both ends
     (isTransfer
       ? isNonEmptyString(v.accountId) &&
         isNonEmptyString(v.toAccountId) &&
@@ -206,11 +260,6 @@ function isTransaction(v: unknown): v is Transaction {
   );
 }
 
-/**
- * Fills the gaps the shape allows: transfers carry no category (the column is
- * NOT NULL, so it becomes ""), and transfer-only fields are stripped from
- * income/expense rows so a type change cannot leave a stale destination.
- */
 function normalizeTransaction(t: Transaction): Transaction {
   if (t.type !== "transfer") {
     const { toAccountId: _to, toAmount: _amount, ...rest } = t;
@@ -221,20 +270,12 @@ function normalizeTransaction(t: Transaction): Transaction {
   return {
     ...t,
     categoryId: "",
-    // same-currency transfers arrive untouched
     toAmount: t.toAmount ?? t.amount,
     breakdown: undefined,
     tax: undefined,
   };
 }
 
-/**
- * Legacy releases stored contract-work income as a separate `incomeEntries`
- * array, each linked to an income transaction. The transactions already
- * carry the correct amounts; here we re-attach the day-rate breakdown so
- * editing an old contract month reopens the calculator. The entries array
- * itself is then dropped.
- */
 function migrateLegacyIncomeEntries(
   transactions: Transaction[],
   rawEntries: unknown,
@@ -269,7 +310,8 @@ function isCategory(v: unknown): v is Category {
     isNonEmptyString(v.name) &&
     typeof v.icon === "string" &&
     isFiniteNumber(v.colorSlot) &&
-    (v.kind === "income" || v.kind === "expense")
+    (v.kind === "income" || v.kind === "expense") &&
+    (v.parentId === undefined || isNonEmptyString(v.parentId))
   );
 }
 
@@ -288,13 +330,6 @@ function isRecurring(v: unknown): v is RecurringRule {
   );
 }
 
-/**
- * Yearly subscriptions used to post one full-price charge a year; they are
- * now amortized into twelve monthly slices (price/12). Detect the old
- * lump-sum postings, drop the sub's generated transactions and clear its
- * lastAppliedMonth so the store re-materializes it spread across the months.
- * Idempotent: already-spread subs (amount ≈ price/12) are left untouched.
- */
 function migrateYearlySubscriptions(
   transactions: Transaction[],
   subscriptions: Subscription[],
@@ -328,7 +363,6 @@ function isSubscription(v: unknown): v is Subscription {
     isFiniteNumber(v.price) &&
     v.price > 0 &&
     isCurrency(v.currency) &&
-    // legacy subs have no `period`; normalizeState defaults it to "monthly"
     (v.period === undefined || v.period === "monthly" || v.period === "yearly") &&
     isFiniteNumber(v.dayOfMonth) &&
     typeof v.startMonth === "string" &&
@@ -348,11 +382,6 @@ function isGoal(v: unknown): v is NonNullable<SavingsAccount["goal"]> {
   );
 }
 
-/**
- * Accepts both shapes: `openingBalance` (current) and the pre-accounts
- * `balance` (legacy backups and databases), which `normalizeState` then
- * carries over as the opening balance.
- */
 function isSavings(v: unknown): v is SavingsAccount {
   return (
     isRecord(v) &&
@@ -365,9 +394,32 @@ function isSavings(v: unknown): v is SavingsAccount {
   );
 }
 
-const ACCOUNT_KIND_SET = new Set(["card", "cash", "savings", "wallet", "other"]);
+const ACCOUNT_KIND_SET = new Set(["card", "cash", "savings", "wallet", "crypto", "skins", "other"]);
+const GAME_ID_SET = new Set([...GAMES.map((g) => g.id), CUSTOM_GAME_ID]);
+const BANK_ID_SET = new Set(BRANDS.map((b) => b.id));
+const HTTPS_URL_RE = /^https:\/\/[^\s"<>]{3,480}$/;
 
-/** legacy `balance` → `openingBalance`; balances are derived from transactions now */
+const COIN_ICON_RE = /^https:\/\/[\w.-]*coingecko\.com\//;
+const COIN_ID_SET = new Set(COINS.map((c) => c.id));
+
+function normalizeHoldings(raw: unknown): CoinHolding[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  const out: CoinHolding[] = [];
+  for (const h of raw) {
+    if (!isRecord(h) || typeof h.coin !== "string" || !COIN_ID_SET.has(h.coin) || seen.has(h.coin)) continue;
+    if (!isFiniteNumber(h.quantity) || h.quantity < 0) continue;
+    seen.add(h.coin);
+    out.push({
+      coin: h.coin,
+      quantity: h.quantity,
+      price: isFiniteNumber(h.price) && h.price > 0 ? h.price : undefined,
+      icon: typeof h.icon === "string" && COIN_ICON_RE.test(h.icon) ? h.icon : undefined,
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function normalizeAccount(v: SavingsAccount): SavingsAccount {
   const legacy = (v as unknown as { balance?: number }).balance;
   const opening = isFiniteNumber(v.openingBalance)
@@ -375,15 +427,35 @@ function normalizeAccount(v: SavingsAccount): SavingsAccount {
     : isFiniteNumber(legacy)
       ? legacy
       : 0;
-  // accounts predating kinds were all just "accounts"; card is the common case
   const kind = ACCOUNT_KIND_SET.has(v.kind as string) ? v.kind : "card";
+  const game =
+    kind === "skins" && typeof v.game === "string" && GAME_ID_SET.has(v.game)
+      ? v.game
+      : undefined;
+  const custom = game === CUSTOM_GAME_ID;
+  const gameName =
+    custom && typeof v.gameName === "string" && v.gameName.trim()
+      ? v.gameName.trim().slice(0, 60)
+      : undefined;
   return {
     id: v.id,
     name: v.name,
     icon: v.icon,
     kind,
+    game: custom && !gameName ? undefined : game,
+    gameName,
+    gameLogo:
+      custom && gameName && typeof v.gameLogo === "string" && HTTPS_URL_RE.test(v.gameLogo)
+        ? v.gameLogo
+        : undefined,
+    bank:
+      BANKABLE_KINDS.has(kind) && typeof v.bank === "string" && BANK_ID_SET.has(v.bank)
+        ? v.bank
+        : undefined,
     currency: v.currency,
     openingBalance: opening,
+    holdings: kind === "crypto" ? normalizeHoldings(v.holdings) : undefined,
+    pricedAt: kind === "crypto" && typeof v.pricedAt === "string" ? v.pricedAt : undefined,
     goal: v.goal,
   };
 }
@@ -401,8 +473,6 @@ function isInvestment(v: unknown): v is Investment {
     v.annualRatePct <= 200 &&
     typeof v.startDate === "string" &&
     /^\d{4}-\d{2}-\d{2}$/.test(v.startDate) &&
-    // maturity is optional, but when present it has to come after the start —
-    // a position that ended before it began would freeze at its principal
     (v.endDate === undefined ||
       (typeof v.endDate === "string" &&
         /^\d{4}-\d{2}-\d{2}$/.test(v.endDate) &&
@@ -417,23 +487,23 @@ function isInvestment(v: unknown): v is Investment {
 }
 
 const INVESTMENT_KIND_SET = new Set([
-  "deposit", "bonds", "reit", "stocks", "crypto", "other",
+  "deposit", "bonds", "reit", "inzhur", "stocks", "crypto", "other",
 ]);
 
-/**
- * Fills in what a kind implies. Backups written before kinds existed describe
- * rate-bearing positions only, so they become deposits; a market-valued kind
- * with no stated worth falls back to its cost basis rather than showing zero.
- */
+const INZHUR_FUND_SET = new Set(INZHUR_FUNDS.map((f) => f.id));
+
 function normalizeInvestment(v: Investment): Investment {
   const kind: Investment["kind"] =
     typeof v.kind === "string" && INVESTMENT_KIND_SET.has(v.kind) ? v.kind : "deposit";
   const market = valuationOf(kind) === "market";
+  const fund =
+    kind === "inzhur" && typeof v.fund === "string" && INZHUR_FUND_SET.has(v.fund) ? v.fund : undefined;
+  const policy = returnPolicy({ kind, fund, compounding: v.compounding, compoundingFreq: v.compoundingFreq });
   return {
     ...v,
+    compounding: policy.compounding,
+    compoundingFreq: policy.compoundingFreq,
     kind,
-    // On a market kind the rate is an assumption about the future rather than
-    // a contract, so it is kept but clamped — it only ever moves the projection.
     annualRatePct:
       isFiniteNumber(v.annualRatePct) && v.annualRatePct >= 0 && v.annualRatePct <= 200
         ? v.annualRatePct
@@ -443,15 +513,20 @@ function normalizeInvestment(v: Investment): Investment {
         ? v.marketValue
         : v.principal
       : undefined,
-    // only a crypto position is priced from a feed; carrying a coin on anything
-    // else would let a refresh silently rewrite a holding it does not describe
     coin: kind === "crypto" && isNonEmptyString(v.coin) ? v.coin : undefined,
+    fund,
     quantity:
-      kind === "crypto" && isFiniteNumber(v.quantity) && v.quantity >= 0
+      (kind === "crypto" || kind === "inzhur") && isFiniteNumber(v.quantity) && v.quantity >= 0
         ? v.quantity
         : undefined,
     pricedAt:
-      kind === "crypto" && typeof v.pricedAt === "string" ? v.pricedAt : undefined,
+      (kind === "crypto" || kind === "inzhur") && typeof v.pricedAt === "string"
+        ? v.pricedAt
+        : undefined,
+    coinIcon:
+      kind === "crypto" && typeof v.coinIcon === "string" && COIN_ICON_RE.test(v.coinIcon)
+        ? v.coinIcon
+        : undefined,
   };
 }
 
@@ -483,7 +558,6 @@ function isDebt(v: unknown): v is Debt {
   );
 }
 
-/** strip optional fields down to their meaningful values (0/empty → absent) */
 function normalizeDebt(v: Debt): Debt {
   return {
     id: v.id,
@@ -499,12 +573,10 @@ function normalizeDebt(v: Debt): Debt {
   };
 }
 
-/** serialize state for a downloadable backup file */
 export function exportBackup(state: AppState): string {
   return JSON.stringify(state, null, 2);
 }
 
-/** parse an uploaded backup; throws with a human message when unusable */
 export function parseBackup(text: string): AppState {
   let raw: unknown;
   try {

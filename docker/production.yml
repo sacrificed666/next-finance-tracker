@@ -1,18 +1,5 @@
-# ==============================================================================
-# 🚀 [PROD] Production overlay
-# ------------------------------------------------------------------------------
-# Hardened: the database is never published, containers restart always, writes
-# are confined to tmpfs, and privilege escalation is blocked.
-#
-# Put this behind a reverse proxy (nginx/Traefik) for TLS and rate limiting —
-# the Next.js docs recommend not exposing the server directly.
-#
-#   make prod-up       build and start
-#   make prod-deploy   pull → build → migrate → up → status
-# ==============================================================================
 services:
   db:
-    # deliberately no `ports`: only the app network reaches Postgres
     restart: always
     stop_grace_period: 30s
     deploy:
@@ -48,7 +35,6 @@ services:
           memory: 256M
     security_opt:
       - no-new-privileges:true
-    # the standalone server only needs scratch space for temp files
     tmpfs:
       - /tmp
     logging:

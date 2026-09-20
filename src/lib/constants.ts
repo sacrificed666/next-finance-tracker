@@ -1,3 +1,4 @@
+import { DEFAULT_TAX_PROFILE } from "./tax";
 import type {
   AccountKind,
   AppState,
@@ -17,6 +18,8 @@ export const ACCOUNT_KINDS: Array<{
   { value: "cash", label: "Cash", icon: "💵" },
   { value: "savings", label: "Savings", icon: "🏦" },
   { value: "wallet", label: "E-wallet", icon: "📲" },
+  { value: "crypto", label: "Crypto", icon: "🪙" },
+  { value: "skins", label: "Game Skins", icon: "🎮" },
   { value: "other", label: "Other", icon: "📦" },
 ];
 
@@ -26,17 +29,11 @@ export function accountKind(kind: AccountKind) {
   return ACCOUNT_KIND_BY_VALUE.get(kind) ?? ACCOUNT_KINDS[0];
 }
 
-/**
- * The kinds a position can be, and what each one implies. `valuation` is the
- * load-bearing field — see the `Valuation` doc in types.ts. Ordered the way the
- * picker shows them: the two the app can actually compute first.
- */
 export const INVESTMENT_KINDS: Array<{
   value: InvestmentKind;
   label: string;
   icon: string;
   valuation: Valuation;
-  /** one line in the form explaining what the app will and will not do */
   hint: string;
 }> = [
   {
@@ -59,6 +56,13 @@ export const INVESTMENT_KINDS: Array<{
     icon: "🏢",
     valuation: "market",
     hint: "Worth whatever the fund is worth today — update the value when you check it.",
+  },
+  {
+    value: "inzhur",
+    label: "Inzhur",
+    icon: "🏛️",
+    valuation: "market",
+    hint: "Certificates of an Inzhur fund — priced from the fund's published NAV.",
   },
   {
     value: "stocks",
@@ -89,42 +93,30 @@ export function investmentKind(kind: InvestmentKind) {
   return KIND_BY_VALUE.get(kind) ?? INVESTMENT_KINDS[0];
 }
 
-/**
- * The chart slot a kind owns, shared by everything that draws it: the asset-class
- * bars in both heroes, and the icon disc on a row or a position card. One source,
- * so a REIT is the same rose wherever it appears.
- *
- * These are explicit tables rather than `index % n`. The modulo version wrapped
- * the eleventh kind back onto the first and quietly gave Cash and Crypto the
- * same colour in a chart that shows both; an explicit table cannot wrap, and it
- * makes the two families' ranges legible at a glance (see the note on
- * `--series-*` in globals.css for how the twelve were chosen and validated).
- */
 const ACCOUNT_SLOT: Record<AccountKind, number> = {
   card: 1,
   cash: 2,
   savings: 3,
   wallet: 4,
   other: 5,
+  skins: 6,
+  crypto: 11,
 };
 
 const INVESTMENT_SLOT: Record<InvestmentKind, number> = {
-  deposit: 6,
-  bonds: 7,
-  reit: 8,
-  stocks: 9,
-  crypto: 10,
-  other: 11,
+  deposit: 7,
+  bonds: 8,
+  reit: 9,
+  inzhur: 14,
+  stocks: 10,
+  crypto: 11,
+  other: 12,
 };
 
-/**
- * Debts reuse three slots, and may: a debt is never drawn in the same chart as
- * an asset. This trio was validated all-pairs on its own in both themes.
- */
 const DEBT_SLOT: Record<DebtKind, number> = {
-  mortgage: 12,
+  mortgage: 13,
   loan: 5,
-  card: 9,
+  card: 3,
 };
 
 export function accountColorSlot(kind: AccountKind): number {
@@ -132,22 +124,24 @@ export function accountColorSlot(kind: AccountKind): number {
 }
 
 export function investmentColorSlot(kind: InvestmentKind): number {
-  return INVESTMENT_SLOT[kind] ?? 11;
+  return INVESTMENT_SLOT[kind] ?? 12;
 }
 
 export function debtColorSlot(kind: DebtKind): number {
-  return DEBT_SLOT[kind] ?? 12;
+  return DEBT_SLOT[kind] ?? 13;
 }
 
-/** the Subscriptions category's slot, for rows that are all one category */
 export const SUBSCRIPTION_SLOT = 8;
 
-/** whether a position's worth is computed from a rate or simply stated */
 export function valuationOf(kind: InvestmentKind): Valuation {
   return investmentKind(kind).valuation;
 }
 
 export const CURRENCIES: Currency[] = ["UAH", "USD", "EUR"];
+
+export const CORE_CURRENCIES: Currency[] = ["UAH", "USD", "EUR"];
+
+export const FOREIGN_CURRENCIES = ["USD", "EUR"] as const;
 
 export const CURRENCY_SYMBOL: Record<Currency, string> = {
   UAH: "₴",
@@ -161,40 +155,112 @@ export const CURRENCY_LABEL: Record<Currency, string> = {
   EUR: "Euro",
 };
 
-/**
- * The dataset lives in Postgres; only the theme is mirrored into localStorage
- * so the pre-paint script in the root layout can apply it before hydration.
- */
+export function displayCurrencies(state: AppState): Currency[] {
+  const used = new Set<Currency>([state.settings.baseCurrency]);
+  for (const a of state.savings) used.add(a.currency);
+  for (const i of state.investments) used.add(i.currency);
+  for (const d of state.debts) used.add(d.currency);
+  for (const s of state.subscriptions) used.add(s.currency);
+  for (const r of state.recurring) used.add(r.currency);
+  for (const tx of state.transactions) used.add(tx.currency);
+  return CURRENCIES.filter((c) => CORE_CURRENCIES.includes(c) || used.has(c));
+}
+
 export const THEME_KEY = "finance-tracker:theme";
+export const LOCALE_KEY = "finance-tracker:locale";
+
+function cat(
+  id: string,
+  name: string,
+  icon: string,
+  colorSlot: number,
+  kind: Category["kind"],
+  parentId?: string,
+): Category {
+  return parentId
+    ? { id, name, icon, colorSlot, kind, parentId }
+    : { id, name, icon, colorSlot, kind };
+}
 
 export const DEFAULT_CATEGORIES: Category[] = [
-  { id: "cat-rent", name: "Rent", icon: "🏠", colorSlot: 1, kind: "expense" },
-  { id: "cat-utilities", name: "Utilities", icon: "💡", colorSlot: 2, kind: "expense" },
-  { id: "cat-food", name: "Food", icon: "🍽️", colorSlot: 3, kind: "expense" },
-  { id: "cat-household", name: "Household", icon: "🧴", colorSlot: 4, kind: "expense" },
-  { id: "cat-clothes", name: "Clothes", icon: "👕", colorSlot: 5, kind: "expense" },
-  { id: "cat-wants", name: "Fun & Wants", icon: "🎮", colorSlot: 6, kind: "expense" },
-  { id: "cat-unexpected", name: "Unexpected", icon: "⚡", colorSlot: 7, kind: "expense" },
-  { id: "cat-subs", name: "Subscriptions", icon: "📱", colorSlot: 8, kind: "expense" },
-  { id: "cat-transport", name: "Transport", icon: "🚗", colorSlot: 1, kind: "expense" },
-  { id: "cat-health", name: "Health", icon: "💊", colorSlot: 2, kind: "expense" },
-  { id: "cat-education", name: "Education", icon: "📚", colorSlot: 4, kind: "expense" },
-  { id: "cat-gifts-out", name: "Gifts", icon: "🎁", colorSlot: 7, kind: "expense" },
-  { id: "cat-other-exp", name: "Other", icon: "📦", colorSlot: 3, kind: "expense" },
-  { id: "cat-salary", name: "Salary", icon: "💼", colorSlot: 2, kind: "income" },
-  { id: "cat-freelance", name: "Freelance", icon: "🧑‍💻", colorSlot: 1, kind: "income" },
-  { id: "cat-interest", name: "Interest", icon: "🏦", colorSlot: 5, kind: "income" },
-  { id: "cat-dividends", name: "Dividends", icon: "📈", colorSlot: 4, kind: "income" },
-  { id: "cat-sale", name: "Sale", icon: "🏷️", colorSlot: 8, kind: "income" },
-  { id: "cat-gifts-in", name: "Gifts", icon: "🎁", colorSlot: 7, kind: "income" },
-  { id: "cat-other-inc", name: "Other", icon: "💰", colorSlot: 3, kind: "income" },
+  cat("cat-housing", "Housing", "🏠", 1, "expense"),
+  cat("cat-rent", "Rent", "🔑", 1, "expense", "cat-housing"),
+  cat("cat-utilities", "Utilities", "💡", 1, "expense", "cat-housing"),
+  cat("cat-internet", "Internet & Phone", "📶", 1, "expense", "cat-housing"),
+  cat("cat-household", "Household", "🧴", 1, "expense", "cat-housing"),
+  cat("cat-repairs", "Repairs", "🛠️", 1, "expense", "cat-housing"),
+
+  cat("cat-food", "Food", "🍽️", 3, "expense"),
+  cat("cat-groceries", "Groceries", "🛒", 3, "expense", "cat-food"),
+  cat("cat-restaurants", "Restaurants & Cafés", "🍝", 3, "expense", "cat-food"),
+  cat("cat-delivery", "Food Delivery", "🛵", 3, "expense", "cat-food"),
+  cat("cat-coffee", "Coffee & Snacks", "☕", 3, "expense", "cat-food"),
+
+  cat("cat-transport", "Transport", "🚗", 2, "expense"),
+  cat("cat-fuel", "Fuel", "⛽", 2, "expense", "cat-transport"),
+  cat("cat-public-transport", "Public Transport", "🚇", 2, "expense", "cat-transport"),
+  cat("cat-taxi", "Taxi", "🚕", 2, "expense", "cat-transport"),
+  cat("cat-car", "Car Maintenance", "🔧", 2, "expense", "cat-transport"),
+  cat("cat-parking", "Parking & Tolls", "🅿️", 2, "expense", "cat-transport"),
+
+  cat("cat-health", "Health", "💊", 4, "expense"),
+  cat("cat-pharmacy", "Pharmacy", "💉", 4, "expense", "cat-health"),
+  cat("cat-doctors", "Doctors & Dentist", "🩺", 4, "expense", "cat-health"),
+  cat("cat-fitness", "Sport & Fitness", "🏋️", 4, "expense", "cat-health"),
+  cat("cat-insurance", "Insurance", "🛡️", 4, "expense", "cat-health"),
+
+  cat("cat-shopping", "Shopping", "🛍️", 5, "expense"),
+  cat("cat-clothes", "Clothes & Shoes", "👕", 5, "expense", "cat-shopping"),
+  cat("cat-electronics", "Electronics", "💻", 5, "expense", "cat-shopping"),
+  cat("cat-beauty", "Beauty & Care", "💄", 5, "expense", "cat-shopping"),
+
+  cat("cat-wants", "Fun & Wants", "🎉", 6, "expense"),
+  cat("cat-games", "Games", "🎮", 6, "expense", "cat-wants"),
+  cat("cat-events", "Movies & Events", "🎬", 6, "expense", "cat-wants"),
+  cat("cat-hobbies", "Hobbies", "🎨", 6, "expense", "cat-wants"),
+  cat("cat-travel", "Travel", "✈️", 6, "expense", "cat-wants"),
+
+  cat("cat-subs", "Subscriptions", "📱", 8, "expense"),
+
+  cat("cat-education", "Education", "📚", 7, "expense"),
+  cat("cat-courses", "Courses", "🎓", 7, "expense", "cat-education"),
+  cat("cat-books", "Books", "📖", 7, "expense", "cat-education"),
+
+  cat("cat-kids", "Kids", "🧸", 2, "expense"),
+  cat("cat-pets", "Pets", "🐾", 3, "expense"),
+  cat("cat-gifts-out", "Gifts", "🎁", 7, "expense"),
+
+  cat("cat-charity", "Charity & Donations", "❤️", 4, "expense"),
+  cat("cat-army", "Army Support", "🇺🇦", 4, "expense", "cat-charity"),
+
+  cat("cat-taxes", "Taxes & Fees", "🧾", 5, "expense"),
+  cat("cat-fees", "Bank Fees", "🏧", 5, "expense", "cat-taxes"),
+
+  cat("cat-unexpected", "Unexpected", "⚡", 7, "expense"),
+  cat("cat-other-exp", "Other", "📦", 3, "expense"),
+
+  cat("cat-salary", "Salary", "💼", 2, "income"),
+  cat("cat-freelance", "Freelance", "🧑‍💻", 1, "income"),
+  cat("cat-business", "Business", "🏢", 6, "income"),
+  cat("cat-interest", "Interest", "🏦", 5, "income"),
+  cat("cat-dividends", "Dividends", "📈", 4, "income"),
+  cat("cat-rental", "Rental Income", "🏘️", 1, "income"),
+  cat("cat-cashback", "Cashback", "💸", 8, "income"),
+  cat("cat-sale", "Sale", "🏷️", 8, "income"),
+  cat("cat-refunds", "Refunds", "↩️", 3, "income"),
+  cat("cat-gifts-in", "Gifts", "🎁", 7, "income"),
+  cat("cat-other-inc", "Other", "💰", 3, "income"),
 ];
 
-/** fallback rates (UAH per 1 unit), editable in settings or fetched from Monobank/NBU */
-export const DEFAULT_RATES = { USD: 44.6, EUR: 50.8 };
+export const DEFAULT_CATEGORY_NAMES: ReadonlyMap<string, string> = new Map(
+  DEFAULT_CATEGORIES.map((c) => [c.id, c.name]),
+);
 
-/** default ФОП tax: 5% single tax + 1% military levy, plus the fixed ЄСВ deduction */
-export const DEFAULT_TAX = { ratePct: 6, fixedUAH: 1902.34 };
+export const LEGACY_DEFAULT_NAMES: Record<string, string> = {
+  "cat-clothes": "Clothes",
+};
+
+export const DEFAULT_RATES = { USD: 44.6, EUR: 50.8 };
 
 export const DEFAULT_STATE: AppState = {
   version: 1,
@@ -209,15 +275,41 @@ export const DEFAULT_STATE: AppState = {
   settings: {
     baseCurrency: "UAH",
     theme: "dark",
-    tax: DEFAULT_TAX,
+    locale: "en",
+    tax: DEFAULT_TAX_PROFILE,
     rates: DEFAULT_RATES,
     ratesSource: "manual",
   },
 };
 
-/** icons offered when creating savings accounts / categories / subscriptions */
 export const ICON_CHOICES = [
   "💵", "🏦", "💳", "🐷", "🧧", "🏠", "🚗", "✈️", "🎓", "💍",
   "🛒", "🍽️", "💊", "🎬", "👕", "📱", "📚", "🎁", "📦", "💰",
   "🧑‍💻", "💼", "⚡", "🌊", "🛡️", "🎯", "🎮", "🎵", "☁️", "🤖",
+  "☕", "⛽", "🚕", "🐾", "🧸", "❤️", "🧾", "💻", "💄", "🏋️",
+  "🎨", "🔑", "📶", "🛠️", "🩺", "🏘️", "💸", "↩️", "🇺🇦", "🏛️",
 ];
+
+export function mergeDefaultCategories(categories: Category[]): {
+  categories: Category[];
+  added: number;
+  linked: number;
+} {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  let added = 0;
+  let linked = 0;
+  const next = categories.map((c) => {
+    const def = DEFAULT_CATEGORIES.find((d) => d.id === c.id);
+    if (def?.parentId && !c.parentId && c.kind === def.kind) {
+      linked++;
+      return { ...c, parentId: def.parentId };
+    }
+    return c;
+  });
+  for (const def of DEFAULT_CATEGORIES) {
+    if (byId.has(def.id)) continue;
+    next.push(def);
+    added++;
+  }
+  return { categories: next, added, linked };
+}

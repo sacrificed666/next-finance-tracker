@@ -15,6 +15,7 @@ import {
   formatDate,
   formatDateShort,
   formatMonth,
+  formatMonthShort,
   monthDiff,
   monthOf,
   todayISO,
@@ -23,8 +24,13 @@ import {
   expensesByCategory,
   monthTotals,
   monthlySeries,
+  rollupToParents,
   spentInCategory,
+  subscriptionBillsIn,
+  subscriptionMonthlyCost,
   subscriptionsMonthlyTotal,
+  subscriptionStatus,
+  type SubscriptionStatus,
 } from "@/lib/finmath";
 import { convert, formatMoney, formatPercent, parseAmount } from "@/lib/money";
 import {
@@ -35,8 +41,11 @@ import {
   uid,
   useStore,
 } from "@/lib/store";
+import { useT } from "@/lib/i18n";
+import { matchesQuery, oneOf, sortItems, usePersistentState } from "@/lib/listing";
 import type {
   Budget,
+  Category,
   Currency,
   CategoryKind,
   RecurringRule,
@@ -46,11 +55,15 @@ import type {
   TxType,
 } from "@/lib/types";
 import {
+  AddButton,
+  Badge,
   Button,
+  Callout,
   ConfirmDialog,
   EmptyState,
   Field,
   FieldSet,
+  FilterPills,
   GlassCard,
   IconDisc,
   MonthInput,
@@ -58,11 +71,13 @@ import {
   OptionChips,
   PageHeader,
   ProgressMeter,
+  SearchInput,
   SegmentedControl,
-  Select,
   Sheet,
-  Switch,
+  SortSelect,
   TextInput,
+  Toolbar,
+  ToolbarSlot,
 } from "@/components/ui";
 import {
   CategoryBreakdown,
@@ -71,35 +86,29 @@ import {
   StatTile,
   type BreakdownSegment,
 } from "@/components/charts";
+import { categoryTree, descendantsOf, useAccountGroups, useCategoryGroups } from "@/components/category-select";
+import { OptionPicker } from "@/components/picker";
 import { Icon } from "@/components/icons";
-
-const TX_TYPE_OPTIONS: Array<{ value: TxType; label: string }> = [
-  { value: "expense", label: "Expense" },
-  { value: "income", label: "Income" },
-  { value: "transfer", label: "Transfer" },
-];
-
-/** recurring rules and budgets never deal in transfers */
-const KIND_OPTIONS: Array<{ value: CategoryKind; label: string }> = [
-  { value: "expense", label: "Expense" },
-  { value: "income", label: "Income" },
-];
 
 const CURRENCY_OPTIONS = CURRENCIES.map((c) => ({ value: c, label: c }));
 
+type LedgerSort = "date" | "amount" | "category" | "account";
+type LedgerScope = "month" | "quarter" | "year" | "all";
+type LedgerTiming = "all" | "posted" | "planned";
+type SubView = "now" | "upcoming" | "ended" | "paused" | "all";
+type SubSort = "name" | "price" | "day";
+type RecView = "now" | "upcoming" | "ended" | "all";
+
 interface TxForm {
-  id: string | null; // null = new transaction
+  id: string | null;
   type: TxType;
   amount: string;
   currency: Currency;
   categoryId: string;
   date: string;
   note: string;
-  /** account the money moves through ("" = unassigned; required on transfers) */
   accountId: string;
-  /** transfer destination */
   toAccountId: string;
-  /** what arrived at the destination — only used on cross-currency transfers */
   toAmount: string;
 }
 
@@ -113,7 +122,7 @@ interface RecurringForm {
   accountId: string;
   day: string;
   startMonth: string;
-  endMonth: string; // "" = open-ended
+  endMonth: string;
 }
 
 interface SubscriptionForm {
@@ -125,37 +134,53 @@ interface SubscriptionForm {
   period: SubscriptionPeriod;
   accountId: string;
   day: string;
-  /** the month charges start posting from — a service you signed up to in
-   *  March should show its March charge, not start the month you typed it in */
   startMonth: string;
-  /** last month to charge for; "" = open-ended */
   endMonth: string;
 }
 
-const PERIOD_OPTIONS: Array<{ value: SubscriptionPeriod; label: string }> = [
-  { value: "monthly", label: "Monthly" },
-  { value: "yearly", label: "Yearly" },
-];
-
 interface BudgetForm {
-  /** categoryId of the budget being edited; null = new */
   editingId: string | null;
   categoryId: string;
   limit: string;
   currency: Currency;
 }
 
+function recurringStatus(rule: RecurringRule, month: string): Exclude<RecView, "all"> {
+  if (rule.startMonth > month) return "upcoming";
+  if (rule.endMonth && rule.endMonth < month) return "ended";
+  return "now";
+}
+
 export function TransactionsPage() {
   const { state, update } = useStore();
+  const { t, tp, category } = useT();
   const { settings } = state;
   const base = settings.baseCurrency;
   const nowMonth = currentMonth();
   const today = todayISO();
 
   const [month, setMonth] = useState(nowMonth);
-  /* ledger search: a query, a type filter, and whether to look past this month */
   const [query, setQuery] = useState("");
   const [ledgerType, setLedgerType] = useState<TxType | "all">("all");
+  const [ledgerCategory, setLedgerCategory] = useState("");
+  const [ledgerAccount, setLedgerAccount] = useState("");
+  const [ledgerScope, setLedgerScope] = usePersistentState<LedgerScope>(
+    "ledger.scope",
+    "month",
+    oneOf(["month", "quarter", "year", "all"] as const),
+  );
+  const [ledgerTiming, setLedgerTiming] = useState<LedgerTiming>("all");
+  const [ledgerSort, setLedgerSort] = usePersistentState<LedgerSort>(
+    "ledger.sort",
+    "date",
+    oneOf(["date", "amount", "category", "account"] as const),
+  );
+  const [ledgerDir, setLedgerDir] = usePersistentState<"asc" | "desc">("ledger.dir", "desc", oneOf(["asc", "desc"] as const));
+  const [spendDetail, setSpendDetail] = usePersistentState<"groups" | "detailed">("spend.detail", "groups", oneOf(["groups", "detailed"] as const));
+  const [subView, setSubView] = useState<SubView>("now");
+  const [subSort, setSubSort] = usePersistentState<SubSort>("subs.sort", "name", oneOf(["name", "price", "day"] as const));
+  const [subDir, setSubDir] = usePersistentState<"asc" | "desc">("subs.dir", "asc", oneOf(["asc", "desc"] as const));
+  const [recView, setRecView] = useState<RecView>("now");
   const [txForm, setTxForm] = useState<TxForm | null>(null);
   const [confirmTxDelete, setConfirmTxDelete] = useState(false);
   const [recForm, setRecForm] = useState<RecurringForm | null>(null);
@@ -168,99 +193,105 @@ export function TransactionsPage() {
   const catById = new Map(state.categories.map((c) => [c.id, c]));
   const accountById = new Map(state.savings.map((a) => [a.id, a]));
   const firstCategoryId = (kind: CategoryKind) =>
-    state.categories.find((c) => c.kind === kind)?.id ?? "";
+    categoryTree(state.categories, kind)[0]?.parent.id ?? "";
+  const catLabel = (c: Category | undefined) => category(c);
 
-  /* ---------- selected month data ---------- */
-
-  // as far ahead as the schedules actually post: the horizon covers the current
-  // month plus the next eleven, so month + 12 was always a guaranteed blank page
   const canGoNext = monthDiff(nowMonth, month) < PLANNING_HORIZON_MONTHS - 1;
   const totals = monthTotals(state.transactions, month, settings);
-  // the month before, so each tile can say which way things moved rather than
-  // printing a figure with nothing to measure it against
   const prevTotals = monthTotals(state.transactions, addMonths(month, -1), settings);
   const hasPrev = prevTotals.income > 0 || prevTotals.expense > 0;
   const vsLast = (now: number, before: number, lowerIsBetter = false) =>
     hasPrev
       ? {
-          text: `${formatMoney(now - before, base, { compact: true, sign: true })} vs last month`,
+          text: t("tx.vsLastMonth", { delta: formatMoney(now - before, base, { compact: true, sign: true }) }),
           good: lowerIsBetter ? now <= before : now >= before,
         }
       : undefined;
-  // rules and subscriptions post ahead, so part of an open month has not
-  // happened yet — the same split the dashboard tiles carry
   const plannedIn = (type: "income" | "expense") =>
     state.transactions
-      .filter((t) => t.type === type && monthOf(t.date) === month && t.date > today)
-      .reduce((sum, t) => sum + convert(t.amount, t.currency, base, settings.rates), 0);
+      .filter((tx) => tx.type === type && monthOf(tx.date) === month && tx.date > today)
+      .reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, settings.rates), 0);
   const stillAhead = (total: number, ahead: number) =>
     ahead > 0
-      ? `${formatMoney(total - ahead, base, { compact: true })} so far · ${formatMoney(ahead, base, { compact: true })} planned`
+      ? t("tx.soFarPlanned", {
+          soFar: formatMoney(total - ahead, base, { compact: true }),
+          planned: formatMoney(ahead, base, { compact: true }),
+        })
       : undefined;
 
-  /* ---------- charts ---------- */
   const [flowMonths, setFlowMonths] = useState(6);
   const flowSeries = monthlySeries(state.transactions, month, flowMonths, settings);
-  // no local folding: CategoryBreakdown already rolls the tail into one "Other"
-  // row, and doing it twice meant a second, differently-labelled cut-off
-  const spendSegments: BreakdownSegment[] = [
-    ...expensesByCategory(state.transactions, month, settings).entries(),
-  ].map(([categoryId, value]) => {
+  const rawByCategory = expensesByCategory(state.transactions, month, settings);
+  const spendMap = spendDetail === "groups" ? rollupToParents(rawByCategory, state.categories) : rawByCategory;
+  const spendSegments: BreakdownSegment[] = [...spendMap.entries()].map(([categoryId, value]) => {
     const cat = catById.get(categoryId);
     return {
       id: categoryId,
-      label: cat?.name ?? "Uncategorized",
+      label: catLabel(cat),
       icon: cat?.icon ?? "❓",
       value,
       colorSlot: cat?.colorSlot ?? 3,
     };
   });
   const hasAnyTx = state.transactions.length > 0;
+  const hasSubcategorySpend = [...rawByCategory.keys()].some((id) => catById.get(id)?.parentId);
 
-  /* ---------- ledger scope ---------- */
-
-  /**
-   * A ledger you can only page through a month at a time answers "what did
-   * March cost" and nothing else — "where did that 4 000 go" needs a search.
-   * The query reads every field a row shows: note, category, either account,
-   * and the amount as typed.
-   */
-  /**
-   * Digits only, so a typed "14 000" or "14,000" finds a stored 14000. The
-   * amount is the thing people search a ledger for most, and it is the one
-   * field whose formatting never matches what is in the database.
-   */
   const digits = (v: string) => v.replace(/[^\d]/g, "");
-
   const q = query.trim().toLowerCase();
   const qDigits = digits(q);
-  const filtering = q !== "" || ledgerType !== "all";
+  const ledgerCats = ledgerCategory ? descendantsOf(state.categories, ledgerCategory) : null;
+  const filtering =
+    q !== "" || ledgerType !== "all" || ledgerCategory !== "" || ledgerAccount !== "" || ledgerTiming !== "all";
   const matchesFilter = (tx: Transaction) => {
     if (ledgerType !== "all" && tx.type !== ledgerType) return false;
+    if (ledgerTiming === "posted" && tx.date > today) return false;
+    if (ledgerTiming === "planned" && tx.date <= today) return false;
+    if (ledgerCats && !ledgerCats.has(tx.categoryId)) return false;
+    if (ledgerAccount && tx.accountId !== ledgerAccount && tx.toAccountId !== ledgerAccount) return false;
     if (!q) return true;
     const cat = catById.get(tx.categoryId);
     const from = tx.accountId ? accountById.get(tx.accountId) : undefined;
     const to = tx.toAccountId ? accountById.get(tx.toAccountId) : undefined;
-    const text = [tx.note, cat?.name, from?.name, to?.name, tx.currency, formatDate(tx.date)];
-    if (text.some((field) => field?.toLowerCase().includes(q))) return true;
+    if (matchesQuery(q, tx.note, cat ? catLabel(cat) : undefined, from?.name, to?.name, tx.currency, formatDate(tx.date)))
+      return true;
     return qDigits.length > 0 && digits(String(tx.amount)).includes(qDigits);
   };
+  const clearLedgerFilters = () => {
+    setQuery("");
+    setLedgerType("all");
+    setLedgerCategory("");
+    setLedgerAccount("");
+    setLedgerTiming("all");
+  };
 
-  const monthTx = state.transactions.filter((t) => monthOf(t.date) === month);
+  const ledgerCategoryGroups = useCategoryGroups(state.categories, ["expense", "income"], [
+    { value: "", label: t("filter.allCategories") },
+  ]);
+  const ledgerAccountGroups = useAccountGroups(state.savings, [{ value: "", label: t("filter.allAccounts") }]);
+  const expenseCategoryGroups = useCategoryGroups(state.categories, ["expense"]);
+  const incomeCategoryGroups = useCategoryGroups(state.categories, ["income"]);
+  const accountGroups = useAccountGroups(state.savings);
+  const optionalAccountGroups = useAccountGroups(state.savings, [
+    { value: "", label: t("common.notAssigned") },
+  ]);
+
+  const monthTx = state.transactions.filter((tx) => monthOf(tx.date) === month);
   const monthTxCount = monthTx.length;
-  /*
-   * A typed query searches the WHOLE ledger; the type filter alone stays inside
-   * the month you are reading.
-   *
-   * The first cut had search stay in the month too, with a "found 12 elsewhere,
-   * search everywhere?" prompt underneath. That is defensible on paper and wrong
-   * in the hand: you type a shop name, get nothing, and conclude the search is
-   * broken — which is exactly what happened. Nobody searching for a payment
-   * means "only if it happened in the month I am looking at". A filter is a
-   * view of the current month; a query is a question about the ledger.
-   */
-  const spanningAll = q !== "";
-  const ledgerTx = (spanningAll ? state.transactions : monthTx).filter(matchesFilter);
+  const scopeStart =
+    ledgerScope === "quarter" ? addMonths(month, -2) : ledgerScope === "year" ? `${month.slice(0, 4)}-01` : month;
+  const scopeEnd = ledgerScope === "year" ? `${month.slice(0, 4)}-12` : month;
+  const inScope = (tx: Transaction) => {
+    if (ledgerScope === "all") return true;
+    const m = monthOf(tx.date);
+    return m >= scopeStart && m <= scopeEnd;
+  };
+  const scopedTx = state.transactions.filter(inScope);
+  const plannedCount = scopedTx.filter((tx) => tx.date > today).length;
+  const spanningAll = ledgerScope !== "month";
+  const ledgerTx = scopedTx.filter(matchesFilter);
+  const signedBase = (tx: Transaction) =>
+    (tx.type === "expense" ? -1 : 1) * convert(tx.amount, tx.currency, base, settings.rates);
+  const ledgerNet = ledgerTx.reduce((sum, tx) => (tx.type === "transfer" ? sum : sum + signedBase(tx)), 0);
 
   const byDay = new Map<string, Transaction[]>();
   for (const tx of ledgerTx) {
@@ -268,24 +299,30 @@ export function TransactionsPage() {
     if (list) list.push(tx);
     else byDay.set(tx.date, [tx]);
   }
-  const days = [...byDay.keys()].sort().reverse();
+  const days = sortItems([...byDay.keys()], (d) => d, ledgerDir);
+  const flatLedger = sortItems(
+    ledgerTx,
+    (tx) =>
+      ledgerSort === "amount"
+        ? Math.abs(signedBase(tx))
+        : ledgerSort === "category"
+          ? catLabel(catById.get(tx.categoryId)).toLocaleLowerCase()
+          : (tx.accountId ? (accountById.get(tx.accountId)?.name ?? "") : "").toLocaleLowerCase(),
+    ledgerDir,
+  );
 
-  /**
-   * What the budgets add up to. Each row said how one category was doing and
-   * the card never once said how the *month* was doing — so the answer to "am I
-   * within budget overall" was to add six progress bars in your head. It also
-   * names the part nobody budgets: spending in categories with no limit at all,
-   * which is where a month usually actually goes wrong.
-   */
+  const budgetSpent = (b: Budget) => {
+    let sum = 0;
+    for (const id of descendantsOf(state.categories, b.categoryId)) {
+      sum += spentInCategory(state.transactions, id, month, b.currency, settings);
+    }
+    return sum;
+  };
+
   const budgetTotals = state.budgets.reduce(
     (acc, b) => {
       acc.limit += convert(b.limit, b.currency, base, settings.rates);
-      acc.spent += convert(
-        spentInCategory(state.transactions, b.categoryId, month, b.currency, settings),
-        b.currency,
-        base,
-        settings.rates,
-      );
+      acc.spent += convert(budgetSpent(b), b.currency, base, settings.rates);
       return acc;
     },
     { limit: 0, spent: 0 },
@@ -296,12 +333,9 @@ export function TransactionsPage() {
   const budgetedIds = new Set(state.budgets.map((b) => b.categoryId));
   const freeBudgetCats = expenseCats.filter((c) => !budgetedIds.has(c.id));
   const budgetCatOptions = budgetForm
-    ? expenseCats.filter(
-        (c) => !budgetedIds.has(c.id) || c.id === budgetForm.editingId,
-      )
+    ? expenseCats.filter((c) => !budgetedIds.has(c.id) || c.id === budgetForm.editingId)
     : [];
-
-  /* ---------- transactions ---------- */
+  const budgetCategoryGroups = useCategoryGroups(budgetCatOptions, ["expense"]);
 
   const openAddTx = () =>
     setTxForm({
@@ -331,7 +365,6 @@ export function TransactionsPage() {
       toAmount: tx.toAmount != null ? String(tx.toAmount) : "",
     });
 
-  /** switching type keeps what still applies and fills what the new type needs */
   const switchTxType = (form: TxForm, type: TxType): TxForm =>
     type === "transfer"
       ? {
@@ -346,12 +379,12 @@ export function TransactionsPage() {
         }
       : { ...form, type, categoryId: firstCategoryId(type) };
 
-  // a transfer needs two places to move money between; with fewer the tab could
-  // be picked but never saved, and the Save button gave no reason why
   const canTransfer = state.savings.length >= 2;
-  const txTypeOptions = canTransfer
-    ? TX_TYPE_OPTIONS
-    : TX_TYPE_OPTIONS.filter((o) => o.value !== "transfer");
+  const txTypeOptions: Array<{ value: TxType; label: string }> = [
+    { value: "expense", label: t("tx.type.expense") },
+    { value: "income", label: t("tx.type.income") },
+    ...(canTransfer ? [{ value: "transfer" as const, label: t("tx.type.transfer") }] : []),
+  ];
 
   const fromAccount = txForm ? accountById.get(txForm.accountId) : undefined;
   const toAccount = txForm ? accountById.get(txForm.toAccountId) : undefined;
@@ -364,12 +397,10 @@ export function TransactionsPage() {
   const txAmount = txForm ? parseAmount(txForm.amount) : NaN;
   const txToAmount = txForm ? parseAmount(txForm.toAmount) : NaN;
 
-  // suggested conversion at the configured rate, shown as a hint
   const impliedRate =
     crossCurrency && fromAccount && toAccount && Number.isFinite(txAmount) && txAmount > 0
       ? formatMoney(
-          convert(txAmount, fromAccount.currency, toAccount.currency, settings.rates) /
-            txAmount,
+          convert(txAmount, fromAccount.currency, toAccount.currency, settings.rates) / txAmount,
           toAccount.currency,
           { exact: true },
         )
@@ -387,25 +418,20 @@ export function TransactionsPage() {
         (!crossCurrency || (Number.isFinite(txToAmount) && txToAmount > 0))
       : txForm.categoryId !== "");
 
-  /**
-   * Why Save is off. A disabled button with nothing beside it is a dead end:
-   * on a form with an amount, two accounts and a cross-currency second amount,
-   * "it just won't save" is not something you can debug by looking at it.
-   */
   const txProblem: string | null =
     txForm === null || txValid
       ? null
       : !Number.isFinite(txAmount) || txAmount <= 0
-        ? "Enter an amount greater than zero."
+        ? t("problem.amount")
         : !/^\d{4}-\d{2}-\d{2}$/.test(txForm.date)
-          ? "Pick a date."
+          ? t("problem.date")
           : txForm.type !== "transfer"
-            ? "Pick a category."
+            ? t("problem.category")
             : txForm.accountId === "" || txForm.toAccountId === ""
-              ? "Pick the account the money leaves and the one it lands in."
+              ? t("tx.problem.bothAccounts")
               : txForm.accountId === txForm.toAccountId
-                ? "A transfer needs two different accounts."
-                : `Enter what actually arrived in ${toAccount?.name ?? "the destination"}.`;
+                ? t("tx.problem.sameAccount")
+                : t("tx.problem.arrived", { name: toAccount?.name ?? t("tx.destination") });
 
   const saveTx = () => {
     if (!txForm || !txValid) return;
@@ -414,7 +440,6 @@ export function TransactionsPage() {
       ? {
           type: "transfer",
           amount: txAmount,
-          // a transfer is denominated in the source account's currency
           currency: fromAccount?.currency ?? txForm.currency,
           categoryId: "",
           date: txForm.date,
@@ -435,19 +460,10 @@ export function TransactionsPage() {
     update((s) => ({
       ...s,
       transactions: txForm.id
-        ? s.transactions.map((t) =>
-            // replace rather than merge so switching type leaves no stale
-            // fields — except the link to the rule or subscription that posted
-            // the row, which must survive: it is what keeps the schedule from
-            // posting the same month a second time
-            t.id === txForm.id
-              ? {
-                  id: t.id,
-                  recurringId: t.recurringId,
-                  subscriptionId: t.subscriptionId,
-                  ...patch,
-                }
-              : t,
+        ? s.transactions.map((tx) =>
+            tx.id === txForm.id
+              ? { id: tx.id, recurringId: tx.recurringId, subscriptionId: tx.subscriptionId, ...patch }
+              : tx,
           )
         : [...s.transactions, { id: uid(), ...patch }],
     }));
@@ -457,17 +473,9 @@ export function TransactionsPage() {
   const deleteTx = () => {
     const id = txForm?.id;
     if (!id) return;
-    update(
-      (s) => ({
-        ...s,
-        transactions: s.transactions.filter((t) => t.id !== id),
-      }),
-      "Transaction deleted",
-    );
+    update((s) => ({ ...s, transactions: s.transactions.filter((tx) => tx.id !== id) }), t("tx.deleted"));
     setTxForm(null);
   };
-
-  /* ---------- recurring rules ---------- */
 
   const openAddRec = () =>
     setRecForm({
@@ -514,12 +522,12 @@ export function TransactionsPage() {
     recForm === null || recValid
       ? null
       : !Number.isFinite(recAmount) || recAmount <= 0
-        ? "Enter an amount greater than zero."
+        ? t("problem.amount")
         : !Number.isInteger(recDay) || recDay < 1 || recDay > 31
-          ? "The day of the month has to be a whole number between 1 and 31."
+          ? t("problem.day")
           : recForm.categoryId === ""
-            ? "Pick a category."
-            : "The end month cannot come before the start month.";
+            ? t("problem.category")
+            : t("problem.endBeforeStart");
 
   const saveRec = () => {
     if (!recForm || !recValid) return;
@@ -534,8 +542,6 @@ export function TransactionsPage() {
       startMonth: recForm.startMonth,
       endMonth: recForm.endMonth || undefined,
     };
-    // the new values reach every month this rule posted, past ones included —
-    // the ledger has to agree with the rule that produced it
     const id = recForm.id ?? uid();
     update((s) =>
       syncSchedule(
@@ -555,52 +561,51 @@ export function TransactionsPage() {
   const deleteRec = () => {
     const id = recForm?.id;
     if (!id) return;
-    // the rule and every month it posted go together — nothing is left behind
-    update((s) => deleteSchedule(s, "recurring", id), "Recurring rule deleted");
+    update((s) => deleteSchedule(s, "recurring", id), t("tx.recurring.deleted"));
     setRecForm(null);
   };
 
-  /** how many ledger rows a schedule's delete would take with it */
   const postedCount = (kind: "recurring" | "subscription", id: string | null) =>
     id === null
       ? 0
-      : state.transactions.filter((t) =>
-          kind === "recurring" ? t.recurringId === id : t.subscriptionId === id,
+      : state.transactions.filter((tx) =>
+          kind === "recurring" ? tx.recurringId === id : tx.subscriptionId === id,
         ).length;
 
-  /* ---------- subscriptions ---------- */
-
-  /**
-   * A subscription belongs to the month it actually bills in. The card listed
-   * every one ever created regardless of which month the page was showing, so
-   * paging back to March advertised a service started in July and a total that
-   * matched no month at all.
-   *
-   * `active` is the switch you flip today; the start and end months are what the
-   * schedule says. A month before the start, or after the end, simply has no
-   * charge — and an inactive subscription posts nothing anywhere.
-   */
-  const billsIn = (sub: Subscription, m: string) =>
-    sub.active && sub.startMonth <= m && (!sub.endMonth || sub.endMonth >= m);
-  /*
-   * Every subscription is one category — the Subscriptions category — so they
-   * all wear its colour rather than a per-service one. Inventing a colour per
-   * row would look livelier and mean nothing; this way the discs in this card
-   * match that slice in "Spending by category".
-   */
   const subsSlot =
     state.categories.find((c) => c.id === "cat-subs")?.colorSlot ?? SUBSCRIPTION_SLOT;
 
-  const monthSubs = state.subscriptions.filter((sub) => billsIn(sub, month));
+  const monthSubs = state.subscriptions.filter((sub) => subscriptionBillsIn(sub, month));
   const subsTotal = subscriptionsMonthlyTotal(monthSubs, base, settings);
-  // the ones that do not bill this month still belong on the page — you manage
-  // them here — but below the ones that do, and dimmed
-  const sortedSubs = [...state.subscriptions].sort((a, b) => {
-    const aNow = billsIn(a, month);
-    const bNow = billsIn(b, month);
-    if (aNow !== bNow) return aNow ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
+  const subCounts: Record<SubscriptionStatus, number> = { active: 0, upcoming: 0, ended: 0, paused: 0 };
+  for (const sub of state.subscriptions) subCounts[subscriptionStatus(sub, month)]++;
+  const viewToStatus: Record<Exclude<SubView, "all">, SubscriptionStatus> = {
+    now: "active",
+    upcoming: "upcoming",
+    ended: "ended",
+    paused: "paused",
+  };
+  const visibleSubs = sortItems(
+    state.subscriptions.filter(
+      (sub) => subView === "all" || subscriptionStatus(sub, month) === viewToStatus[subView],
+    ),
+    (sub) =>
+      subSort === "price"
+        ? subscriptionMonthlyCost(sub, base, settings)
+        : subSort === "day"
+          ? sub.dayOfMonth
+          : sub.name.toLocaleLowerCase(),
+    subDir,
+  );
+  const subViewOptions = (
+    [
+      { value: "now", label: t("tx.subs.view.now"), count: subCounts.active },
+      { value: "upcoming", label: t("tx.subs.view.upcoming"), count: subCounts.upcoming },
+      { value: "ended", label: t("tx.subs.view.ended"), count: subCounts.ended },
+      { value: "paused", label: t("tx.subs.view.paused"), count: subCounts.paused },
+      { value: "all", label: t("tx.subs.view.all"), count: state.subscriptions.length },
+    ] as Array<{ value: SubView; label: string; count: number }>
+  ).filter((o) => o.value === "now" || o.value === "all" || o.count > 0 || o.value === subView);
 
   const openAddSub = () =>
     setSubForm({
@@ -647,12 +652,12 @@ export function TransactionsPage() {
     subForm === null || subValid
       ? null
       : subForm.name.trim() === ""
-        ? "Name the service."
+        ? t("tx.subs.problem.name")
         : !Number.isFinite(subPrice) || subPrice <= 0
-          ? "Enter a price greater than zero."
+          ? t("tx.subs.problem.price")
           : !Number.isInteger(subDay) || subDay < 1 || subDay > 31
-            ? "The charge day has to be a whole number between 1 and 31."
-            : "The end month cannot come before the first billing month.";
+            ? t("problem.day")
+            : t("problem.endBeforeStart");
 
   const saveSub = () => {
     if (!subForm || !subValid) return;
@@ -667,8 +672,6 @@ export function TransactionsPage() {
       startMonth: subForm.startMonth,
       endMonth: subForm.endMonth || undefined,
     };
-    // a new price, billing day or start month rewrites every charge this
-    // subscription has posted, not just the planned ones
     const id = subForm.id ?? uid();
     update((s) =>
       syncSchedule(
@@ -685,39 +688,48 @@ export function TransactionsPage() {
     setSubForm(null);
   };
 
-  const toggleSub = (id: string, active: boolean) => {
+  const editingSub = subForm?.id ? state.subscriptions.find((s) => s.id === subForm.id) : undefined;
+
+  const resumeSub = () => {
+    const id = subForm?.id;
+    if (!id) return;
     update(
       (s) =>
         remateralizeRecurring({
           ...s,
-          subscriptions: s.subscriptions.map((sub) =>
-            sub.id === id ? { ...sub, active } : sub,
-          ),
+          subscriptions: s.subscriptions.map((sub) => (sub.id === id ? { ...sub, active: true } : sub)),
         }),
-      active ? "Subscription switched on" : "Subscription switched off",
+      t("tx.subs.resumed"),
     );
   };
 
   const deleteSub = () => {
     const id = subForm?.id;
     if (!id) return;
-    // the subscription and every charge it posted go together — to keep the
-    // charges so far, switch it off instead of deleting it
-    update((s) => deleteSchedule(s, "subscription", id), "Subscription deleted");
+    update((s) => deleteSchedule(s, "subscription", id), t("tx.subs.deleted"));
     setSubForm(null);
   };
 
-  /* ---------- budgets ---------- */
+  const recCounts: Record<Exclude<RecView, "all">, number> = { now: 0, upcoming: 0, ended: 0 };
+  for (const rule of state.recurring) recCounts[recurringStatus(rule, month)]++;
+  const visibleRecurring = sortItems(
+    state.recurring.filter((rule) => recView === "all" || recurringStatus(rule, month) === recView),
+    (rule) => rule.dayOfMonth,
+    "asc",
+  );
+  const recViewOptions = (
+    [
+      { value: "now", label: t("tx.rec.view.now"), count: recCounts.now },
+      { value: "upcoming", label: t("tx.rec.view.upcoming"), count: recCounts.upcoming },
+      { value: "ended", label: t("tx.rec.view.ended"), count: recCounts.ended },
+      { value: "all", label: t("tx.rec.view.all"), count: state.recurring.length },
+    ] as Array<{ value: RecView; label: string; count: number }>
+  ).filter((o) => o.value === "now" || o.value === "all" || o.count > 0 || o.value === recView);
 
   const openAddBudget = () => {
     const first = freeBudgetCats[0];
     if (!first) return;
-    setBudgetForm({
-      editingId: null,
-      categoryId: first.id,
-      limit: "",
-      currency: base,
-    });
+    setBudgetForm({ editingId: null, categoryId: first.id, limit: "", currency: base });
   };
 
   const openEditBudget = (b: Budget) =>
@@ -730,17 +742,14 @@ export function TransactionsPage() {
 
   const budgetLimit = budgetForm ? parseAmount(budgetForm.limit) : NaN;
   const budgetValid =
-    budgetForm !== null &&
-    Number.isFinite(budgetLimit) &&
-    budgetLimit > 0 &&
-    budgetForm.categoryId !== "";
+    budgetForm !== null && Number.isFinite(budgetLimit) && budgetLimit > 0 && budgetForm.categoryId !== "";
 
   const budgetProblem: string | null =
     budgetForm === null || budgetValid
       ? null
       : budgetForm.categoryId === ""
-        ? "Pick a category."
-        : "Enter a monthly limit greater than zero.";
+        ? t("problem.category")
+        : t("tx.budget.problem.limit");
 
   const saveBudget = () => {
     if (!budgetForm || !budgetValid) return;
@@ -753,9 +762,7 @@ export function TransactionsPage() {
       ...s,
       budgets: [
         ...s.budgets.filter(
-          (b) =>
-            b.categoryId !== budgetForm.editingId &&
-            b.categoryId !== budgetForm.categoryId,
+          (b) => b.categoryId !== budgetForm.editingId && b.categoryId !== budgetForm.categoryId,
         ),
         entry,
       ],
@@ -766,83 +773,111 @@ export function TransactionsPage() {
   const deleteBudget = () => {
     const id = budgetForm?.editingId;
     if (!id) return;
-    update(
-      (s) => ({
-        ...s,
-        budgets: s.budgets.filter((b) => b.categoryId !== id),
-      }),
-      "Budget deleted",
-    );
+    update((s) => ({ ...s, budgets: s.budgets.filter((b) => b.categoryId !== id) }), t("tx.budget.deleted"));
     setBudgetForm(null);
   };
 
-  /* ---------- render ---------- */
+  const addButton = (variant: "primary" | "ghost", onClick: () => void, disabled = false) => (
+    <AddButton variant={variant} onClick={onClick} disabled={disabled} label={t("common.add")} />
+  );
+
+  const renderTx = (tx: Transaction, showDate: boolean) => {
+    const cat = catById.get(tx.categoryId);
+    const isTransfer = tx.type === "transfer";
+    const from = tx.accountId ? accountById.get(tx.accountId) : undefined;
+    const to = tx.toAccountId ? accountById.get(tx.toAccountId) : undefined;
+    const parent = cat?.parentId ? catById.get(cat.parentId) : undefined;
+    return (
+      <button
+        key={tx.id}
+        type="button"
+        onClick={() => openEditTx(tx)}
+        className="row-tap flex w-full items-center gap-3 px-1.5 py-2 text-left"
+      >
+        <IconDisc colorSlot={isTransfer ? undefined : cat?.colorSlot} className="size-9 rounded-full text-base">
+          {isTransfer ? "⇄" : (cat?.icon ?? "❓")}
+        </IconDisc>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-ink-1">
+            {isTransfer ? `${from?.name ?? "?"} → ${to?.name ?? "?"}` : catLabel(cat)}
+          </span>
+          <span className="block truncate text-xs text-ink-3">
+            {isTransfer
+              ? tx.toAmount != null && to && tx.toAmount !== tx.amount
+                ? t("tx.arrivesAs", { amount: formatMoney(tx.toAmount, to.currency, { exact: true }) })
+                : (tx.note ?? t("tx.type.transfer"))
+              : [showDate ? formatDateShort(tx.date) : null, parent ? catLabel(parent) : null, tx.note, from?.name]
+                  .filter(Boolean)
+                  .join(" · ")}
+          </span>
+        </span>
+        <Money
+          amount={tx.type === "expense" ? -tx.amount : tx.amount}
+          currency={tx.currency}
+          sign={!isTransfer}
+          className={`shrink-0 text-sm font-semibold ${
+            isTransfer ? "text-ink-2" : tx.type === "income" ? "text-income" : "text-expense"
+          }`}
+        />
+      </button>
+    );
+  };
+
+  const statusBadge = (status: SubscriptionStatus | Exclude<RecView, "all">) => {
+    if (status === "active" || status === "now") return null;
+    const label =
+      status === "upcoming" ? t("tx.status.upcoming") : status === "ended" ? t("tx.status.ended") : t("tx.status.paused");
+    return <Badge tone={status === "ended" ? "neutral" : status === "paused" ? "warning" : "accent"}>{label}</Badge>;
+  };
 
   return (
     <>
-      <PageHeader
-        title="Expenses"
-        subtitle="Ledger, recurring payments, subscriptions and budgets"
-        action={<Button onClick={openAddTx}>+ Add</Button>}
-      />
+      <PageHeader title={t("tx.title")} subtitle={t("tx.subtitle")} action={addButton("primary", openAddTx)} />
       <div className="stagger space-y-4 sm:space-y-5">
-        {/* month switcher */}
         <div className="glass flex items-center gap-3 rounded-card px-4 py-3">
           <button
             type="button"
-            aria-label="Previous month"
+            aria-label={t("month.previous")}
             onClick={() => setMonth(addMonths(month, -1))}
             className="icon-btn size-10 shrink-0 border border-hairline bg-ghost text-ink-2 shadow-[inset_0_1px_0_var(--card-highlight)]"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="m14 6-6 6 6 6" />
-            </svg>
+            <Icon name="chevronLeft" size={18} strokeWidth={2.2} />
           </button>
-          {/* the strip used to be a wide empty bar with a month name in it —
-              it now carries where you are and how the month closed */}
           <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
             <span className="body-strong flex items-center gap-2 font-semibold">
               <span className="truncate">{formatMonth(month)}</span>
               {month === nowMonth && (
                 <span className="hidden rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent sm:inline">
-                  this month
+                  {t("month.this")}
                 </span>
               )}
             </span>
             <span className="tnum text-xs text-ink-3">
-              {monthTxCount} entr{monthTxCount === 1 ? "y" : "ies"} ·{" "}
+              {tp("common.entries", monthTxCount)} ·{" "}
               <span className={totals.net >= 0 ? "text-income" : "text-expense"}>
                 {formatMoney(totals.net, base, { compact: true, sign: true })}
               </span>
             </span>
           </div>
           {month !== nowMonth && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0"
-              onClick={() => setMonth(nowMonth)}
-            >
-              Today
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={() => setMonth(nowMonth)}>
+              {t("month.today")}
             </Button>
           )}
           <button
             type="button"
-            aria-label="Next month"
+            aria-label={t("month.next")}
             onClick={() => setMonth(addMonths(month, 1))}
             disabled={!canGoNext}
             className="icon-btn size-10 shrink-0 border border-hairline bg-ghost text-ink-2 shadow-[inset_0_1px_0_var(--card-highlight)] disabled:opacity-40"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="m10 6 6 6-6 6" />
-            </svg>
+            <Icon name="chevronRight" size={18} strokeWidth={2.2} />
           </button>
         </div>
 
-        {/* month summary */}
         <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
           <StatTile
-            label="Income"
+            label={t("tx.stat.income")}
             href="/income"
             value={formatMoney(totals.income, base, { compact: true })}
             tone="income"
@@ -851,7 +886,7 @@ export function TransactionsPage() {
             hint={stillAhead(totals.income, plannedIn("income"))}
           />
           <StatTile
-            label="Expenses"
+            label={t("tx.stat.expenses")}
             value={formatMoney(totals.expense, base, { compact: true })}
             tone="expense"
             spark={flowSeries.map((m) => m.expense)}
@@ -859,70 +894,71 @@ export function TransactionsPage() {
             hint={
               stillAhead(totals.expense, plannedIn("expense")) ??
               (totals.income > 0
-                ? `${formatPercent((totals.expense / totals.income) * 100, 0)} of what came in`
+                ? t("tx.stat.ofIncome", { pct: formatPercent((totals.expense / totals.income) * 100, 0) })
                 : undefined)
             }
           />
           <StatTile
             className="col-span-2 md:col-span-1"
-            label="Net"
+            label={t("tx.stat.net")}
             value={formatMoney(totals.net, base, { sign: true, compact: true })}
             tone={totals.net < 0 ? "expense" : "income"}
             spark={flowSeries.map((m) => m.income - m.expense)}
             delta={vsLast(totals.net, prevTotals.net)}
-            hint={`${formatMoney(totals.expense / daysInMonth(month), base, { compact: true })} spent per day on average`}
+            hint={t("tx.stat.perDay", {
+              amount: formatMoney(totals.expense / daysInMonth(month), base, { compact: true }),
+            })}
           />
         </div>
 
-        {/* charts */}
         {hasAnyTx && (
           <div className="grid items-stretch gap-4 sm:gap-5 lg:grid-cols-2">
             <GlassCard
-              title="Where it went"
+              title={t("tx.where")}
               subtitle={formatMonth(month)}
               icon="pie"
               className="flex flex-col"
+              action={
+                hasSubcategorySpend ? (
+                  <SegmentedControl
+                    size="sm"
+                    label={t("tx.where.detail")}
+                    options={[
+                      { value: "groups", label: t("tx.where.groups") },
+                      { value: "detailed", label: t("tx.where.detailed") },
+                    ]}
+                    value={spendDetail}
+                    onChange={setSpendDetail}
+                  />
+                ) : undefined
+              }
             >
               {spendSegments.length > 0 ? (
-                // The same breakdown the dashboard draws, rather than a donut of
-                // the same numbers: one question — where did the month go — had
-                // two different visual answers on two pages. The list wins on
-                // merit, not just consistency; it labels every slice, prints the
-                // amount beside it, and does not collapse to "C 69%" when the
-                // column gets narrow. The ring is kept for currency allocation,
-                // where three slices really are a part of one whole.
                 <div className="flex flex-1 flex-col justify-center">
                   <div className="mb-3.5 flex items-end justify-between gap-3">
                     <p className="num-md whitespace-nowrap text-ink-1">
                       {formatMoney(totals.expense, base, { compact: true })}
                     </p>
-                    <p className="caption">
-                      {spendSegments.length} categor
-                      {spendSegments.length === 1 ? "y" : "ies"}
-                    </p>
+                    <p className="caption">{tp("common.categories", spendSegments.length)}</p>
                   </div>
                   <CategoryBreakdown segments={spendSegments} currency={base} />
                 </div>
               ) : (
                 <EmptyState
                   icon={<Icon name="receipt" />}
-                  title="No spending this month"
-                  hint="Expenses you log this month break down here by category."
+                  title={t("tx.where.empty")}
+                  hint={t("tx.where.empty.hint")}
                 />
               )}
             </GlassCard>
             <GlassCard
-              title="Cash flow"
-              subtitle="Income vs expenses"
+              title={t("tx.flow")}
+              subtitle={t("tx.flow.subtitle")}
               icon="chart"
               action={<PeriodTabs value={flowMonths} onChange={setFlowMonths} />}
             >
               <MonthlyColumns
-                data={flowSeries.map((m) => ({
-                  month: m.month,
-                  income: m.income,
-                  expense: m.expense,
-                }))}
+                data={flowSeries.map((m) => ({ month: m.month, income: m.income, expense: m.expense }))}
                 currency={base}
                 height={220}
               />
@@ -931,543 +967,513 @@ export function TransactionsPage() {
         )}
 
         <div className="grid items-start gap-4 sm:gap-5 xl:grid-cols-5">
-        {/* transaction list */}
-        <div className="space-y-4 sm:space-y-5 xl:col-span-3">
-        {hasAnyTx && (
-          // a month-at-a-time ledger can only answer "what did March cost";
-          // finding one payment needs a query, so the two sit side by side
-          <div className="glass flex flex-wrap items-center gap-2 rounded-card px-3 py-2.5">
-            <div className="relative min-w-40 flex-1">
-              <span
-                aria-hidden
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round">
-                  <circle cx="11" cy="11" r="6.5" />
-                  <path d="m16 16 4.5 4.5" />
-                </svg>
-              </span>
-              <TextInput
-                type="search"
-                size="sm"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search notes, categories, accounts…"
-                aria-label="Search transactions"
-                className="pl-9.5"
-              />
-            </div>
-            <SegmentedControl
-              size="sm"
-              label="Kind of entry"
-              className="shrink-0"
-              options={[
-                { value: "all" as const, label: "All" },
-                { value: "expense" as const, label: "Out" },
-                { value: "income" as const, label: "In" },
-                { value: "transfer" as const, label: "⇄" },
-              ]}
-              value={ledgerType}
-              onChange={setLedgerType}
-            />
-            {filtering && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="shrink-0"
-                onClick={() => {
-                  setQuery("");
-                  setLedgerType("all");
-                }}
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-        )}
-        {days.length === 0 ? (
-          <GlassCard>
-            {filtering ? (
-              <EmptyState
-                icon={<Icon name="search" />}
-                title="Nothing matches"
-                hint={
-                  spanningAll
-                    ? "Nothing in the whole ledger matches that."
-                    : `Nothing in ${formatMonth(month)} is of that kind.`
-                }
-                action={
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setQuery("");
-                      setLedgerType("all");
-                    }}
-                  >
-                    Clear filter
-                  </Button>
-                }
-              />
-            ) : (
-              <EmptyState
-                icon={<Icon name="receipt" />}
-                title="No transactions this month"
-                hint="Add the first record and the history shows up here."
-                action={<Button onClick={openAddTx}>+ Add</Button>}
-              />
-            )}
-          </GlassCard>
-        ) : (
-          // One ledger, not one card per day: with a handful of entries spread
-          // across the month, every row used to arrive as its own floating
-          // panel under its own heading, and nine transactions filled half a
-          // screen. The day is a divider inside the list now, and it carries
-          // that day's net so the column reads like a statement.
-          <GlassCard
-            title="Ledger"
-            subtitle={
-              filtering
-                ? `${ledgerTx.length} match${ledgerTx.length === 1 ? "" : "es"} ${
-                    spanningAll ? "across every month" : `in ${formatMonth(month)}`
-                  }`
-                : `${monthTxCount} entr${monthTxCount === 1 ? "y" : "ies"} in ${formatMonth(month)}`
-            }
-            icon="receipt"
-            action={
-              <Button variant="ghost" onClick={openAddTx}>
-                + Add
-              </Button>
-            }
-          >
-            <div className="-mx-1.5">
-              {days.map((day) => {
-                const planned = day > today;
-                const dayNet = byDay
-                  .get(day)!
-                  .filter((t) => t.type !== "transfer")
-                  .reduce(
-                    (sum, t) =>
-                      sum +
-                      (t.type === "income" ? 1 : -1) *
-                        convert(t.amount, t.currency, base, settings.rates),
-                    0,
-                  );
-                return (
-                  <section key={day} className={planned ? "opacity-75" : ""}>
-                    <h3 className="flex items-baseline justify-between gap-3 border-b border-hairline px-1.5 pb-1.5 pt-3 text-xs font-medium text-ink-3 first:pt-0">
-                      <span className="flex items-center gap-2">
-                        {/* results can span years once the search leaves the
-                            month, and "21 Jul" alone would not say which */}
-                        {spanningAll ? formatDate(day) : formatDateShort(day)}
-                        {/* a quiet word, not a badge: in an open month every
-                            single day carries it, and nine filled pills in a
-                            row shouted louder than the amounts */}
-                        {planned && <span className="tracking-wide">planned</span>}
-                      </span>
-                      {/* only worth printing when the day has more than one row
-                          to add up — otherwise it just repeats the amount below */}
-                      {byDay.get(day)!.length > 1 && (
-                        <span className="tnum shrink-0">
-                          {formatMoney(dayNet, base, { compact: true, sign: true })}
-                        </span>
-                      )}
-                    </h3>
-                    <div className="py-1">
-                      {byDay.get(day)!.map((tx) => {
-                    const cat = catById.get(tx.categoryId);
-                    const isTransfer = tx.type === "transfer";
-                    const from = tx.accountId ? accountById.get(tx.accountId) : undefined;
-                    const to = tx.toAccountId ? accountById.get(tx.toAccountId) : undefined;
-                    return (
-                      <button
-                        key={tx.id}
-                        type="button"
-                        onClick={() => openEditTx(tx)}
-                        className="row-tap flex w-full items-center gap-3 px-1.5 py-2 text-left"
-                      >
-                        {/* a transfer belongs to no category, so it gets no
-                            colour rather than a borrowed one */}
-                        <IconDisc
-                          colorSlot={isTransfer ? undefined : cat?.colorSlot}
-                          className="size-9 rounded-full text-base"
-                        >
-                          {isTransfer ? "⇄" : (cat?.icon ?? "❓")}
-                        </IconDisc>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium text-ink-1">
-                            {isTransfer
-                              ? `${from?.name ?? "?"} → ${to?.name ?? "?"}`
-                              : (cat?.name ?? "Uncategorized")}
-                          </span>
-                          <span className="block truncate text-xs text-ink-3">
-                            {isTransfer
-                              ? tx.toAmount != null && to && tx.toAmount !== tx.amount
-                                ? `arrives as ${formatMoney(tx.toAmount, to.currency, { exact: true })}`
-                                : (tx.note ?? "Transfer")
-                              : [tx.note, from?.name].filter(Boolean).join(" · ")}
-                          </span>
-                        </span>
-                        <Money
-                          amount={tx.type === "expense" ? -tx.amount : tx.amount}
-                          currency={tx.currency}
-                          sign={!isTransfer}
-                          className={`shrink-0 text-sm font-semibold ${
-                            isTransfer
-                              ? "text-ink-2"
-                              : tx.type === "income"
-                                ? "text-income"
-                                : "text-expense"
-                          }`}
+          <div className="min-w-0 space-y-4 sm:space-y-5 xl:col-span-3">
+            <GlassCard
+              title={t("tx.ledger")}
+              subtitle={
+                filtering
+                  ? spanningAll
+                    ? tp("tx.ledger.matchesAll", ledgerTx.length)
+                    : tp("tx.ledger.matchesMonth", ledgerTx.length, { month: formatMonth(month) })
+                  : tp("tx.ledger.entriesMonth", monthTxCount, { month: formatMonth(month) })
+              }
+              icon="receipt"
+              action={addButton("ghost", openAddTx)}
+            >
+              {hasAnyTx && (
+                <>
+                  <Toolbar className="mb-2">
+                    <SearchInput value={query} onChange={setQuery} placeholder={t("tx.search")} />
+                    <SegmentedControl
+                      size="sm"
+                      label={t("tx.kind")}
+                      className="flex-[1_0_auto] sm:flex-none"
+                      options={[
+                        { value: "all" as const, label: t("tx.kind.all") },
+                        { value: "expense" as const, label: t("tx.kind.out") },
+                        { value: "income" as const, label: t("tx.kind.in") },
+                        { value: "transfer" as const, label: "⇄" },
+                      ]}
+                      value={ledgerType}
+                      onChange={setLedgerType}
+                    />
+                  </Toolbar>
+                  <Toolbar className="mb-2">
+                    <FilterPills
+                      label={t("filter.period")}
+                      options={[
+                        { value: "month" as const, label: formatMonthShort(month) },
+                        { value: "quarter" as const, label: t("filter.period.quarter") },
+                        { value: "year" as const, label: month.slice(0, 4) },
+                        { value: "all" as const, label: t("filter.period.all") },
+                      ]}
+                      value={ledgerScope}
+                      onChange={setLedgerScope}
+                    />
+                    {plannedCount > 0 && (
+                      <FilterPills
+                        label={t("filter.timing")}
+                        options={[
+                          { value: "all" as const, label: t("filter.all") },
+                          { value: "posted" as const, label: t("filter.timing.posted") },
+                          { value: "planned" as const, label: t("filter.timing.planned") },
+                        ]}
+                        value={ledgerTiming}
+                        onChange={setLedgerTiming}
+                      />
+                    )}
+                  </Toolbar>
+                  <Toolbar>
+                    <ToolbarSlot>
+                      <OptionPicker
+                        size="sm"
+                        label={t("filter.category")}
+                        value={ledgerCategory}
+                        onChange={setLedgerCategory}
+                        groups={ledgerCategoryGroups}
+                      />
+                    </ToolbarSlot>
+                    {state.savings.length > 0 && (
+                      <ToolbarSlot>
+                        <OptionPicker
+                          size="sm"
+                          label={t("filter.account")}
+                          value={ledgerAccount}
+                          onChange={setLedgerAccount}
+                          groups={ledgerAccountGroups}
                         />
-                      </button>
+                      </ToolbarSlot>
+                    )}
+                    <SortSelect
+                      value={ledgerSort}
+                      onChange={setLedgerSort}
+                      options={[
+                        { value: "date", label: t("sort.date") },
+                        { value: "amount", label: t("sort.amount") },
+                        { value: "category", label: t("filter.category") },
+                        { value: "account", label: t("common.account") },
+                      ]}
+                      direction={ledgerDir}
+                      onDirectionChange={setLedgerDir}
+                    />
+                    {filtering && (
+                      <Button variant="ghost" size="sm" className="shrink-0" onClick={clearLedgerFilters}>
+                        {t("filter.reset")}
+                      </Button>
+                    )}
+                  </Toolbar>
+                  {ledgerTx.length > 0 && (
+                    <p className="tnum mb-2 px-1 text-xs text-ink-3">
+                      {tp("common.entries", ledgerTx.length)} ·{" "}
+                      <span className={ledgerNet >= 0 ? "text-income" : "text-expense"}>
+                        {formatMoney(ledgerNet, base, { sign: true, compact: true })}
+                      </span>
+                    </p>
+                  )}
+                </>
+              )}
+              {ledgerTx.length === 0 ? (
+                filtering ? (
+                  <EmptyState
+                    icon={<Icon name="search" />}
+                    title={t("filter.noMatches")}
+                    hint={spanningAll ? t("tx.noMatch.all") : t("tx.noMatch.month", { month: formatMonth(month) })}
+                    action={
+                      <Button variant="ghost" onClick={clearLedgerFilters}>
+                        {t("filter.reset")}
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <EmptyState
+                    icon={<Icon name="receipt" />}
+                    title={t("tx.empty")}
+                    hint={t("tx.empty.hint")}
+                    action={addButton("primary", openAddTx)}
+                  />
+                )
+              ) : ledgerSort !== "date" ? (
+                <div className="-mx-1.5 py-1">{flatLedger.map((tx) => renderTx(tx, true))}</div>
+              ) : (
+                <div className="-mx-1.5">
+                  {days.map((day) => {
+                    const planned = day > today;
+                    const rows = byDay.get(day)!;
+                    const dayNet = rows
+                      .filter((tx) => tx.type !== "transfer")
+                      .reduce((sum, tx) => sum + signedBase(tx), 0);
+                    return (
+                      <section key={day} className={planned ? "opacity-75" : ""}>
+                        <h3 className="flex items-baseline justify-between gap-3 border-b border-hairline px-1.5 pb-1.5 pt-3 text-xs font-medium text-ink-3 first:pt-0">
+                          <span className="flex items-center gap-2">
+                            {spanningAll ? formatDate(day) : formatDateShort(day)}
+                            {planned && <span className="tracking-wide">{t("tx.planned")}</span>}
+                          </span>
+                          {rows.length > 1 && (
+                            <span className="tnum shrink-0">
+                              {formatMoney(dayNet, base, { compact: true, sign: true })}
+                            </span>
+                          )}
+                        </h3>
+                        <div className="py-1">{rows.map((tx) => renderTx(tx, false))}</div>
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+            </GlassCard>
+          </div>
+
+          <div className="min-w-0 space-y-4 sm:space-y-5 xl:col-span-2">
+            <GlassCard
+              title={t("tx.subs")}
+              subtitle={t("tx.subs.subtitle")}
+              icon="device"
+              action={addButton("ghost", openAddSub)}
+            >
+              {state.subscriptions.length === 0 ? (
+                <EmptyState
+                  icon={<Icon name="device" />}
+                  title={t("tx.subs.empty")}
+                  hint={t("tx.subs.empty.hint")}
+                  action={addButton("ghost", openAddSub)}
+                />
+              ) : (
+                <>
+                  <p className="mb-3 text-sm text-ink-2">
+                    {t("tx.subs.billingIn", { month: formatMonth(month) })}{" "}
+                    <span className="tnum font-semibold text-ink-1">
+                      {formatMoney(subsTotal, base, { exact: true })}
+                    </span>
+                    <span className="caption">
+                      {" "}
+                      · {t("tx.subs.countOf", { n: monthSubs.length, total: state.subscriptions.length })}
+                    </span>
+                  </p>
+                  <Toolbar>
+                    <FilterPills
+                      label={t("tx.subs.view")}
+                      options={subViewOptions}
+                      value={subView}
+                      onChange={setSubView}
+                    />
+                    {visibleSubs.length > 1 && (
+                      <SortSelect
+                        value={subSort}
+                        onChange={setSubSort}
+                        options={[
+                          { value: "name", label: t("sort.name") },
+                          { value: "price", label: t("sort.price") },
+                          { value: "day", label: t("sort.chargeDay") },
+                        ]}
+                        direction={subDir}
+                        onDirectionChange={setSubDir}
+                      />
+                    )}
+                  </Toolbar>
+                  {visibleSubs.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-ink-2">
+                      {subView === "now" ? t("tx.subs.noneThisMonth", { month: formatMonth(month) }) : t("filter.noMatches")}
+                    </p>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {visibleSubs.map((sub) => {
+                        const status = subscriptionStatus(sub, month);
+                        return (
+                          <li key={sub.id}>
+                            <button
+                              type="button"
+                              onClick={() => openEditSub(sub)}
+                              className={`row-tap flex w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left ${
+                                status === "active" ? "" : "opacity-60"
+                              }`}
+                            >
+                              <IconDisc colorSlot={subsSlot} className="size-9 rounded-full text-base">
+                                {sub.icon}
+                              </IconDisc>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="truncate text-sm font-medium text-ink-1">{sub.name}</span>
+                                  {statusBadge(status)}
+                                </span>
+                                <span className="block truncate text-xs text-ink-3">
+                                  {sub.period === "yearly"
+                                    ? t("tx.subs.yearly", { price: formatMoney(sub.price, sub.currency) })
+                                    : t("tx.subs.monthlyDay", { day: sub.dayOfMonth })}
+                                  {status === "upcoming" && ` · ${t("tx.subs.from", { month: formatMonth(sub.startMonth) })}`}
+                                  {sub.endMonth &&
+                                    ` · ${
+                                      status === "ended"
+                                        ? t("tx.subs.endedIn", { month: formatMonth(sub.endMonth) })
+                                        : t("tx.subs.until", { month: formatMonth(sub.endMonth) })
+                                    }`}
+                                </span>
+                              </span>
+                              <span className="shrink-0 text-right">
+                                <Money
+                                  amount={sub.period === "yearly" ? sub.price / 12 : sub.price}
+                                  currency={sub.currency}
+                                  exact
+                                  className="block text-sm font-semibold text-ink-1"
+                                />
+                                <span className="block text-xs text-ink-3">{t("common.perMonth")}</span>
+                              </span>
+                            </button>
+                          </li>
                         );
                       })}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          </GlassCard>
-        )}
-        </div>
+                    </ul>
+                  )}
+                </>
+              )}
+            </GlassCard>
 
-        <div className="space-y-4 sm:space-y-5 xl:col-span-2">
-        {/* subscriptions */}
-        <GlassCard
-          title="Subscriptions"
-          subtitle="Recurring services"
-          icon="device"
-          action={
-            <Button variant="ghost" onClick={openAddSub}>
-              + Add
-            </Button>
-          }
-        >
-          {state.subscriptions.length === 0 ? (
-            <EmptyState
-              icon={<Icon name="device" />}
-              title="No subscriptions yet"
-              hint="Add them once — each active subscription posts itself on its cycle (monthly or yearly), and yearly costs are split evenly across the months."
-              action={
-                <Button variant="ghost" onClick={openAddSub}>
-                  + Add
-                </Button>
+            <GlassCard
+              title={t("tx.rec")}
+              subtitle={t("tx.rec.subtitle")}
+              icon="repeat"
+              action={addButton("ghost", openAddRec)}
+            >
+              {state.recurring.length === 0 ? (
+                <EmptyState
+                  icon={<Icon name="repeat" />}
+                  title={t("tx.rec.empty")}
+                  hint={t("tx.rec.empty.hint")}
+                  action={addButton("ghost", openAddRec)}
+                />
+              ) : (
+                <>
+                  {state.recurring.length > 1 && (
+                    <div className="mb-3">
+                      <FilterPills
+                        label={t("tx.rec.view")}
+                        options={recViewOptions}
+                        value={recView}
+                        onChange={setRecView}
+                      />
+                    </div>
+                  )}
+                  {visibleRecurring.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-ink-2">
+                      {recView === "now" ? t("tx.rec.noneThisMonth", { month: formatMonth(month) }) : t("filter.noMatches")}
+                    </p>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {visibleRecurring.map((rule) => {
+                        const cat = catById.get(rule.categoryId);
+                        const status = recurringStatus(rule, month);
+                        return (
+                          <li key={rule.id}>
+                            <button
+                              type="button"
+                              onClick={() => openEditRec(rule)}
+                              className={`row-tap flex w-full items-center gap-3 px-3 py-2.5 text-left ${
+                                status === "now" ? "" : "opacity-60"
+                              }`}
+                            >
+                              <IconDisc colorSlot={cat?.colorSlot} className="size-10 rounded-full text-lg">
+                                {cat?.icon ?? "❓"}
+                              </IconDisc>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="truncate text-sm font-medium text-ink-1">
+                                    {catLabel(cat)}
+                                    {rule.note && <span className="font-normal text-ink-3"> · {rule.note}</span>}
+                                  </span>
+                                  {statusBadge(status)}
+                                </span>
+                                <span className="tnum block text-xs text-ink-2">
+                                  {t("tx.rec.line", {
+                                    amount: formatMoney(rule.amount, rule.currency),
+                                    day: rule.dayOfMonth,
+                                  })}
+                                </span>
+                                <span className="block text-xs text-ink-3">
+                                  {rule.endMonth
+                                    ? t("tx.rec.range", {
+                                        from: formatMonth(rule.startMonth),
+                                        to: formatMonth(rule.endMonth),
+                                      })
+                                    : t("tx.rec.since", { from: formatMonth(rule.startMonth) })}
+                                </span>
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </>
+              )}
+            </GlassCard>
+
+            <GlassCard
+              title={t("tx.budgets")}
+              subtitle={
+                state.budgets.length > 0
+                  ? t("tx.budgets.summary", {
+                      month: formatMonth(month),
+                      spent: formatMoney(budgetTotals.spent, base, { compact: true }),
+                      limit: formatMoney(budgetTotals.limit, base, { compact: true }),
+                    })
+                  : t("tx.budgets.subtitle")
               }
-            />
-          ) : (
-            <>
-              <p className="mb-3 text-sm text-ink-2">
-                Billing in {formatMonth(month)}:{" "}
-                <span className="tnum font-semibold text-ink-1">
-                  {formatMoney(subsTotal, base, { exact: true })}
-                </span>
-                <span className="caption"> · {monthSubs.length} of {state.subscriptions.length}</span>
-              </p>
-              <ul className="space-y-0.5">
-                {sortedSubs.map((sub) => (
-                  <li key={sub.id} className="flex items-center gap-2 pr-1">
-                    <button
-                      type="button"
-                      onClick={() => openEditSub(sub)}
-                      className={`row-tap flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left ${
-                        billsIn(sub, month) ? "" : "opacity-45"
+              icon="target"
+              action={addButton("ghost", openAddBudget, freeBudgetCats.length === 0)}
+            >
+              {state.budgets.length > 0 && (
+                <div className="mb-4 border-b border-hairline pb-3.5">
+                  <ProgressMeter
+                    value={budgetTotals.spent}
+                    max={budgetTotals.limit}
+                    tone="budget"
+                    label={t("tx.budgets.all")}
+                  />
+                  <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span
+                      className={`tnum text-sm font-semibold ${
+                        budgetTotals.spent > budgetTotals.limit ? "text-expense" : "text-ink-1"
                       }`}
                     >
-                      <IconDisc colorSlot={subsSlot} className="size-9 rounded-full text-base">
-                        {sub.icon}
-                      </IconDisc>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-ink-1">
-                          {sub.name}
-                        </span>
-                        <span className="block text-xs text-ink-3">
-                          {sub.period === "yearly"
-                            ? `${formatMoney(sub.price, sub.currency)}/yr · split into 12`
-                            : `day ${sub.dayOfMonth} of each month`}
-                          {sub.endMonth && ` · until ${formatMonth(sub.endMonth)}`}
-                        </span>
+                      {budgetTotals.limit > budgetTotals.spent
+                        ? t("tx.budgets.left", {
+                            amount: formatMoney(budgetTotals.limit - budgetTotals.spent, base, { compact: true }),
+                          })
+                        : t("tx.budgets.over", {
+                            amount: formatMoney(budgetTotals.spent - budgetTotals.limit, base, { compact: true }),
+                          })}
+                    </span>
+                    {unbudgeted > 0.5 && (
+                      <span className="caption">
+                        {t("tx.budgets.outside", { amount: formatMoney(unbudgeted, base, { compact: true }) })}
                       </span>
-                      <span className="shrink-0 text-right">
-                        <Money
-                          amount={
-                            sub.period === "yearly" ? sub.price / 12 : sub.price
-                          }
-                          currency={sub.currency}
-                          exact
-                          className="block text-sm font-semibold text-ink-1"
-                        />
-                        <span className="block text-xs text-ink-3">/mo</span>
-                      </span>
-                    </button>
-                    <Switch
-                      checked={sub.active}
-                      onChange={(v) => toggleSub(sub.id, v)}
-                      label={`${sub.name} active`}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </GlassCard>
-
-        {/* recurring */}
-        <GlassCard
-          title="Recurring"
-          subtitle="Auto-posted each month"
-          icon="repeat"
-          action={
-            <Button variant="ghost" onClick={openAddRec}>
-              + Add
-            </Button>
-          }
-        >
-          {state.recurring.length === 0 ? (
-            <EmptyState
-              icon={<Icon name="repeat" />}
-              title="No recurring payments"
-              hint="Salary or rent — add them once and they post themselves every month."
-              action={
-                <Button variant="ghost" onClick={openAddRec}>
-                  + Add
-                </Button>
-              }
-            />
-          ) : (
-            <ul className="space-y-0.5">
-              {state.recurring.map((rule) => {
-                const cat = catById.get(rule.categoryId);
-                return (
-                  <li key={rule.id}>
-                    <button
-                      type="button"
-                      onClick={() => openEditRec(rule)}
-                      className="row-tap flex w-full items-center gap-3 px-3 py-2.5 text-left"
-                    >
-                      <IconDisc
-                        colorSlot={cat?.colorSlot}
-                        className="size-10 rounded-full text-lg"
-                      >
-                        {cat?.icon ?? "❓"}
-                      </IconDisc>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-ink-1">
-                          {cat?.name ?? "Uncategorized"}
-                          {rule.note && (
-                            <span className="font-normal text-ink-3"> · {rule.note}</span>
-                          )}
-                        </span>
-                        <span className="tnum block text-xs text-ink-2">
-                          {formatMoney(rule.amount, rule.currency)} · monthly on day{" "}
-                          {rule.dayOfMonth}
-                        </span>
-                        <span className="block text-xs text-ink-3">
-                          from {formatMonth(rule.startMonth)}
-                          {rule.endMonth ? ` to ${formatMonth(rule.endMonth)}` : ""}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </GlassCard>
-
-        {/* budgets */}
-        <GlassCard
-          title="Budgets"
-          subtitle={
-            state.budgets.length > 0
-              ? `${formatMonth(month)} · ${formatMoney(budgetTotals.spent, base, { compact: true })} of ${formatMoney(budgetTotals.limit, base, { compact: true })}`
-              : "Per-category limits, measured against the month you are reading"
-          }
-          icon="target"
-          action={
-            <Button
-              variant="ghost"
-              onClick={openAddBudget}
-              disabled={freeBudgetCats.length === 0}
-            >
-              + Add
-            </Button>
-          }
-        >
-          {state.budgets.length > 0 && (
-            <div className="mb-4 border-b border-hairline pb-3.5">
-              <ProgressMeter
-                value={budgetTotals.spent}
-                max={budgetTotals.limit}
-                tone="budget"
-                label="All budgets this month"
-              />
-              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <span
-                  className={`tnum text-sm font-semibold ${
-                    budgetTotals.spent > budgetTotals.limit ? "text-expense" : "text-ink-1"
-                  }`}
-                >
-                  {budgetTotals.limit > budgetTotals.spent
-                    ? `${formatMoney(budgetTotals.limit - budgetTotals.spent, base, { compact: true })} left`
-                    : `${formatMoney(budgetTotals.spent - budgetTotals.limit, base, { compact: true })} over`}
-                </span>
-                {unbudgeted > 0.5 && (
-                  <span className="caption">
-                    + {formatMoney(unbudgeted, base, { compact: true })} spent outside any budget
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          {state.budgets.length === 0 ? (
-            <EmptyState
-              icon={<Icon name="target" />}
-              title="No budgets"
-              hint="Set monthly spending limits per category — you’ll see right away when you approach the line."
-              action={
-                <Button variant="ghost" onClick={openAddBudget}>
-                  + Add
-                </Button>
-              }
-            />
-          ) : (
-            <ul className="space-y-1">
-              {state.budgets.map((b) => {
-                const cat = catById.get(b.categoryId);
-                const spent = spentInCategory(
-                  state.transactions,
-                  b.categoryId,
-                  month,
-                  b.currency,
-                  settings,
-                );
-                const over = spent > b.limit;
-                const pct = b.limit > 0 ? (spent / b.limit) * 100 : 0;
-                return (
-                  <li key={b.categoryId}>
-                    <button
-                      type="button"
-                      onClick={() => openEditBudget(b)}
-                      className="row-tap block w-full px-3 py-2.5 text-left"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <span aria-hidden className="text-lg leading-none">
-                          {cat?.icon ?? "❓"}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">
-                          {cat?.name ?? "Uncategorized"}
-                        </span>
-                        <span
-                          className={`tnum text-xs font-medium ${
-                            over ? "text-expense" : "text-ink-3"
-                          }`}
+                    )}
+                  </div>
+                </div>
+              )}
+              {state.budgets.length === 0 ? (
+                <EmptyState
+                  icon={<Icon name="target" />}
+                  title={t("tx.budgets.empty")}
+                  hint={t("tx.budgets.empty.hint")}
+                  action={addButton("ghost", openAddBudget)}
+                />
+              ) : (
+                <ul className="space-y-1">
+                  {sortItems(
+                    state.budgets,
+                    (b) => (b.limit > 0 ? budgetSpent(b) / b.limit : 0),
+                    "desc",
+                  ).map((b) => {
+                    const cat = catById.get(b.categoryId);
+                    const spent = budgetSpent(b);
+                    const over = spent > b.limit;
+                    const pct = b.limit > 0 ? (spent / b.limit) * 100 : 0;
+                    const subs = state.categories.filter((c) => c.parentId === b.categoryId).length;
+                    return (
+                      <li key={b.categoryId}>
+                        <button
+                          type="button"
+                          onClick={() => openEditBudget(b)}
+                          className="row-tap block w-full px-3 py-2.5 text-left"
                         >
-                          {formatPercent(pct, 0)}
-                        </span>
-                      </span>
-                      <span className="mt-2 block">
-                        <ProgressMeter
-                          value={spent}
-                          max={b.limit}
-                          tone="budget"
-                          label={`${cat?.name ?? "Uncategorized"} budget`}
-                        />
-                      </span>
-                      <span
-                        className={`tnum mt-1.5 block text-xs ${
-                          over ? "text-expense" : "text-ink-3"
-                        }`}
-                      >
-                        {formatMoney(spent, b.currency)} of {formatMoney(b.limit, b.currency)}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </GlassCard>
-        </div>
+                          <span className="flex items-center gap-2.5">
+                            <span aria-hidden className="text-lg leading-none">
+                              {cat?.icon ?? "❓"}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">
+                              {catLabel(cat)}
+                              {subs > 0 && (
+                                <span className="font-normal text-ink-3"> · {tp("tx.budgets.withSubs", subs)}</span>
+                              )}
+                            </span>
+                            <span className={`tnum text-xs font-medium ${over ? "text-expense" : "text-ink-3"}`}>
+                              {formatPercent(pct, 0)}
+                            </span>
+                          </span>
+                          <span className="mt-2 block">
+                            <ProgressMeter
+                              value={spent}
+                              max={b.limit}
+                              tone="budget"
+                              label={t("tx.budgets.itemLabel", { name: catLabel(cat) })}
+                            />
+                          </span>
+                          <span className={`tnum mt-1.5 block text-xs ${over ? "text-expense" : "text-ink-3"}`}>
+                            {t("tx.budgets.of", {
+                              spent: formatMoney(spent, b.currency),
+                              limit: formatMoney(b.limit, b.currency),
+                            })}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </GlassCard>
+          </div>
         </div>
       </div>
 
-      {/* transaction sheet */}
       {txForm && (
         <Sheet
           open
           onClose={() => setTxForm(null)}
           onSubmit={saveTx}
           problem={txProblem}
-          title={txForm.id ? "Edit transaction" : "New transaction"}
+          title={txForm.id ? t("tx.edit") : t("tx.new")}
           footer={
             <>
               {txForm.id && (
                 <Button variant="danger" className="mr-auto" onClick={() => setConfirmTxDelete(true)}>
-                  Delete
+                  {t("common.delete")}
                 </Button>
               )}
               <Button variant="ghost" onClick={() => setTxForm(null)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="submit" disabled={!txValid}>
-                Save
+                {t("common.save")}
               </Button>
             </>
           }
         >
           <SegmentedControl
-            label="Kind of entry"
+            label={t("tx.kind")}
             options={txTypeOptions}
             value={txForm.type}
-            onChange={(t) => setTxForm(switchTxType(txForm, t))}
+            onChange={(type) => setTxForm(switchTxType(txForm, type))}
           />
-          {!canTransfer && (
-            <p className="-mt-1 text-xs text-ink-3">
-              Transfers need two accounts — add another on Balance.
-            </p>
-          )}
+          {!canTransfer && <p className="-mt-1 text-xs text-ink-3">{t("tx.transferNeedsTwo")}</p>}
 
           {txForm.type === "transfer" ? (
             <>
-              {/* two selects abreast need the room for "🏦 Monobank card (UAH)"
-                  plus a chevron chip; on a phone that is about 90px of text */}
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="From account">
-                  <Select
+                <Field label={t("tx.fromAccount")}>
+                  <OptionPicker
+                    label={t("tx.fromAccount")}
                     value={txForm.accountId}
-                    onChange={(e) =>
+                    onChange={(accountId) =>
                       setTxForm({
                         ...txForm,
-                        accountId: e.target.value,
-                        currency: accountById.get(e.target.value)?.currency ?? txForm.currency,
+                        accountId,
+                        currency: accountById.get(accountId)?.currency ?? txForm.currency,
                       })
                     }
-                  >
-                    {state.savings.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.icon} {a.name} ({a.currency})
-                      </option>
-                    ))}
-                  </Select>
+                    groups={accountGroups}
+                  />
                 </Field>
-                <Field label="To account">
-                  <Select
+                <Field label={t("tx.toAccount")}>
+                  <OptionPicker
+                    label={t("tx.toAccount")}
                     value={txForm.toAccountId}
-                    onChange={(e) => setTxForm({ ...txForm, toAccountId: e.target.value })}
-                  >
-                    {state.savings
-                      .filter((a) => a.id !== txForm.accountId)
-                      .map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.icon} {a.name} ({a.currency})
-                        </option>
-                      ))}
-                  </Select>
+                    onChange={(toAccountId) => setTxForm({ ...txForm, toAccountId })}
+                    groups={accountGroups}
+                  />
                 </Field>
               </div>
-              <Field
-                label={`Amount sent${fromAccount ? ` (${fromAccount.currency})` : ""}`}
-              >
+              <Field label={fromAccount ? t("tx.amountSentIn", { currency: fromAccount.currency }) : t("tx.amountSent")}>
                 <TextInput
                   inputMode="decimal"
                   placeholder="0"
@@ -1478,12 +1484,8 @@ export function TransactionsPage() {
               </Field>
               {crossCurrency && (
                 <Field
-                  label={`Amount received (${toAccount?.currency})`}
-                  hint={
-                    impliedRate
-                      ? `rate ${impliedRate} — leave as suggested or type what actually arrived`
-                      : undefined
-                  }
+                  label={t("tx.amountReceived", { currency: toAccount?.currency ?? "" })}
+                  hint={impliedRate ? t("tx.impliedRate", { rate: impliedRate }) : undefined}
                 >
                   <TextInput
                     inputMode="decimal"
@@ -1497,72 +1499,55 @@ export function TransactionsPage() {
             </>
           ) : (
             <>
-              <Field label="Amount">
+              <Field label={t("common.amount")}>
                 <TextInput
                   inputMode="decimal"
                   placeholder="0"
-                  // the sign follows the currency picker right below it, so the
-                  // field always says what the number is denominated in
                   prefix={CURRENCY_SYMBOL[txForm.currency]}
                   value={txForm.amount}
                   onChange={(e) => setTxForm({ ...txForm, amount: e.target.value })}
                 />
               </Field>
-              <FieldSet label="Currency">
+              <FieldSet label={t("common.currency")}>
                 <SegmentedControl
-                  label="Currency"
+                  label={t("common.currency")}
                   options={CURRENCY_OPTIONS}
                   value={txForm.currency}
                   onChange={(c) => setTxForm({ ...txForm, currency: c })}
                 />
               </FieldSet>
-              <Field label="Category">
-                <Select
+              <Field label={t("common.category")}>
+                <OptionPicker
+                  label={t("common.category")}
                   value={txForm.categoryId}
-                  onChange={(e) => setTxForm({ ...txForm, categoryId: e.target.value })}
-                >
-                  {state.categories
-                    .filter((c) => c.kind === txForm.type)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.icon} {c.name}
-                      </option>
-                    ))}
-                </Select>
+                  onChange={(categoryId) => setTxForm({ ...txForm, categoryId })}
+                  groups={txForm.type === "income" ? incomeCategoryGroups : expenseCategoryGroups}
+                />
               </Field>
               <Field
-                label="Account"
-                hint={
-                  state.savings.length === 0
-                    ? "Add an account on Balance to have this move a real balance"
-                    : "Which account the money moves through"
-                }
+                label={t("common.account")}
+                hint={state.savings.length === 0 ? t("tx.account.none") : t("tx.account.hint")}
               >
-                <Select
+                <OptionPicker
+                  label={t("common.account")}
                   value={txForm.accountId}
-                  onChange={(e) => setTxForm({ ...txForm, accountId: e.target.value })}
-                >
-                  <option value="">— not assigned —</option>
-                  {state.savings.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.icon} {a.name} ({a.currency})
-                    </option>
-                  ))}
-                </Select>
+                  onChange={(accountId) => setTxForm({ ...txForm, accountId })}
+                  groups={optionalAccountGroups}
+                />
               </Field>
             </>
           )}
 
-          <Field label="Date">
+          <Field label={t("common.date")}>
             <TextInput
               type="date"
               value={txForm.date}
               onChange={(e) => setTxForm({ ...txForm, date: e.target.value })}
             />
           </Field>
-          <Field label="Note">
+          <Field label={t("common.note")}>
             <TextInput
-              placeholder="Optional"
+              placeholder={t("common.optional")}
               value={txForm.note}
               onChange={(e) => setTxForm({ ...txForm, note: e.target.value })}
             />
@@ -1570,45 +1555,44 @@ export function TransactionsPage() {
         </Sheet>
       )}
 
-      {/* recurring sheet */}
       {recForm && (
         <Sheet
           open
           onClose={() => setRecForm(null)}
           onSubmit={saveRec}
           problem={recProblem}
-          title={recForm.id ? "Edit recurring rule" : "New recurring rule"}
+          title={recForm.id ? t("tx.rec.edit") : t("tx.rec.new")}
           footer={
             <>
               {recForm.id && (
                 <Button variant="danger" className="mr-auto" onClick={() => setConfirmRecDelete(true)}>
-                  Delete
+                  {t("common.delete")}
                 </Button>
               )}
               <Button variant="ghost" onClick={() => setRecForm(null)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="submit" disabled={!recValid}>
-                Save
+                {t("common.save")}
               </Button>
             </>
           }
         >
           {recForm.id && (
             <p className="rounded-field bg-ghost px-3 py-2.5 text-xs leading-snug text-ink-2">
-              Saving rewrites every month this rule posted, the ones already recorded
-              included — so the ledger keeps matching the rule.
+              {t("tx.rec.rewriteNote")}
             </p>
           )}
           <SegmentedControl
-            label="Kind of entry"
-            options={KIND_OPTIONS}
+            label={t("tx.kind")}
+            options={[
+              { value: "expense" as const, label: t("tx.type.expense") },
+              { value: "income" as const, label: t("tx.type.income") },
+            ]}
             value={recForm.type}
-            onChange={(t) =>
-              setRecForm({ ...recForm, type: t, categoryId: firstCategoryId(t) })
-            }
+            onChange={(type) => setRecForm({ ...recForm, type, categoryId: firstCategoryId(type) })}
           />
-          <Field label="Amount">
+          <Field label={t("common.amount")}>
             <TextInput
               inputMode="decimal"
               placeholder="0"
@@ -1617,65 +1601,54 @@ export function TransactionsPage() {
               onChange={(e) => setRecForm({ ...recForm, amount: e.target.value })}
             />
           </Field>
-          <FieldSet label="Currency">
+          <FieldSet label={t("common.currency")}>
             <SegmentedControl
-              label="Currency"
+              label={t("common.currency")}
               options={CURRENCY_OPTIONS}
               value={recForm.currency}
               onChange={(c) => setRecForm({ ...recForm, currency: c })}
             />
           </FieldSet>
-          <Field label="Category">
-            <Select
+          <Field label={t("common.category")}>
+            <OptionPicker
+              label={t("common.category")}
               value={recForm.categoryId}
-              onChange={(e) => setRecForm({ ...recForm, categoryId: e.target.value })}
-            >
-              {state.categories
-                .filter((c) => c.kind === recForm.type)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.icon} {c.name}
-                  </option>
-                ))}
-            </Select>
+              onChange={(categoryId) => setRecForm({ ...recForm, categoryId })}
+              groups={recForm.type === "income" ? incomeCategoryGroups : expenseCategoryGroups}
+            />
           </Field>
-          <Field label="Note">
+          <Field label={t("common.note")}>
             <TextInput
-              placeholder="Optional"
+              placeholder={t("common.optional")}
               value={recForm.note}
               onChange={(e) => setRecForm({ ...recForm, note: e.target.value })}
             />
           </Field>
-          <Field label="Account" hint="Charges move this account's balance">
-            <Select
+          <Field label={t("common.account")} hint={t("tx.schedule.accountHint")}>
+            <OptionPicker
+              label={t("common.account")}
               value={recForm.accountId}
-              onChange={(e) => setRecForm({ ...recForm, accountId: e.target.value })}
-            >
-              <option value="">— not assigned —</option>
-              {state.savings.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.icon} {a.name} ({a.currency})
-                </option>
-              ))}
-            </Select>
+              onChange={(accountId) => setRecForm({ ...recForm, accountId })}
+              groups={optionalAccountGroups}
+            />
           </Field>
-          <Field label="Day of month" hint="1–28 keeps it valid in every month">
+          <Field label={t("tx.rec.day")} hint={t("tx.schedule.dayHint")}>
             <TextInput
               inputMode="numeric"
               value={recForm.day}
               onChange={(e) => setRecForm({ ...recForm, day: e.target.value })}
             />
           </Field>
-          <FieldSet label="From">
+          <FieldSet label={t("tx.schedule.from")}>
             <MonthInput
-              name="From"
+              name={t("tx.schedule.from")}
               value={recForm.startMonth}
               onChange={(startMonth) => setRecForm({ ...recForm, startMonth })}
             />
           </FieldSet>
-          <FieldSet label="Until (optional)" hint="Leave empty to keep it running">
+          <FieldSet label={t("tx.schedule.until")} hint={t("tx.schedule.untilHint")}>
             <MonthInput
-              name="Until"
+              name={t("tx.schedule.until")}
               allowEmpty
               value={recForm.endMonth}
               onChange={(endMonth) => setRecForm({ ...recForm, endMonth })}
@@ -1684,65 +1657,77 @@ export function TransactionsPage() {
         </Sheet>
       )}
 
-      {/* subscription sheet */}
       {subForm && (
         <Sheet
           open
           onClose={() => setSubForm(null)}
           onSubmit={saveSub}
           problem={subProblem}
-          title={subForm.id ? "Edit subscription" : "New subscription"}
+          title={subForm.id ? t("tx.subs.edit") : t("tx.subs.new")}
           footer={
             <>
               {subForm.id && (
                 <Button variant="danger" className="mr-auto" onClick={() => setConfirmSubDelete(true)}>
-                  Delete
+                  {t("common.delete")}
                 </Button>
               )}
               <Button variant="ghost" onClick={() => setSubForm(null)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="submit" disabled={!subValid}>
-                Save
+                {t("common.save")}
               </Button>
             </>
           }
         >
+          {editingSub && !editingSub.active && (
+            <Callout tone="warning" title={t("tx.subs.pausedTitle")}>
+              <p>{t("tx.subs.pausedNote")}</p>
+              <Button variant="ghost" size="sm" className="mt-2" onClick={resumeSub}>
+                <Icon name="refresh" size={14} />
+                {t("tx.subs.resume")}
+              </Button>
+            </Callout>
+          )}
           {subForm.id && (
             <p className="rounded-field bg-ghost px-3 py-2.5 text-xs leading-snug text-ink-2">
-              Saving rewrites every charge this subscription posted, past months
-              included. To stop it without touching them, switch it off instead.
+              {t("tx.subs.rewriteNote")}
             </p>
           )}
-          <Field label="Name">
+          <Field label={t("common.name")}>
             <TextInput
               value={subForm.name}
               onChange={(e) => setSubForm({ ...subForm, name: e.target.value })}
               placeholder="YouTube Premium"
             />
           </Field>
-          <FieldSet label="Icon">
+          <FieldSet label={t("common.icon")}>
             <OptionChips
-              label="Icon"
+              label={t("common.icon")}
               size="lg"
               options={ICON_CHOICES.map((icon) => ({ value: icon, label: icon }))}
               value={subForm.icon}
               onChange={(icon) => setSubForm({ ...subForm, icon })}
             />
           </FieldSet>
-          <FieldSet label="Billing period">
+          <FieldSet label={t("tx.subs.period")}>
             <SegmentedControl
-              label="Billing period"
-              options={PERIOD_OPTIONS}
+              label={t("tx.subs.period")}
+              options={[
+                { value: "monthly" as const, label: t("tx.subs.period.monthly") },
+                { value: "yearly" as const, label: t("tx.subs.period.yearly") },
+              ]}
               value={subForm.period}
               onChange={(p) => setSubForm({ ...subForm, period: p })}
             />
           </FieldSet>
           <Field
-            label={subForm.period === "yearly" ? "Price per year" : "Price per month"}
+            label={subForm.period === "yearly" ? t("tx.subs.pricePerYear") : t("tx.subs.pricePerMonth")}
             hint={
               subForm.period === "yearly" && Number.isFinite(subPrice) && subPrice > 0
-                ? `posted as ${formatMoney(subPrice / 12, subForm.currency, { exact: true })}/mo × 12`
+                ? t("tx.subs.postedAs", {
+                    amount: formatMoney(subPrice / 12, subForm.currency, { exact: true }),
+                  })
                 : undefined
             }
           >
@@ -1754,98 +1739,90 @@ export function TransactionsPage() {
               placeholder={subForm.period === "yearly" ? "1188" : "99"}
             />
           </Field>
-          <FieldSet label="Currency">
+          <FieldSet label={t("common.currency")}>
             <SegmentedControl
-              label="Currency"
+              label={t("common.currency")}
               options={CURRENCY_OPTIONS}
               value={subForm.currency}
               onChange={(c) => setSubForm({ ...subForm, currency: c })}
             />
           </FieldSet>
-          <Field label="Account" hint="Charges move this account's balance">
-            <Select
+          <Field label={t("common.account")} hint={t("tx.schedule.accountHint")}>
+            <OptionPicker
+              label={t("common.account")}
               value={subForm.accountId}
-              onChange={(e) => setSubForm({ ...subForm, accountId: e.target.value })}
-            >
-              <option value="">— not assigned —</option>
-              {state.savings.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.icon} {a.name} ({a.currency})
-                </option>
-              ))}
-            </Select>
+              onChange={(accountId) => setSubForm({ ...subForm, accountId })}
+              groups={optionalAccountGroups}
+            />
           </Field>
-          <Field label="Charge day" hint="1–28 keeps it valid in every month">
+          <Field label={t("tx.subs.chargeDay")} hint={t("tx.schedule.dayHint")}>
             <TextInput
               inputMode="numeric"
               value={subForm.day}
               onChange={(e) => setSubForm({ ...subForm, day: e.target.value })}
             />
           </Field>
-          <FieldSet
-            label="Billing from"
-            hint="Charges are posted from this month onwards, past months included"
-          >
+          <FieldSet label={t("tx.subs.billingFrom")} hint={t("tx.subs.billingFrom.hint")}>
             <MonthInput
-              name="Billing from"
+              name={t("tx.subs.billingFrom")}
               value={subForm.startMonth}
               onChange={(startMonth) => setSubForm({ ...subForm, startMonth })}
             />
           </FieldSet>
-          {/* A year of hosting, a course that ends in June. Switching it off by
-              hand on the right month is a reminder nobody keeps — and switching
-              it off is not the same thing anyway: `active` stops it everywhere,
-              an end month stops it *from* a month and keeps the history. */}
-          <FieldSet label="Until (optional)" hint="Leave empty to keep it running">
+          <FieldSet label={t("tx.schedule.until")} hint={t("tx.subs.until.hint")}>
             <MonthInput
-              name="Until"
+              name={t("tx.schedule.until")}
               allowEmpty
               value={subForm.endMonth}
               onChange={(endMonth) => setSubForm({ ...subForm, endMonth })}
             />
+            {subForm.id && subForm.startMonth <= nowMonth && subForm.endMonth !== nowMonth && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2"
+                onClick={() => setSubForm({ ...subForm, endMonth: nowMonth })}
+              >
+                <Icon name="close" size={13} strokeWidth={2.4} />
+                {t("tx.subs.endThisMonth", { month: formatMonth(nowMonth) })}
+              </Button>
+            )}
           </FieldSet>
         </Sheet>
       )}
 
-      {/* budget sheet */}
       {budgetForm && (
         <Sheet
           open
           onClose={() => setBudgetForm(null)}
           onSubmit={saveBudget}
           problem={budgetProblem}
-          title={budgetForm.editingId ? "Edit budget" : "New budget"}
+          title={budgetForm.editingId ? t("tx.budget.edit") : t("tx.budget.new")}
           footer={
             <>
               {budgetForm.editingId && (
                 <Button variant="danger" className="mr-auto" onClick={() => setConfirmBudgetDelete(true)}>
-                  Delete
+                  {t("common.delete")}
                 </Button>
               )}
               <Button variant="ghost" onClick={() => setBudgetForm(null)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="submit" disabled={!budgetValid}>
-                Save
+                {t("common.save")}
               </Button>
             </>
           }
         >
-          <Field label="Expense category">
-            <Select
+          <Field label={t("tx.budget.category")} hint={t("tx.budget.category.hint")}>
+            <OptionPicker
+              label={t("tx.budget.category")}
               value={budgetForm.categoryId}
-              onChange={(e) =>
-                setBudgetForm({ ...budgetForm, categoryId: e.target.value })
-              }
-            >
-              {budgetCatOptions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.icon} {c.name}
-                </option>
-              ))}
-            </Select>
+              onChange={(categoryId) => setBudgetForm({ ...budgetForm, categoryId })}
+              groups={budgetCategoryGroups}
+            />
           </Field>
-          <Field label="Monthly limit">
+          <Field label={t("tx.budget.limit")}>
             <TextInput
               inputMode="decimal"
               placeholder="0"
@@ -1854,9 +1831,9 @@ export function TransactionsPage() {
               onChange={(e) => setBudgetForm({ ...budgetForm, limit: e.target.value })}
             />
           </Field>
-          <FieldSet label="Currency">
+          <FieldSet label={t("common.currency")}>
             <SegmentedControl
-              label="Currency"
+              label={t("common.currency")}
               options={CURRENCY_OPTIONS}
               value={budgetForm.currency}
               onChange={(c) => setBudgetForm({ ...budgetForm, currency: c })}
@@ -1865,34 +1842,33 @@ export function TransactionsPage() {
         </Sheet>
       )}
 
-      {/* delete confirms */}
       <ConfirmDialog
         open={confirmTxDelete}
         onClose={() => setConfirmTxDelete(false)}
         onConfirm={deleteTx}
-        title="Delete this transaction?"
-        message="The record will be removed permanently. This cannot be undone."
+        title={t("tx.deleteTitle")}
+        message={t("common.deletePermanent")}
       />
       <ConfirmDialog
         open={confirmRecDelete}
         onClose={() => setConfirmRecDelete(false)}
         onConfirm={deleteRec}
-        title="Delete this rule?"
-        message={`The rule and the ${postedCount("recurring", recForm?.id ?? null)} transactions it posted are removed, in past and future months alike.`}
+        title={t("tx.rec.deleteTitle")}
+        message={tp("tx.rec.deleteMessage", postedCount("recurring", recForm?.id ?? null))}
       />
       <ConfirmDialog
         open={confirmSubDelete}
         onClose={() => setConfirmSubDelete(false)}
         onConfirm={deleteSub}
-        title="Delete this subscription?"
-        message={`The subscription and the ${postedCount("subscription", subForm?.id ?? null)} charges it posted are removed, in past and future months alike. To keep those charges, switch it off instead.`}
+        title={t("tx.subs.deleteTitle")}
+        message={tp("tx.subs.deleteMessage", postedCount("subscription", subForm?.id ?? null))}
       />
       <ConfirmDialog
         open={confirmBudgetDelete}
         onClose={() => setConfirmBudgetDelete(false)}
         onConfirm={deleteBudget}
-        title="Delete this budget?"
-        message="The limit for this category will be removed. Transactions are not affected."
+        title={t("tx.budget.deleteTitle")}
+        message={t("tx.budget.deleteMessage")}
       />
     </>
   );

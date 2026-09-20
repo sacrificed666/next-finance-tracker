@@ -1,4 +1,4 @@
-/** month key helpers — months are "yyyy-mm" strings, dates are "yyyy-mm-dd" */
+import { formatLocale } from "./i18n/format";
 
 export function todayISO(): string {
   const d = new Date();
@@ -17,7 +17,6 @@ export function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/** shift a yyyy-mm key by n months (n may be negative) */
 export function addMonths(month: string, n: number): string {
   const [y, m] = month.split("-").map(Number);
   const total = y * 12 + (m - 1) + n;
@@ -26,7 +25,6 @@ export function addMonths(month: string, n: number): string {
   return `${ny}-${pad(nm)}`;
 }
 
-/** whole months from `a` to `b` (b - a), both yyyy-mm */
 export function monthDiff(a: string, b: string): number {
   const [ya, ma] = a.split("-").map(Number);
   const [yb, mb] = b.split("-").map(Number);
@@ -38,38 +36,23 @@ export function daysInMonth(month: string): number {
   return new Date(y, m, 0).getDate();
 }
 
-/** clamp a day-of-month into the given month, returns yyyy-mm-dd */
 export function dateInMonth(month: string, day: number): string {
   return `${month}-${pad(Math.min(day, daysInMonth(month)))}`;
 }
 
-/** shift a yyyy-mm-dd date by n days (n may be negative) */
 export function addDays(dateISO: string, n: number): string {
   const d = new Date(`${dateISO}T00:00:00`);
   d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** whole days from `a` to `b` (b - a), both yyyy-mm-dd */
-export function daysBetween(a: string, b: string): number {
-  const from = new Date(`${a}T00:00:00`).getTime();
-  const to = new Date(`${b}T00:00:00`).getTime();
-  return Math.round((to - from) / 86_400_000);
-}
 
-/** fractional years between two ISO dates (365.25-day years) */
 export function yearsBetween(fromISO: string, toISO: string): number {
   const from = new Date(`${fromISO}T00:00:00`);
   const to = new Date(`${toISO}T00:00:00`);
   return Math.max(0, (to.getTime() - from.getTime()) / (365.25 * 24 * 3600 * 1000));
 }
 
-/**
- * Whole calendar months elapsed from `fromISO` to `toISO` — a month counts
- * only once the day-of-month has been reached or passed (a "monthiversary"
- * count), unlike a fixed 365.25/12-day average which mis-counts around
- * shorter months such as February.
- */
 export function wholeMonthsBetween(fromISO: string, toISO: string): number {
   const [fy, fm, fd] = fromISO.split("-").map(Number);
   const [ty, tm, td] = toISO.split("-").map(Number);
@@ -78,53 +61,99 @@ export function wholeMonthsBetween(fromISO: string, toISO: string): number {
   return Math.max(0, months);
 }
 
-export const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+const dtfCache = new Map<string, Intl.DateTimeFormat>();
 
-const MONTHS_SHORT = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+function dtf(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const locale = formatLocale();
+  const key = `${locale}|${JSON.stringify(options)}`;
+  let fmt = dtfCache.get(key);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat(locale, { timeZone: "UTC", ...options });
+    dtfCache.set(key, fmt);
+  }
+  return fmt;
+}
 
-/** "July 2026" */
+function utc(y: number, m: number, d = 1): Date {
+  return new Date(Date.UTC(y, m - 1, d, 12));
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toLocaleUpperCase(formatLocale()) + s.slice(1);
+}
+
+function stripDot(s: string): string {
+  return s.replace(/\.$/, "");
+}
+
+const namesCache = new Map<string, string[]>();
+
+function names(style: "long" | "short"): string[] {
+  const key = `${formatLocale()}|${style}`;
+  let list = namesCache.get(key);
+  if (!list) {
+    const fmt = dtf({ month: style });
+    list = Array.from({ length: 12 }, (_, i) => {
+      const raw = fmt.format(utc(2024, i + 1));
+      return capitalize(style === "short" ? stripDot(raw) : raw);
+    });
+    namesCache.set(key, list);
+  }
+  return list;
+}
+
+export function monthNames(): string[] {
+  return names("long");
+}
+
+export function monthNamesShort(): string[] {
+  return names("short");
+}
+
 export function formatMonth(month: string): string {
   const [y, m] = month.split("-").map(Number);
-  return `${MONTH_NAMES[m - 1]} ${y}`;
+  return `${monthNames()[m - 1]} ${y}`;
 }
 
-/** "Jul" */
 export function formatMonthShort(month: string): string {
   const [, m] = month.split("-").map(Number);
-  return MONTHS_SHORT[m - 1];
+  return monthNamesShort()[m - 1];
 }
 
-/** "Jul 2026" */
 export function formatMonthCompact(month: string): string {
   const [y, m] = month.split("-").map(Number);
-  return `${MONTHS_SHORT[m - 1]} ${y}`;
+  return `${monthNamesShort()[m - 1]} ${y}`;
 }
 
-/** "21 Jul 2026" */
 export function formatDate(dateISO: string): string {
   const [y, m, d] = dateISO.split("-").map(Number);
-  return `${d} ${MONTHS_SHORT[m - 1]} ${y}`;
+  return dtf({ day: "numeric", month: "short", year: "numeric" }).format(utc(y, m, d));
 }
 
-/** "21 Jul" */
 export function formatDateShort(dateISO: string): string {
   const [, m, d] = dateISO.split("-").map(Number);
-  return `${d} ${MONTHS_SHORT[m - 1]}`;
+  return dtf({ day: "numeric", month: "short" }).format(utc(2024, m, d));
 }
 
-/**
- * "21 Jul 2026, 14:05" from an ISO datetime. Exchange rates move during the
- * day, so a date alone cannot answer "is this still fresh?" — unlike the
- * yyyy-mm-dd helpers above, this one is local-time and takes a full timestamp.
- */
 export function formatDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return formatDate(iso.slice(0, 10));
-  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return new Intl.DateTimeFormat(formatLocale(), {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
+export function formatTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat(formatLocale(), { hour: "2-digit", minute: "2-digit" }).format(d);
+}
+
+export function formatWeekday(dateISO: string): string {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  return capitalize(dtf({ weekday: "short" }).format(utc(y, m, d)));
 }

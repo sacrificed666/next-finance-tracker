@@ -1,0 +1,86 @@
+@use "sass:list";
+@use "lib" as *;
+
+$stagger-delays: 0ms, 40ms, 80ms, 120ms, 160ms, 200ms, 220ms;
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-rise {
+  animation: rise 0.4s $ease backwards;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+.stagger > * {
+  animation: rise 0.42s $ease backwards;
+
+  @for $i from 1 through list.length($stagger-delays) {
+    &:nth-child(#{$i}) {
+      animation-delay: list.nth($stagger-delays, $i);
+    }
+  }
+
+  &:nth-child(n + #{list.length($stagger-delays) + 1}) {
+    animation-delay: 240ms;
+  }
+}
+
+:root[data-entered] .animate-rise,
+:root[data-entered] .stagger > * {
+  animation: none;
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sheet-slide {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.overlay-in {
+  animation: overlay-in 0.2s ease both;
+}
+
+.sheet-panel {
+  animation: sheet-slide 0.32s $ease both;
+
+  @media (min-width: 640px) {
+    animation: sheet-pop 0.26s $ease both;
+  }
+}

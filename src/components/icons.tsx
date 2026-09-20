@@ -1,22 +1,4 @@
-/**
- * One icon language for the whole app.
- *
- * The navigation always drew itself with stroked 24×24 paths; everything else —
- * every card header, every empty state — reached for an emoji. That is two
- * icon sets in one product, and the second one is not really ours: emoji are
- * drawn by the OS, so the same card is a flat glyph on Windows and a glossy
- * 3D object on macOS, they ignore the theme entirely, and each one arrives with
- * its own palette. On a dashboard whose eight chart colours were chosen against
- * a contrast validator, nine multicoloured emoji in the card headers were
- * putting more accidental colour on the page than the data was.
- *
- * These take `currentColor`, so they inherit ink and theme like text does.
- * Emoji stay exactly where they are still the right answer: the icon a *user*
- * picks for their own category, account or subscription.
- */
-
 const PATHS = {
-  /* navigation */
   home: ["M3 10.5 12 3l9 7.5", "M5 9.5V21h5v-6h4v6h5V9.5"],
   swapArrows: ["M4 7h13m0 0-3-3m3 3-3 3", "M20 17H7m0 0 3-3m-3 3 3 3"],
   arrowDown: ["M12 3v14m0 0 5-5m-5 5-5-5", "M4 21h16"],
@@ -28,7 +10,6 @@ const PATHS = {
   bars: ["M4 20V10", "M9.33 20V4", "M14.67 20v-9", "M20 20v-5"],
   gear: ["M4 7h9m4 0h3", "M4 17h3m4 0h9", "M15 7a2 2 0 1 0 0-.01", "M9 17a2 2 0 1 0 0-.01"],
 
-  /* card headers & empty states */
   chart: ["M4 20h16", "M7.5 20v-6.5", "M12 20V6.5", "M16.5 20v-9.5"],
   trend: ["M4 16.5 9.5 11l3.5 3.5L20 7", "M15.5 7H20v4.5"],
   calendar: [
@@ -106,13 +87,6 @@ const PATHS = {
     "M3.5 10.5h17",
     "M7 14.5h3",
   ],
-  /*
-   * Money leaving: an arrow rising OUT of the baseline. It used to be an arrow
-   * falling ONTO the baseline — which is `arrowDown`, the glyph the rail uses
-   * for Income. Two icons a few pixels apart meaning opposite things, and in
-   * the rail they sat two rows apart. As a pair they now oppose properly:
-   * income drops into the line, spending climbs out of it.
-   */
   spend: ["M12 17V3m0 0 5 5m-5-5-5 5", "M4 21h16"],
   banknote: [
     "M3.5 7.5a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-9Z",
@@ -131,14 +105,11 @@ const PATHS = {
     "M6.5 8.5h11v2.8a5.5 5.5 0 0 1-11 0V8.5Z",
     "M12 16.8v3.7",
   ],
-  /* a deduction taken as a share — the tax card was wearing a shop receipt */
   percent: [
     "M7 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z",
     "M17 14.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z",
     "M18.5 5.5 5.5 18.5",
   ],
-  /* money resting in a cupped hand: borrowed, and owed back. Debts wore `card`,
-     on a page that lists Card as one of the account kinds you can own. */
   debt: [
     "M12 4.2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z",
     "M4 13.5a8.5 8.5 0 0 0 16 0",
@@ -162,25 +133,57 @@ const PATHS = {
     "M12 2.6v2M12 19.4v2M4.5 4.5l1.4 1.4M18.1 18.1l1.4 1.4M2.6 12h2M19.4 12h2M4.5 19.5l1.4-1.4M18.1 5.9l1.4-1.4",
   ],
   moon: ["M20.5 14.3A8.5 8.5 0 1 1 9.7 3.5a6.6 6.6 0 0 0 10.8 10.8Z"],
+  user: ["M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z", "M4.5 20.5a7.5 7.5 0 0 1 15 0"],
+  trophy: [
+    "M8 4h8v5a4 4 0 0 1-8 0V4Z",
+    "M8 6H5a1 1 0 0 0-1 1 4 4 0 0 0 4 4",
+    "M16 6h3a1 1 0 0 1 1 1 4 4 0 0 1-4 4",
+    "M12 13v4",
+    "M8.5 20.5h7",
+    "M10 17h4v3.5h-4Z",
+  ],
+  filter: ["M4 5h16l-6 7.5V19l-4 1.5v-8L4 5Z"],
+  sort: ["M7 4v16m0 0-3-3m3 3 3-3", "M17 20V4m0 0-3 3m3-3 3 3"],
+  language: [
+    "M4 5.5h9",
+    "M8.5 3.5v2",
+    "M6 5.5c.8 3.4 3 6 6 7.5",
+    "M11 5.5c-.9 3.9-3.3 6.9-7 8.5",
+    "M13 20.5l4-9 4 9",
+    "M14.3 17.5h5.4",
+  ],
+  logout: ["M14 4.5h4.5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H14", "M10 16.5 14.5 12 10 7.5", "M14.5 12H4"],
+  flame: [
+    "M12 21a6 6 0 0 0 6-6c0-3.5-2.5-5.5-3.5-8.5-1.5 2-2.5 3-2.5 5-1-1-1.5-2.5-1.5-4C8 9.5 6 12 6 15a6 6 0 0 0 6 6Z",
+  ],
+  heart: ["M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10Z"],
+  shield: ["M12 3.5 5 6v5.5c0 4.3 2.9 7.8 7 9 4.1-1.2 7-4.7 7-9V6l-7-2.5Z"],
+  layers: ["M12 4 3.5 8.5 12 13l8.5-4.5L12 4Z", "M3.5 12.5 12 17l8.5-4.5", "M3.5 16.5 12 21l8.5-4.5"],
+  star: ["M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z"],
+  warning: ["M12 4 2.8 19.5h18.4L12 4Z", "M12 10v4.5", "M12 17.2h.01"],
+  refresh: ["M19.5 12a7.5 7.5 0 1 1-2.2-5.3", "M19.5 4.5v4h-4"],
+  lock: ["M6.5 11h11v9h-11Z", "M8.5 11V8a3.5 3.5 0 0 1 7 0v3"],
+  gamepad: [
+    "M7 8.5h10a4 4 0 0 1 4 4v2.5a2.5 2.5 0 0 1-4.5 1.5L15 15H9l-1.5 1.5A2.5 2.5 0 0 1 3 15v-2.5a4 4 0 0 1 4-4Z",
+    "M8 11v3",
+    "M6.5 12.5h3",
+    "M15.5 12h.01",
+    "M17.5 13.5h.01",
+  ],
+  building: [
+    "M4 20.5h16",
+    "M6 20.5V6.5l6-3 6 3v14",
+    "M9.5 9h.01",
+    "M14.5 9h.01",
+    "M9.5 12.5h.01",
+    "M14.5 12.5h.01",
+    "M10.5 20.5v-4h3v4",
+  ],
+  plus: ["M12 5v14", "M5 12h14"],
 } as const;
 
 export type IconName = keyof typeof PATHS;
 
-/**
- * The colour a subject wears when it heads a card.
- *
- * Keyed on the glyph, not on the card, so the same subject is the same colour
- * everywhere it appears: Cash flow is teal on the dashboard and teal again on
- * Expenses, because it is the same chart. Picking per call site would have been
- * twenty-five independent decisions that drift the moment a card moves.
- *
- * On a card the tint is identity, not encoding — nothing reads a value off it.
- * The slots are still chosen so no two cards on the same page collide, which is
- * the only property a reader can actually perceive here.
- *
- * Deliberately partial: a glyph with no subject colour gets the plain control
- * material, which is the honest answer for one that heads nothing.
- */
 export const SUBJECT_SLOT: Partial<Record<IconName, number>> = {
   chart: 1,
   spend: 2, trend: 2,
@@ -195,12 +198,23 @@ export const SUBJECT_SLOT: Partial<Record<IconName, number>> = {
   repeat: 11, database: 11,
   banknote: 12, debt: 12,
   info: 1,
+  user: 4,
+  trophy: 8,
+  heart: 2,
+  flame: 7,
+  shield: 3,
+  layers: 9,
+  building: 14,
+  language: 4,
+  filter: 1,
+  star: 14,
+  lock: 10,
+  sparkle: 6,
 };
 
 export function Icon({
   name,
   size = 18,
-  /** the nav bumps this on the active item, so weight carries state as well as colour */
   strokeWidth = 1.8,
   className = "",
 }: {

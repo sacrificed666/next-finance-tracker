@@ -1,6 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
 /node_modules
 /.pnp
 .pnp.*
@@ -9,38 +6,75 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.npm/
+.pnpm-store/
 
-# testing
-/coverage
-
-# next.js
 /.next/
 /out/
+/build/
+/dist/
+next-env.d.ts
+*.tsbuildinfo
+.turbo/
+.vercel/
+.swc/
 
-# production
-/build
+/coverage/
+/test-results/
+/playwright-report/
+/playwright/.cache/
+.nyc_output/
 
-# misc
-.DS_Store
+.env
+.env.*
+!.env.example
 *.pem
+*.key
+*.crt
+*.p12
+secrets/
 
-# debug
+/backups/
+*.sql.gz
+*.dump
+pgdata/
+
+.claude/
+.cursor/
+.windsurf/
+.aider*
+.codex/
+.continue/
+.copilot/
+CLAUDE.local.md
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-*
+
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+lerna-debug.log*
+*.log
+logs/
 
-# env files (can opt-in for committing if needed)
-.env*
-# the template must be committed — it is what `make env` copies from
-!.env.example
-
-# database dumps produced by `make <env>-db-backup`
-/backups/
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+*.tmp
+*.temp
+.cache/
+.eslintcache
+.stylelintcache

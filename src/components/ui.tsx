@@ -5,21 +5,27 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type CSSProperties,
   type MouseEvent,
   type ReactNode,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from "react";
 import Link from "next/link";
 import { Icon, SUBJECT_SLOT, type IconName } from "./icons";
-import { CURRENCIES } from "@/lib/constants";
-import { currentMonth, MONTH_NAMES, pad } from "@/lib/date";
+import { displayCurrencies } from "@/lib/constants";
+import { useStore } from "@/lib/store";
+import { currentMonth, monthNames, pad } from "@/lib/date";
 import { convert, formatMoney } from "@/lib/money";
-import type { Currency, Settings } from "@/lib/types";
+import { brandInitials } from "@/lib/brands";
+import { useT } from "@/lib/i18n";
+import type { SortDirection } from "@/lib/listing";
 
-/* ---------- layout ---------- */
+export type { SortDirection } from "@/lib/listing";
+import type { Currency, Settings } from "@/lib/types";
 
 export function PageHeader({
   title,
@@ -52,24 +58,15 @@ export function GlassCard({
 }: {
   title?: string;
   subtitle?: string;
-  /**
-   * The glyph, by name — not a rendered element. The card owns how its icon is
-   * drawn (size, disc, tint), and twenty-five call sites each passing their own
-   * `<Icon>` meant the card could not colour it without inspecting a React
-   * element. Colour comes from `SUBJECT_SLOT`.
-   */
   icon?: IconName;
   action?: ReactNode;
   children: ReactNode;
-  /** pinned to the bottom edge, above the padding — for totals and captions */
   footer?: ReactNode;
   className?: string;
 }) {
   return (
-    <section className={`glass flex flex-col rounded-card p-4 sm:p-5 ${className}`}>
+    <section className={`glass flex min-w-0 flex-col rounded-card p-4 sm:p-5 ${className}`}>
       {(title || action || icon) && (
-        // wraps rather than squeezing: a card whose action is a three-way
-        // segmented control had nothing left for its own title on a phone
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex min-w-0 items-center gap-2.5">
             {icon && (
@@ -98,26 +95,31 @@ export function GlassCard({
   );
 }
 
-/**
- * The disc an entity wears at the head of its row.
- *
- * It is tinted with the chart colour that entity already owns — an account by
- * its kind, a transaction by its category, a position by its asset class — so a
- * row and its slice in the chart above it are visibly the same object. Every
- * one of these used to be the same flat grey circle, which meant the icon was
- * the only thing distinguishing a row and the colour was doing no work at all.
- *
- * `colorSlot` is optional on purpose: a transfer belongs to no category, and
- * inventing a colour for it would say something untrue. Those fall back to the
- * app's plain control material.
- */
+export function AddButton({
+  label,
+  onClick,
+  variant = "ghost",
+  disabled,
+}: {
+  label: string;
+  onClick: () => void;
+  variant?: "primary" | "ghost";
+  disabled?: boolean;
+}) {
+  return (
+    <Button variant={variant} onClick={onClick} disabled={disabled}>
+      <Icon name="plus" size={15} strokeWidth={2.2} />
+      {label}
+    </Button>
+  );
+}
+
 export function IconDisc({
   colorSlot,
   className = "",
   children,
 }: {
   colorSlot?: number;
-  /** sizing and radius — the caller owns those, they differ per list */
   className?: string;
   children: ReactNode;
 }) {
@@ -152,10 +154,6 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
-      {/* a quiet disc in the page's own ink, not a 36px emoji: an empty state is
-          an explanation, and the loudest thing on it should not be decoration */}
-      {/* recessed rather than raised: an empty state's icon is an
-          illustration, not something you can press */}
       <span
         aria-hidden
         className="glass-well mb-1 flex size-12 items-center justify-center rounded-full text-ink-3 [&_svg]:size-6"
@@ -168,8 +166,6 @@ export function EmptyState({
     </div>
   );
 }
-
-/* ---------- money ---------- */
 
 export function Money({
   amount,
@@ -193,10 +189,6 @@ export function Money({
   );
 }
 
-/**
- * The signature spreadsheet view: one amount shown in all three currencies.
- * The native currency leads (emphasized); the two conversions follow muted.
- */
 export function TripleMoney({
   amount,
   currency,
@@ -208,7 +200,8 @@ export function TripleMoney({
   settings: Settings;
   size?: "md" | "lg";
 }) {
-  const others = CURRENCIES.filter((c) => c !== currency);
+  const { state } = useStore();
+  const others = displayCurrencies(state).filter((c) => c !== currency);
   return (
     <div>
       <Money
@@ -228,7 +221,6 @@ export function TripleMoney({
   );
 }
 
-/** three aligned currency cells for balance-sheet style table rows */
 export function CurrencyCells({
   amount,
   currency,
@@ -238,9 +230,10 @@ export function CurrencyCells({
   currency: Currency;
   settings: Settings;
 }) {
+  const { state } = useStore();
   return (
     <>
-      {CURRENCIES.map((c) => (
+      {displayCurrencies(state).map((c) => (
         <span
           key={c}
           className={`tnum text-right text-sm ${
@@ -254,8 +247,6 @@ export function CurrencyCells({
   );
 }
 
-/* ---------- controls ---------- */
-
 type ButtonVariant = "primary" | "ghost" | "danger" | "plain";
 type ButtonSize = "sm" | "md";
 
@@ -267,27 +258,18 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
-  /** sm is for in-row actions (chips, table rows); md is the touch-sized default */
   size?: ButtonSize;
 }) {
-  // Every variant carries an edge and a fill of its own: a bare label on glass
-  // did not read as something you could press.
   const styles: Record<ButtonVariant, string> = {
     primary:
       "btn-gradient shadow-[0_2px_10px_rgba(4,20,32,0.18)] hover:-translate-y-px hover:brightness-[1.07] active:translate-y-0 active:scale-[0.97] disabled:opacity-40 disabled:hover:translate-y-0",
     ghost:
       "glass-el border border-hairline text-ink-1 hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-fill-hover hover:text-ink-1 active:scale-[0.97] disabled:opacity-40",
-    // danger and plain were the two variants left as flat fills while primary
-    // and ghost carried the app's material — so a Delete button beside a Cancel
-    // button looked like it came from a different toolkit. Same edge, same
-    // under-shadow, their own colour.
     danger:
       "border border-expense/25 bg-expense/12 text-expense shadow-[inset_0_1px_0_color-mix(in_oklab,var(--rim-light)_35%,transparent),inset_0_-1px_0_var(--under-edge)] hover:bg-expense/20 active:scale-[0.97] disabled:opacity-40",
     plain:
       "border border-transparent text-accent underline-offset-4 hover:border-hairline hover:bg-accent-soft hover:shadow-[inset_0_1px_0_color-mix(in_oklab,var(--rim-light)_30%,transparent)] active:scale-[0.97] disabled:opacity-40",
   };
-  // swallow an accidental repeat click on the same action (double-tap, jitter)
-  // so a save/add/delete can't fire twice — actions are discrete, never held
   const lastFired = useRef(0);
   const guarded = onClick
     ? (e: MouseEvent<HTMLButtonElement>) => {
@@ -297,13 +279,7 @@ export function Button({
         onClick(e);
       }
     : undefined;
-  // 44px is the touch floor the fields already use; the buttons beside them sat
-  // at 40 and read as a slightly different system. `sm` is the deliberate
-  // exception for actions that live inside a row.
   const sizing =
-    // 40px, matching the small field and the small segmented track. The three
-    // "sm" sizes were 36, 40 and 30px, so any row that mixed them — the ledger
-    // search bar mixes all three — stepped up and down across its own baseline.
     size === "sm" ? "min-h-10 px-3 text-xs" : "min-h-11 px-4.5 py-2.5 text-sm";
   return (
     <button
@@ -315,11 +291,6 @@ export function Button({
   );
 }
 
-/**
- * A link that has to read as `<Button variant="primary">` — identical geometry,
- * because a row holding one of each otherwise reads as two different systems.
- * Both the dashboard and the forecast had grown their own copy of this.
- */
 export function LinkButton({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
@@ -331,18 +302,7 @@ export function LinkButton({ href, children }: { href: string; children: ReactNo
   );
 }
 
-/**
- * Arrow-key navigation and a single tab stop for a radiogroup.
- *
- * A `role="radiogroup"` whose options are each their own tab stop is not
- * really a radiogroup: the platform contract is one stop for the whole group,
- * with the arrows moving between options. Every single-choice control here —
- * segmented controls, icon chips, the theme switch, the colour swatches — was
- * built as N independent stops, so tabbing through a form walked every currency
- * and every one of thirty icons one press at a time.
- */
 export function useRadioGroupKeys<T extends string>(
-  /** the group element, so focus can follow the selection */
   containerRef: React.RefObject<HTMLElement | null>,
   values: readonly T[],
   value: T,
@@ -362,7 +322,6 @@ export function useRadioGroupKeys<T extends string>(
     const next =
       e.key === "Home" ? 0 : e.key === "End" ? n - 1 : (i + step + n) % n;
     onChange(values[next]);
-    // focus travels with the selection — that is what makes it "roving"
     containerRef.current
       ?.querySelectorAll<HTMLElement>('[role="radio"]')
       [next]?.focus();
@@ -380,9 +339,7 @@ export function SegmentedControl<T extends string>({
   options: Array<{ value: T; label: string }>;
   value: T;
   onChange: (v: T) => void;
-  /** sm is the in-card version (chart windows, card headers) */
   size?: "sm" | "md";
-  /** accessible name, for groups that stand on their own without a Field */
   label?: string;
   className?: string;
 }) {
@@ -390,7 +347,6 @@ export function SegmentedControl<T extends string>({
   const small = size === "sm";
   const groupRef = useRef<HTMLDivElement>(null);
   const onKeyDown = useRadioGroupKeys(groupRef, options.map((o) => o.value), value, onChange);
-  // the track's own padding, which the thumb has to sit inside
   const pad = small ? "0.125rem" : "0.25rem";
   return (
     <div
@@ -398,18 +354,11 @@ export function SegmentedControl<T extends string>({
       onKeyDown={onKeyDown}
       role="radiogroup"
       aria-label={label}
-      // Equal columns, not equal flex shares: a flex track sized to its content
-      // hands out the *sum* of the labels split n ways, so the widest one ("6M"
-      // among 1Y/2Y/3Y) got ellipsised down to "6…". A 1fr grid sizes every
-      // column to the widest label, which is also what keeps the thumb's
-      // 100%/n geometry honest.
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
       className={`glass-well relative grid rounded-full border border-hairline ${
         small ? "p-0.5" : "p-1"
       } ${className}`}
     >
-      {/* one thumb that travels, rather than three buttons that light up:
-          the movement is what makes the choice legible */}
       <span
         aria-hidden
         className={`absolute rounded-full bg-(--card-strong) shadow-[inset_0_1px_0_color-mix(in_oklab,var(--rim-light)_70%,transparent),inset_0_-1px_0_var(--under-edge),0_2px_6px_var(--rim-shade)] transition-[left,width] duration-300 ease-[cubic-bezier(0.22,0.68,0.24,1)] ${
@@ -430,10 +379,6 @@ export function SegmentedControl<T extends string>({
             aria-checked={active}
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(opt.value)}
-            // the thumb says which one is chosen; the label only has to be
-            // legible, so it darkens to full ink instead of turning brand-red
-            // md matches the 44px field height, so a segmented control and the
-            // input above it read as one row of the same system
             className={`btn-ring relative z-1 min-w-0 truncate rounded-full font-semibold outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-accent-soft ${
               small ? "min-h-9 px-2.5 text-xs" : "px-2.5 py-2.5 text-[13px] sm:px-3"
             } ${active ? "text-ink-1" : "text-ink-3 hover:text-ink-1"}`}
@@ -446,11 +391,6 @@ export function SegmentedControl<T extends string>({
   );
 }
 
-/**
- * A grid of single-choice chips — icons, currencies, anything with more
- * options than a segmented control can hold. Selected is a filled accent
- * chip, not a ring around a ghost, so the choice survives a glance.
- */
 export function OptionChips<T extends string>({
   options,
   value,
@@ -461,7 +401,6 @@ export function OptionChips<T extends string>({
   options: Array<{ value: T; label: string; title?: string }>;
   value: T;
   onChange: (v: T) => void;
-  /** accessible name for the group */
   label: string;
   size?: "md" | "lg";
 }) {
@@ -473,11 +412,6 @@ export function OptionChips<T extends string>({
       onKeyDown={onKeyDown}
       role="radiogroup"
       aria-label={label}
-      // Columns that divide the full width, not a left-packed wrap: the flex
-      // version stopped wherever the last chip happened to land and left a
-      // ragged 18–40px of dead space down the right edge, next to fields and
-      // segmented controls that all reach the far side. The chips keep their
-      // own round size and centre inside their column.
       style={{
         gridTemplateColumns: `repeat(auto-fit, minmax(${size === "lg" ? "2.75rem" : "2.25rem"}, 1fr))`,
       }}
@@ -493,8 +427,6 @@ export function OptionChips<T extends string>({
             aria-checked={active}
             tabIndex={active ? 0 : -1}
             title={opt.title}
-            // the emoji is decoration; the group's own name plus the title is
-            // what a screen reader has to go on, so give the option a real one
             aria-label={opt.title ?? opt.label}
             onClick={() => onChange(opt.value)}
             className={`flex items-center justify-center justify-self-center rounded-full border outline-none transition-[background-color,border-color,transform] duration-150 focus-visible:ring-4 focus-visible:ring-accent-soft active:scale-95 ${
@@ -502,8 +434,7 @@ export function OptionChips<T extends string>({
             } ${
               active
                 ? "border-accent-fill bg-accent-fill text-on-accent shadow-[0_2px_10px_var(--glow-a)]"
-                : // brand colour marks the chosen chip; hovering an unchosen one
-                  // only lifts its surface, so the two never look alike
+                :
                   "glass-el border-hairline hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] hover:bg-fill-hover"
             }`}
           >
@@ -562,10 +493,6 @@ export function Switch({
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      // Round numbers on a 4px grid, like every other control; the old
-      // 7.5/12.5/6.5 trio was three values that belonged to nothing else.
-      // The 28×48 track is the right drawing and the wrong target, so the
-      // pseudo-element takes it to 44×64 without moving a pixel of it.
       className={`btn-ring relative h-7 w-12 shrink-0 rounded-full outline-none transition-colors duration-200 before:absolute before:-inset-2 before:content-[''] focus-visible:ring-4 focus-visible:ring-accent-soft ${
         checked
           ? "bg-accent-fill shadow-[inset_0_1px_2px_var(--rim-shade)]"
@@ -573,8 +500,6 @@ export function Switch({
       }`}
     >
       <span
-        // the knob widens slightly as it travels, which reads as a flick rather
-        // than a jump — the one place a little physics is worth the bytes
         className={`absolute top-1 size-5 rounded-full bg-white shadow-[0_1px_4px_rgba(10,20,16,0.3)] transition-[left] duration-200 ease-[cubic-bezier(0.22,0.68,0.24,1)] ${
           checked ? "left-6" : "left-1"
         }`}
@@ -582,8 +507,6 @@ export function Switch({
     </button>
   );
 }
-
-/* ---------- forms ---------- */
 
 export function Field({
   label,
@@ -603,14 +526,6 @@ export function Field({
   );
 }
 
-/**
- * A Field for things that are not a single form control — a chip grid, a row
- * of swatches, a radiogroup. Looks identical, but wrapping those in a `<label>`
- * is a lie: a label points at one control, so screen readers announce the
- * caption on whichever button happens to be first. The group carries its own
- * accessible name instead (`OptionChips` takes `label`, radiogroups take
- * `aria-label`).
- */
 export function FieldSet({
   label,
   children,
@@ -629,26 +544,12 @@ export function FieldSet({
   );
 }
 
-/**
- * Focus is a soft ring rather than a hard border swap, and the 44px floor keeps
- * every control thumb-sized.
- *
- * Size is a prop, not something a caller can patch in through `className`.
- * Tailwind emits both classes when a component's base string and its override
- * disagree, and which one wins is decided by their order in the generated
- * stylesheet, not by the order they appear in the attribute — utilities are
- * sorted by value, so the *larger* one lands later and wins. The ledger's
- * search box asked for `min-h-10 py-2` on top of the base `min-h-11 py-2.5`
- * and rendered at neither: it stayed 44px tall, silently.
- */
 const controlBase =
   "glass-el w-full rounded-field border border-hairline px-3.5 text-ink-1 outline-none transition-[background-color,border-color,box-shadow] duration-150 " +
   "placeholder:text-ink-3 hover:border-[color-mix(in_oklab,var(--ink-3)_28%,var(--hairline))] " +
   "focus:border-[color-mix(in_oklab,var(--accent)_45%,var(--hairline))] focus:ring-4 focus:ring-accent-soft " +
   "disabled:cursor-not-allowed disabled:opacity-50";
 
-// 16px on phones is deliberate in both sizes: iOS Safari zooms the whole page
-// in when a focused field is smaller than that.
 type ControlSize = "sm" | "md";
 const controlSize: Record<ControlSize, string> = {
   md: "min-h-11 py-2.5 text-base sm:text-[15px]",
@@ -661,17 +562,13 @@ export function TextInput({
   prefix,
   ...props
 }: Omit<InputHTMLAttributes<HTMLInputElement>, "prefix" | "size"> & {
-  /** a unit that belongs to the field itself — a currency sign, a % */
   prefix?: ReactNode;
-  /** sm is for controls that sit inside a toolbar row, not in a form */
   size?: ControlSize;
 }) {
   const base = `${controlBase} ${controlSize[size]}`;
   if (prefix === undefined) {
     return <input className={`${base} ${className}`} {...props} />;
   }
-  // the sign sits inside the field rather than in a label beside it, so what
-  // you are typing and what it is denominated in are never read apart
   return (
     <div className="relative">
       <span
@@ -687,6 +584,10 @@ export function TextInput({
   );
 }
 
+export function TextArea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className={`${controlBase} min-h-24 resize-y py-2.5 text-base leading-relaxed sm:text-[15px] ${className}`} {...props} />;
+}
+
 export function Select({
   className = "",
   size = "md",
@@ -694,15 +595,13 @@ export function Select({
   ...props
 }: Omit<SelectHTMLAttributes<HTMLSelectElement>, "size"> & { size?: ControlSize }) {
   return (
-    <div className="group relative">
+    <div className="group relative min-w-0">
       <select
-        className={`${controlBase} ${controlSize[size]} cursor-pointer appearance-none pr-12 ${className}`}
+        className={`${controlBase} ${controlSize[size]} min-w-0 cursor-pointer appearance-none truncate pr-12 ${className}`}
         {...props}
       >
         {children}
       </select>
-      {/* the native chevron is gone with appearance-none; this one sits in its
-          own chip so the field reads as "opens a list", not as a text input */}
       <span
         aria-hidden
         className="pointer-events-none absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-ghost-2 text-ink-2 transition-colors group-hover:text-ink-1"
@@ -713,49 +612,31 @@ export function Select({
   );
 }
 
-/**
- * Picks a `yyyy-mm` month as two selects.
- *
- * `<input type="month">` looks like a first-class control in Chrome but does
- * not exist in Safari or Firefox: there it degrades to a bare text box where
- * the value has to be typed in ISO form by hand, and a typo just leaves the
- * form invalid. Selects are supported everywhere and carry the app's own
- * styling, so the field looks and behaves the same in every browser.
- */
 export function MonthInput({
   value,
   onChange,
   name,
   allowEmpty = false,
 }: {
-  /** yyyy-mm, or "" when unset (only reachable with `allowEmpty`) */
   value: string;
   onChange: (value: string) => void;
-  /** what the field is called, for the per-select accessible names */
   name: string;
-  /** offer a "—" option that clears the field */
   allowEmpty?: boolean;
 }) {
+  const { t } = useT();
   const now = currentMonth();
   const [nowYear, nowMonth] = now.split("-").map(Number);
-  // 0 means "unset" and only shows where a "—" option exists; a required field
-  // handed an empty value falls back to this month rather than lying about
-  // what the selects are pointing at
   const [year, month] = /^\d{4}-\d{2}$/.test(value)
     ? value.split("-").map(Number)
     : allowEmpty
       ? [0, 0]
       : [nowYear, nowMonth];
 
-  // a window wide enough for a rule that started years ago or ends far out,
-  // always stretched to include the value being edited
   const first = Math.min(nowYear - 5, year || nowYear);
   const last = Math.max(nowYear + 10, year || nowYear);
   const years: number[] = [];
   for (let y = first; y <= last; y++) years.push(y);
 
-  // setting half of an empty field fills the other half with today's, so one
-  // tap always produces a valid month; picking "—" in either clears the field
   const setMonth = (m: number) =>
     onChange(m === 0 ? "" : `${year || nowYear}-${pad(m)}`);
   const setYear = (y: number) =>
@@ -764,19 +645,19 @@ export function MonthInput({
   return (
     <div className="grid grid-cols-[1fr_7.5rem] gap-2">
       <Select
-        aria-label={`${name}: month`}
+        aria-label={t("month.pickerMonth", { name })}
         value={String(month)}
         onChange={(e) => setMonth(Number(e.target.value))}
       >
         {allowEmpty && <option value="0">—</option>}
-        {MONTH_NAMES.map((label, i) => (
+        {monthNames().map((label, i) => (
           <option key={label} value={i + 1}>
             {label}
           </option>
         ))}
       </Select>
       <Select
-        aria-label={`${name}: year`}
+        aria-label={t("month.pickerYear", { name })}
         value={String(year)}
         onChange={(e) => setYear(Number(e.target.value))}
       >
@@ -791,8 +672,6 @@ export function MonthInput({
   );
 }
 
-/* ---------- progress ---------- */
-
 export function ProgressMeter({
   value,
   max,
@@ -801,9 +680,7 @@ export function ProgressMeter({
 }: {
   value: number;
   max: number;
-  /** accent (goals) | budget (flips to warning/expense near and over the limit) */
   tone?: "accent" | "budget";
-  /** what is being measured — a bare progressbar announces only a percentage */
   label?: string;
 }) {
   const ratio = max > 0 ? value / max : 0;
@@ -816,10 +693,6 @@ export function ProgressMeter({
           ? "bg-warning"
           : "bg-accent"
       : "bg-accent";
-  // Spans, not divs: every meter in this app is drawn inside a row that is
-  // itself a <button> (accounts, debts, budgets), and <button> takes phrasing
-  // content only — a <div> in there is invalid markup that parsers only
-  // tolerate.
   return (
     <span
       role="progressbar"
@@ -837,18 +710,6 @@ export function ProgressMeter({
   );
 }
 
-/* ---------- modal sheet ---------- */
-
-/**
- * One page-scroll lock shared by every overlay, reference-counted.
- *
- * Each sheet used to save and restore `body.overflow` for itself, which broke
- * the moment two of them closed in the same commit — the delete flow, where
- * confirming unmounts both the form sheet and the confirm dialog above it.
- * React tears effects down in tree order, so the outer sheet restored "" and
- * the inner one then restored the "hidden" it had captured, leaving the page
- * unscrollable until a reload.
- */
 let scrollLocks = 0;
 let scrollLockPrevious = "";
 
@@ -867,12 +728,6 @@ function useScrollLock(active: boolean) {
   }, [active]);
 }
 
-/**
- * Which dialogs are open, innermost last. Escape is a document-level key, so
- * every open sheet used to answer it at once: pressing it on "Delete this
- * transaction?" dismissed the confirmation *and* the edit form behind it, and
- * the row you were half-way through changing was gone.
- */
 const dialogStack: symbol[] = [];
 
 function useDialogStack(open: boolean): () => boolean {
@@ -896,15 +751,6 @@ const FOCUSABLE =
 const FIRST_FIELD =
   'input:not([type="hidden"]):not([disabled]),textarea:not([disabled]),select:not([disabled])';
 
-/**
- * Keeps Tab inside the open dialog and hands focus back where it came from.
- *
- * Where focus lands depends on what opened it. On touch, the panel: autofocusing
- * an input throws the on-screen keyboard over the title before you have read it.
- * On a pointer device there is no keyboard to throw, the first field is where
- * you were going anyway, and landing on the panel instead cost three keystrokes
- * to reach it on every single open.
- */
 function useFocusTrap(open: boolean, panelRef: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
     if (!open) return;
@@ -939,7 +785,6 @@ function useFocusTrap(open: boolean, panelRef: React.RefObject<HTMLElement | nul
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      // the element may have been removed by whatever the dialog just did
       if (restoreTo?.isConnected) restoreTo.focus();
     };
   }, [open, panelRef]);
@@ -959,27 +804,13 @@ export function Sheet({
   title: string;
   children: ReactNode;
   footer?: ReactNode;
-  /**
-   * Makes the sheet a real `<form>`: Enter in any field saves, and the primary
-   * action becomes its submit button. Passing it also stops a click on the
-   * backdrop from dismissing — a confirmation has nothing to lose to a stray
-   * click, a half-filled form of eight fields has all of it.
-   */
   onSubmit?: () => void;
-  /**
-   * Why the primary action is unavailable, in plain words, next to the action
-   * itself. It used to sit under the last field — inside the part of the sheet
-   * that scrolls — so on a long form you pressed a Save you could see and the
-   * answer appeared somewhere you could not.
-   */
   problem?: string | null;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  const { t } = useT();
 
-  // The same repeat-press guard `Button` applies to its own clicks. Save is a
-  // submit button now, so it no longer goes through that path — and a double
-  // tap on "Save" would otherwise write the transaction twice.
   const lastSubmit = useRef(0);
   const guardedSubmit = () => {
     const now = Date.now();
@@ -995,7 +826,6 @@ export function Sheet({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      // only the dialog on top answers — anything under it stays put
       if (e.key === "Escape" && isTopmost()) onClose();
     };
     document.addEventListener("keydown", onKey);
@@ -1019,8 +849,6 @@ export function Sheet({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        // the panel scrolls, its title and actions do not: on a short screen a
-        // long form used to push Save out of reach behind the keyboard
         className="sheet-panel glass-strong flex max-h-[92dvh] w-full flex-col rounded-t-sheet outline-none sm:max-w-md sm:rounded-sheet"
       >
         <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
@@ -1030,7 +858,7 @@ export function Sheet({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
             className="icon-btn size-9 shrink-0 bg-ghost text-ink-3"
           >
             <Icon name="close" size={15} strokeWidth={2.2} />
@@ -1052,11 +880,6 @@ export function Sheet({
             {children}
           </div>
           {(footer || problem) && (
-            // Actions sit in a bar that does not scroll, so Save is reachable at
-            // the bottom of an eight-field form without hunting for it, and so
-            // is the line saying why it is off. A destructive action takes
-            // `mr-auto` and goes to the far left, away from the button the thumb
-            // is aiming for.
             <div className="border-t border-hairline px-4 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:px-5">
               {problem && (
                 <p aria-live="polite" className="caption mb-2.5">
@@ -1074,14 +897,6 @@ export function Sheet({
   );
 }
 
-/* ---------- toast ---------- */
-
-/**
- * A single transient message with one action, floated above the tab bar. Used
- * for the undo offer: every destructive action in this app is a permanent write
- * to Postgres, and a confirm dialog only guards the click — not the moment
- * afterwards when you realise it was the wrong row.
- */
 export function Toast({
   message,
   actionLabel,
@@ -1092,16 +907,14 @@ export function Toast({
   message: string;
   actionLabel: string;
   onAction: () => void;
-  /** omit to make the toast permanent — it then has no dismiss button either */
   onDismiss?: () => void;
   timeoutMs?: number;
 }) {
+  const { t } = useT();
   useEffect(() => {
     if (!onDismiss) return;
     const id = setTimeout(onDismiss, timeoutMs);
     return () => clearTimeout(id);
-    // re-armed per message, so a second action restarts the countdown instead
-    // of expiring on the first one's timer
   }, [message, onDismiss, timeoutMs]);
 
   return (
@@ -1127,7 +940,7 @@ export function Toast({
           <button
             type="button"
             onClick={onDismiss}
-            aria-label="Dismiss"
+            aria-label={t("common.dismiss")}
             className="icon-btn size-8 shrink-0 text-ink-3"
           >
             <Icon name="close" size={13} strokeWidth={2.4} />
@@ -1144,7 +957,7 @@ export function ConfirmDialog({
   onConfirm,
   title,
   message,
-  confirmLabel = "Delete",
+  confirmLabel,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1153,6 +966,7 @@ export function ConfirmDialog({
   message: string;
   confirmLabel?: string;
 }) {
+  const { t } = useT();
   return (
     <Sheet
       open={open}
@@ -1161,7 +975,7 @@ export function ConfirmDialog({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             variant="danger"
@@ -1170,12 +984,285 @@ export function ConfirmDialog({
               onClose();
             }}
           >
-            {confirmLabel}
+            {confirmLabel ?? t("common.delete")}
           </Button>
         </>
       }
     >
       <p className="text-sm text-ink-2">{message}</p>
     </Sheet>
+  );
+}
+
+export function RemoteLogo({
+  sources,
+  fallback,
+  size = 28,
+  alt = "",
+  className = "",
+  rounded = "full",
+}: {
+  sources: string[];
+  fallback: ReactNode;
+  size?: number;
+  alt?: string;
+  className?: string;
+  rounded?: "full" | "md";
+}) {
+  const key = sources.join("|");
+  const [attempt, setAttempt] = useState({ key, index: 0 });
+  if (attempt.key !== key) setAttempt({ key, index: 0 });
+  const index = attempt.key === key ? attempt.index : 0;
+  const src = sources[index];
+  if (!src) return <>{fallback}</>;
+  const next = () => setAttempt({ key, index: index + 1 });
+  return (
+    <img
+      key={src}
+      src={src}
+      alt={alt}
+      width={size}
+      height={size}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={next}
+      onLoad={(e) => {
+        const img = e.currentTarget;
+        const tiny = img.naturalWidth > 0 && img.naturalWidth < 24;
+        if (tiny && index < sources.length - 1) next();
+      }}
+      style={{ width: size, height: size }}
+      className={`shrink-0 bg-white/0 object-contain ${rounded === "full" ? "rounded-full" : "rounded-[6px]"} ${className}`}
+    />
+  );
+}
+
+export function Monogram({
+  name,
+  color,
+  size = 28,
+}: {
+  name: string;
+  color: string;
+  size?: number;
+}) {
+  return (
+    <span
+      aria-hidden
+      className="flex shrink-0 items-center justify-center rounded-full font-bold text-white"
+      style={{
+        width: size,
+        height: size,
+        background: color,
+        fontSize: Math.round(size * 0.38),
+        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18)",
+      }}
+    >
+      {brandInitials(name)}
+    </span>
+  );
+}
+
+type CalloutTone = "info" | "warning" | "success" | "danger" | "tip";
+
+const CALLOUT_STYLE: Record<CalloutTone, { icon: IconName; className: string }> = {
+  info: { icon: "info", className: "border-[color-mix(in_oklab,var(--series-10)_35%,transparent)] bg-[color-mix(in_oklab,var(--series-10)_9%,transparent)] text-ink-1" },
+  tip: { icon: "sparkle", className: "border-[color-mix(in_oklab,var(--series-3)_35%,transparent)] bg-[color-mix(in_oklab,var(--series-3)_9%,transparent)] text-ink-1" },
+  success: { icon: "check", className: "border-income/30 bg-income/8 text-ink-1" },
+  warning: { icon: "warning", className: "border-warning/35 bg-warning/10 text-ink-1" },
+  danger: { icon: "warning", className: "border-expense/30 bg-expense/8 text-ink-1" },
+};
+
+export function Callout({
+  tone = "info",
+  title,
+  children,
+  className = "",
+}: {
+  tone?: CalloutTone;
+  title?: string;
+  children?: ReactNode;
+  className?: string;
+}) {
+  const style = CALLOUT_STYLE[tone];
+  return (
+    <div
+      role={tone === "danger" || tone === "warning" ? "alert" : "note"}
+      className={`flex gap-2.5 rounded-field border px-3.5 py-3 text-sm ${style.className} ${className}`}
+    >
+      <Icon name={style.icon} size={17} className="mt-0.5 opacity-80" />
+      <div className="min-w-0 space-y-0.5">
+        {title && <p className="font-semibold">{title}</p>}
+        {children && <div className="text-ink-2">{children}</div>}
+      </div>
+    </div>
+  );
+}
+
+export function Toolbar({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`mb-3 flex min-w-0 flex-wrap items-center gap-2 ${className}`}>{children}</div>
+  );
+}
+
+export function ToolbarSlot({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`min-w-0 flex-[1_1_10rem] ${className}`}>{children}</div>;
+}
+
+export function SearchInput({
+  value,
+  onChange,
+  placeholder,
+  className = "",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const { t } = useT();
+  return (
+    <div className={`relative min-w-0 flex-[999_1_14rem] ${className}`}>
+      <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3">
+        <Icon name="search" size={16} />
+      </span>
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder ?? t("filter.search")}
+        aria-label={placeholder ?? t("filter.search")}
+        className={`${controlBase} ${controlSize.sm} pl-9 pr-9`}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label={t("filter.clearSearch")}
+          className="icon-btn absolute right-1.5 top-1/2 size-7 -translate-y-1/2 text-ink-3"
+        >
+          <Icon name="close" size={13} strokeWidth={2.4} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function SortSelect<T extends string>({
+  value,
+  onChange,
+  options,
+  direction,
+  onDirectionChange,
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  options: Array<{ value: T; label: string }>;
+  direction: SortDirection;
+  onDirectionChange: (direction: SortDirection) => void;
+}) {
+  const { t } = useT();
+  return (
+    <div className="flex min-w-0 flex-[1_1_11rem] items-center gap-1.5">
+      <div className="min-w-0 flex-1">
+        <Select
+          size="sm"
+          value={value}
+          aria-label={t("filter.sortBy")}
+          onChange={(e) => onChange(e.target.value as T)}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <button
+        type="button"
+        onClick={() => onDirectionChange(direction === "asc" ? "desc" : "asc")}
+        aria-label={direction === "asc" ? t("filter.ascending") : t("filter.descending")}
+        title={direction === "asc" ? t("filter.ascending") : t("filter.descending")}
+        className="icon-btn glass-el size-10 shrink-0 rounded-full border border-hairline text-ink-2"
+      >
+        <Icon
+          name="sort"
+          size={16}
+          className={`transition-transform duration-200 ${direction === "asc" ? "-scale-y-100" : ""}`}
+        />
+      </button>
+    </div>
+  );
+}
+
+export function FilterPills<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: Array<{ value: T; label: string; count?: number }>;
+  value: T;
+  onChange: (value: T) => void;
+  label: string;
+}) {
+  const groupRef = useRef<HTMLDivElement>(null);
+  const onKeyDown = useRadioGroupKeys(groupRef, options.map((o) => o.value), value, onChange);
+  return (
+    <div
+      ref={groupRef}
+      onKeyDown={onKeyDown}
+      role="radiogroup"
+      aria-label={label}
+      className="flex min-w-0 flex-wrap gap-1.5"
+    >
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onChange(o.value)}
+            className={`flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-semibold outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent-soft ${
+              active
+                ? "border-accent-fill bg-accent-soft text-ink-1"
+                : "glass-el border-hairline text-ink-2 hover:text-ink-1"
+            }`}
+          >
+            {o.label}
+            {o.count !== undefined && (
+              <span className={`tnum rounded-full px-1.5 py-px text-[10px] ${active ? "bg-accent-fill text-on-accent" : "bg-ghost-2 text-ink-3"}`}>
+                {o.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function Badge({
+  children,
+  tone = "neutral",
+}: {
+  children: ReactNode;
+  tone?: "neutral" | "income" | "expense" | "warning" | "accent";
+}) {
+  const tones = {
+    neutral: "bg-ghost-2 text-ink-2",
+    income: "bg-income/12 text-income",
+    expense: "bg-expense/12 text-expense",
+    warning: "bg-warning/15 text-warning",
+    accent: "bg-accent-soft text-accent",
+  } as const;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tones[tone]}`}>
+      {children}
+    </span>
   );
 }

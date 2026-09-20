@@ -1,14 +1,6 @@
-# ==============================================================================
-# 🧾 Finance tracker — orchestration
-# ------------------------------------------------------------------------------
-# Every environment = the base compose file + one overlay from ./docker.
-# Run `make` (or `make help`) for the full command list.
-# ==============================================================================
-
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-# ─────────────────────────────── 🎨 formatting ────────────────────────────────
 BOLD   := \033[1m
 DIM    := \033[2m
 RED    := \033[31m
@@ -22,19 +14,16 @@ DEV_TAG   := $(BLUE)[DEV]$(RESET)
 STAGE_TAG := $(YELLOW)[STAGE]$(RESET)
 PROD_TAG  := $(RED)[PROD]$(RESET)
 
-# ─────────────────────────────── ⚙️ compose wiring ────────────────────────────
 COMPOSE      := docker compose
 BASE_FILE    := docker-compose.yml
 DEV_FILES    := -f $(BASE_FILE) -f docker/development.yml
 STAGE_FILES  := -f $(BASE_FILE) -f docker/staging.yml
 PROD_FILES   := -f $(BASE_FILE) -f docker/production.yml
 
-# separate project names so environments can run side by side
 DEV    := $(COMPOSE) -p finance-dev   $(DEV_FILES)
 STAGE  := $(COMPOSE) -p finance-stage $(STAGE_FILES)
 PROD   := $(COMPOSE) -p finance-prod  $(PROD_FILES)
 
-# database credentials for psql/dump targets (read from .env, with fallbacks)
 PG_USER := $(shell grep -E '^POSTGRES_USER=' .env 2>/dev/null | cut -d= -f2-)
 PG_DB   := $(shell grep -E '^POSTGRES_DB=' .env 2>/dev/null | cut -d= -f2-)
 PG_USER := $(if $(PG_USER),$(PG_USER),finance)
@@ -42,6 +31,8 @@ PG_DB   := $(if $(PG_DB),$(PG_DB),finance_tracker)
 
 BACKUP_DIR := backups
 STAMP      := $(shell date +%Y%m%d-%H%M%S)
+
+ROW := printf "  $(CYAN)%-20s$(RESET) %s\n"
 
 .PHONY: help env check doctor \
         dev-build dev-up dev-down dev-restart dev-logs dev-ps dev-shell dev-psql \
@@ -52,23 +43,69 @@ STAMP      := $(shell date +%Y%m%d-%H%M%S)
         prod-migrate prod-db-backup prod-db-restore prod-destroy prod-deploy \
         lint typecheck build config prune clean
 
-# ==============================================================================
-##@ ℹ️  General
-# ==============================================================================
-
-help: ## 📖 Show this help
-	@printf "\n$(BOLD)🧾 Finance tracker$(RESET) $(DIM)— docker orchestration$(RESET)\n\n"
-	@awk 'BEGIN {FS = ":.*##"} \
-		/^##@/ { printf "\n$(BOLD)%s$(RESET)\n", substr($$0, 5); next } \
-		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  $(CYAN)%-20s$(RESET) %s\n", $$1, $$2 }' \
-		$(MAKEFILE_LIST)
+help:
+	@printf "\n$(BOLD)🧾 Finance tracker$(RESET) $(DIM)— docker orchestration$(RESET)\n"
+	@printf "\n$(BOLD)ℹ️  General$(RESET)\n"
+	@$(ROW) "help" "📖 Show this help"
+	@$(ROW) "env" "🔐 Create .env from .env.example when missing"
+	@$(ROW) "check" "🩺 Verify docker · compose · .env are in place"
+	@$(ROW) "doctor" "🔎 Alias for check"
+	@$(ROW) "config" "🧾 Render the merged compose config of every environment"
+	@printf "\n$(BOLD)🛠️  Development [DEV]$(RESET)\n"
+	@$(ROW) "dev-build" "🏗️  Build the dev image"
+	@$(ROW) "dev-up" "🚀 Start the dev stack (hot reload · detached)"
+	@$(ROW) "dev-down" "🛑 Stop the dev stack (data kept)"
+	@$(ROW) "dev-restart" "🔄 Restart dev services"
+	@$(ROW) "dev-logs" "📜 Follow dev logs"
+	@$(ROW) "dev-ps" "📋 Show dev containers"
+	@$(ROW) "dev-shell" "🐚 Open a shell in the dev app container"
+	@$(ROW) "dev-psql" "🐘 Open psql against the dev database"
+	@$(ROW) "dev-migrate" "🧬 Apply db/schema.sql to the dev database"
+	@$(ROW) "dev-db-backup" "💾 Dump the dev database into ./backups"
+	@$(ROW) "dev-db-restore" "♻️  Restore the dev database (FILE=backups/dev-….sql)"
+	@$(ROW) "dev-destroy" "💣 Stop the dev stack and delete its database volume"
+	@$(ROW) "dev-deploy" "📦 Full dev roll-out (build → up → migrate)"
+	@printf "\n$(BOLD)🧪 Staging [STAGE]$(RESET)\n"
+	@$(ROW) "stage-build" "🏗️  Build the staging image"
+	@$(ROW) "stage-up" "🚀 Start the staging stack (detached)"
+	@$(ROW) "stage-down" "🛑 Stop the staging stack (data kept)"
+	@$(ROW) "stage-restart" "🔄 Restart staging services"
+	@$(ROW) "stage-logs" "📜 Follow staging logs"
+	@$(ROW) "stage-ps" "📋 Show staging containers"
+	@$(ROW) "stage-shell" "🐚 Open a shell in the staging app container"
+	@$(ROW) "stage-psql" "🐘 Open psql against the staging database"
+	@$(ROW) "stage-migrate" "🧬 Apply db/schema.sql to the staging database"
+	@$(ROW) "stage-db-backup" "💾 Dump the staging database into ./backups"
+	@$(ROW) "stage-db-restore" "♻️  Restore the staging database (FILE=…)"
+	@$(ROW) "stage-destroy" "💣 Stop staging and delete its database volume"
+	@$(ROW) "stage-deploy" "📦 Full staging roll-out"
+	@printf "\n$(BOLD)🚀 Production [PROD]$(RESET)\n"
+	@$(ROW) "prod-build" "🏗️  Build the production image"
+	@$(ROW) "prod-up" "🚀 Start the production stack (detached)"
+	@$(ROW) "prod-down" "🛑 Stop production (data kept)"
+	@$(ROW) "prod-restart" "🔄 Restart production services"
+	@$(ROW) "prod-logs" "📜 Follow production logs"
+	@$(ROW) "prod-ps" "📋 Show production containers"
+	@$(ROW) "prod-shell" "🐚 Open a shell in the production app container"
+	@$(ROW) "prod-psql" "🐘 Open psql against the production database"
+	@$(ROW) "prod-migrate" "🧬 Apply db/schema.sql to the production database"
+	@$(ROW) "prod-db-backup" "💾 Dump the production database into ./backups"
+	@$(ROW) "prod-db-restore" "♻️  Restore the production database (FILE=…)"
+	@$(ROW) "prod-destroy" "💣 Stop production and delete its database volume (asks first)"
+	@$(ROW) "prod-deploy" "📦 Full production roll-out (backup → build → up → migrate)"
+	@printf "\n$(BOLD)🧰 Local tooling (no docker)$(RESET)\n"
+	@$(ROW) "lint" "🧹 Run ESLint"
+	@$(ROW) "typecheck" "🔍 Run the TypeScript compiler"
+	@$(ROW) "build" "📦 Build the app on the host"
+	@printf "\n$(BOLD)🧽 Housekeeping$(RESET)\n"
+	@$(ROW) "clean" "🧽 Remove local build artefacts"
+	@$(ROW) "prune" "🗑️  Prune dangling docker images · containers · networks"
 	@printf "\n$(DIM)Environments run side by side under separate compose projects:\n"
 	@printf "  finance-dev · finance-stage · finance-prod$(RESET)\n\n"
 
-env: .env ## 🔐 Create .env from .env.example when missing
+env: .env
 	@printf "$(GREEN)✅ .env is ready$(RESET)\n"
 
-# only runs when .env does not exist — never overwrites your local secrets
 .env:
 	@if [ ! -f .env.example ]; then \
 		printf "$(RED)❌ .env.example is missing — cannot bootstrap .env$(RESET)\n"; exit 1; \
@@ -77,7 +114,7 @@ env: .env ## 🔐 Create .env from .env.example when missing
 	@printf "$(GREEN)🆕 Created .env from .env.example$(RESET)\n"
 	@printf "$(YELLOW)⚠️ Review it and change POSTGRES_PASSWORD before staging/production!$(RESET)\n"
 
-check: ## 🩺 Verify docker, compose and .env are in place
+check:
 	@printf "$(BOLD)🩺 Environment check$(RESET)\n"
 	@command -v docker >/dev/null 2>&1 \
 		&& printf "  $(GREEN)✅ docker$(RESET)    %s\n" "$$(docker --version)" \
@@ -92,235 +129,215 @@ check: ## 🩺 Verify docker, compose and .env are in place
 		&& printf "  $(GREEN)✅ .env$(RESET)      present\n" \
 		|| printf "  $(YELLOW)⚠️ .env missing — run 'make env'$(RESET)\n"
 
-doctor: check ## 🔎 Alias for check
+doctor: check
 
-config: env ## 🧾 Render the merged compose config of every environment
+config: env
 	@printf "$(DEV_TAG) 🧾 rendering merged config…\n";   $(DEV) config -q   && printf "  $(GREEN)✅ valid$(RESET)\n"
 	@printf "$(STAGE_TAG) 🧾 rendering merged config…\n"; $(STAGE) config -q && printf "  $(GREEN)✅ valid$(RESET)\n"
 	@printf "$(PROD_TAG) 🧾 rendering merged config…\n";  $(PROD) config -q  && printf "  $(GREEN)✅ valid$(RESET)\n"
 
-# ==============================================================================
-##@ 🛠️  Development [DEV]
-# ==============================================================================
-
-dev-build: env ## 🏗️  Build the dev image
+dev-build: env
 	@printf "$(DEV_TAG) 🏗️  building image…\n"
 	@$(DEV) build
 	@printf "$(DEV_TAG) $(GREEN)✅ build finished$(RESET)\n"
 
-dev-up: env ## 🚀 Start the dev stack (hot reload, detached)
+dev-up: env
 	@printf "$(DEV_TAG) 🚀 starting stack…\n"
 	@$(DEV) up -d --build
 	@printf "$(DEV_TAG) $(GREEN)✅ up$(RESET) → $(BOLD)http://localhost:$${APP_PORT:-3000}$(RESET)\n"
 	@printf "$(DEV_TAG) $(DIM)follow logs with: make dev-logs$(RESET)\n"
 
-dev-down: ## 🛑 Stop the dev stack (data kept)
+dev-down:
 	@printf "$(DEV_TAG) 🛑 stopping…\n"
 	@$(DEV) down
 	@printf "$(DEV_TAG) $(GREEN)✅ stopped$(RESET)\n"
 
-dev-restart: ## 🔄 Restart dev services
+dev-restart:
 	@printf "$(DEV_TAG) 🔄 restarting…\n"
 	@$(DEV) restart
 	@printf "$(DEV_TAG) $(GREEN)✅ restarted$(RESET)\n"
 
-dev-logs: ## 📜 Follow dev logs
+dev-logs:
 	@printf "$(DEV_TAG) 📜 tailing logs (ctrl-c to stop)…\n"
 	@$(DEV) logs -f --tail=100
 
-dev-ps: ## 📋 Show dev containers
+dev-ps:
 	@printf "$(DEV_TAG) 📋 containers\n"
 	@$(DEV) ps
 
-dev-shell: ## 🐚 Open a shell in the dev app container
+dev-shell:
 	@printf "$(DEV_TAG) 🐚 opening shell…\n"
 	@$(DEV) exec app sh
 
-dev-psql: ## 🐘 Open psql against the dev database
+dev-psql:
 	@printf "$(DEV_TAG) 🐘 psql → $(PG_DB)\n"
 	@$(DEV) exec db psql -U $(PG_USER) -d $(PG_DB)
 
-dev-migrate: ## 🧬 Apply db/schema.sql to the dev database
+dev-migrate:
 	@printf "$(DEV_TAG) 🧬 applying schema…\n"
 	@$(DEV) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < db/schema.sql
 	@printf "$(DEV_TAG) $(GREEN)✅ schema applied$(RESET)\n"
 
-dev-db-backup: ## 💾 Dump the dev database into ./backups
+dev-db-backup:
 	@mkdir -p $(BACKUP_DIR)
 	@printf "$(DEV_TAG) 💾 dumping database…\n"
 	@$(DEV) exec -T db pg_dump -U $(PG_USER) -d $(PG_DB) > $(BACKUP_DIR)/dev-$(STAMP).sql
 	@printf "$(DEV_TAG) $(GREEN)✅ saved$(RESET) $(BACKUP_DIR)/dev-$(STAMP).sql\n"
 
-dev-db-restore: ## ♻️  Restore the dev database (FILE=backups/dev-....sql)
+dev-db-restore:
 	@[ -n "$(FILE)" ] || { printf "$(RED)❌ pass FILE=backups/dev-….sql$(RESET)\n"; exit 1; }
 	@printf "$(DEV_TAG) ♻️  restoring from $(FILE)…\n"
 	@$(DEV) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < $(FILE)
 	@printf "$(DEV_TAG) $(GREEN)✅ restored$(RESET)\n"
 
-dev-destroy: ## 💣 Stop the dev stack and delete its database volume
+dev-destroy:
 	@printf "$(DEV_TAG) $(RED)💣 removing containers and volumes…$(RESET)\n"
 	@$(DEV) down -v
 	@printf "$(DEV_TAG) $(GREEN)✅ destroyed$(RESET)\n"
 
-dev-deploy: env dev-build dev-up dev-migrate ## 📦 Full dev roll-out (build → up → migrate)
+dev-deploy: env dev-build dev-up dev-migrate
 	@printf "$(DEV_TAG) $(GREEN)🎉 deployment complete$(RESET)\n"
 
-# ==============================================================================
-##@ 🧪 Staging [STAGE]
-# ==============================================================================
-
-stage-build: env ## 🏗️  Build the staging image
+stage-build: env
 	@printf "$(STAGE_TAG) 🏗️  building image…\n"
 	@$(STAGE) build
 	@printf "$(STAGE_TAG) $(GREEN)✅ build finished$(RESET)\n"
 
-stage-up: env ## 🚀 Start the staging stack (detached)
+stage-up: env
 	@printf "$(STAGE_TAG) 🚀 starting stack…\n"
 	@$(STAGE) up -d --build
 	@printf "$(STAGE_TAG) $(GREEN)✅ up$(RESET) → $(BOLD)http://localhost:$${APP_PORT:-3001}$(RESET)\n"
 
-stage-down: ## 🛑 Stop the staging stack (data kept)
+stage-down:
 	@printf "$(STAGE_TAG) 🛑 stopping…\n"
 	@$(STAGE) down
 	@printf "$(STAGE_TAG) $(GREEN)✅ stopped$(RESET)\n"
 
-stage-restart: ## 🔄 Restart staging services
+stage-restart:
 	@printf "$(STAGE_TAG) 🔄 restarting…\n"
 	@$(STAGE) restart
 	@printf "$(STAGE_TAG) $(GREEN)✅ restarted$(RESET)\n"
 
-stage-logs: ## 📜 Follow staging logs
+stage-logs:
 	@printf "$(STAGE_TAG) 📜 tailing logs (ctrl-c to stop)…\n"
 	@$(STAGE) logs -f --tail=100
 
-stage-ps: ## 📋 Show staging containers
+stage-ps:
 	@printf "$(STAGE_TAG) 📋 containers\n"
 	@$(STAGE) ps
 
-stage-shell: ## 🐚 Open a shell in the staging app container
+stage-shell:
 	@printf "$(STAGE_TAG) 🐚 opening shell…\n"
 	@$(STAGE) exec app sh
 
-stage-psql: ## 🐘 Open psql against the staging database
+stage-psql:
 	@printf "$(STAGE_TAG) 🐘 psql → $(PG_DB)\n"
 	@$(STAGE) exec db psql -U $(PG_USER) -d $(PG_DB)
 
-stage-migrate: ## 🧬 Apply db/schema.sql to the staging database
+stage-migrate:
 	@printf "$(STAGE_TAG) 🧬 applying schema…\n"
 	@$(STAGE) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < db/schema.sql
 	@printf "$(STAGE_TAG) $(GREEN)✅ schema applied$(RESET)\n"
 
-stage-db-backup: ## 💾 Dump the staging database into ./backups
+stage-db-backup:
 	@mkdir -p $(BACKUP_DIR)
 	@printf "$(STAGE_TAG) 💾 dumping database…\n"
 	@$(STAGE) exec -T db pg_dump -U $(PG_USER) -d $(PG_DB) > $(BACKUP_DIR)/stage-$(STAMP).sql
 	@printf "$(STAGE_TAG) $(GREEN)✅ saved$(RESET) $(BACKUP_DIR)/stage-$(STAMP).sql\n"
 
-stage-db-restore: ## ♻️  Restore the staging database (FILE=…)
+stage-db-restore:
 	@[ -n "$(FILE)" ] || { printf "$(RED)❌ pass FILE=backups/stage-….sql$(RESET)\n"; exit 1; }
 	@printf "$(STAGE_TAG) ♻️  restoring from $(FILE)…\n"
 	@$(STAGE) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < $(FILE)
 	@printf "$(STAGE_TAG) $(GREEN)✅ restored$(RESET)\n"
 
-stage-destroy: ## 💣 Stop staging and delete its database volume
+stage-destroy:
 	@printf "$(STAGE_TAG) $(RED)💣 removing containers and volumes…$(RESET)\n"
 	@$(STAGE) down -v
 	@printf "$(STAGE_TAG) $(GREEN)✅ destroyed$(RESET)\n"
 
-stage-deploy: env stage-build stage-up stage-migrate ## 📦 Full staging roll-out
+stage-deploy: env stage-build stage-up stage-migrate
 	@printf "$(STAGE_TAG) $(GREEN)🎉 deployment complete$(RESET)\n"
 
-# ==============================================================================
-##@ 🚀 Production [PROD]
-# ==============================================================================
-
-prod-build: env ## 🏗️  Build the production image
+prod-build: env
 	@printf "$(PROD_TAG) 🏗️  building image…\n"
 	@$(PROD) build
 	@printf "$(PROD_TAG) $(GREEN)✅ build finished$(RESET)\n"
 
-prod-up: env ## 🚀 Start the production stack (detached)
+prod-up: env
 	@printf "$(PROD_TAG) 🚀 starting stack…\n"
 	@$(PROD) up -d --build
 	@printf "$(PROD_TAG) $(GREEN)✅ up$(RESET) → $(BOLD)http://localhost:$${APP_PORT:-3000}$(RESET)\n"
 
-prod-down: ## 🛑 Stop production (data kept)
+prod-down:
 	@printf "$(PROD_TAG) 🛑 stopping…\n"
 	@$(PROD) down
 	@printf "$(PROD_TAG) $(GREEN)✅ stopped$(RESET)\n"
 
-prod-restart: ## 🔄 Restart production services
+prod-restart:
 	@printf "$(PROD_TAG) 🔄 restarting…\n"
 	@$(PROD) restart
 	@printf "$(PROD_TAG) $(GREEN)✅ restarted$(RESET)\n"
 
-prod-logs: ## 📜 Follow production logs
+prod-logs:
 	@printf "$(PROD_TAG) 📜 tailing logs (ctrl-c to stop)…\n"
 	@$(PROD) logs -f --tail=100
 
-prod-ps: ## 📋 Show production containers
+prod-ps:
 	@printf "$(PROD_TAG) 📋 containers\n"
 	@$(PROD) ps
 
-prod-shell: ## 🐚 Open a shell in the production app container
+prod-shell:
 	@printf "$(PROD_TAG) 🐚 opening shell…\n"
 	@$(PROD) exec app sh
 
-prod-psql: ## 🐘 Open psql against the production database
+prod-psql:
 	@printf "$(PROD_TAG) 🐘 psql → $(PG_DB)\n"
 	@$(PROD) exec db psql -U $(PG_USER) -d $(PG_DB)
 
-prod-migrate: ## 🧬 Apply db/schema.sql to the production database
+prod-migrate:
 	@printf "$(PROD_TAG) 🧬 applying schema…\n"
 	@$(PROD) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < db/schema.sql
 	@printf "$(PROD_TAG) $(GREEN)✅ schema applied$(RESET)\n"
 
-prod-db-backup: ## 💾 Dump the production database into ./backups
+prod-db-backup:
 	@mkdir -p $(BACKUP_DIR)
 	@printf "$(PROD_TAG) 💾 dumping database…\n"
 	@$(PROD) exec -T db pg_dump -U $(PG_USER) -d $(PG_DB) > $(BACKUP_DIR)/prod-$(STAMP).sql
 	@printf "$(PROD_TAG) $(GREEN)✅ saved$(RESET) $(BACKUP_DIR)/prod-$(STAMP).sql\n"
 
-prod-db-restore: ## ♻️  Restore the production database (FILE=…)
+prod-db-restore:
 	@[ -n "$(FILE)" ] || { printf "$(RED)❌ pass FILE=backups/prod-….sql$(RESET)\n"; exit 1; }
 	@printf "$(PROD_TAG) $(YELLOW)⚠️ restoring over live data from $(FILE)$(RESET)\n"
 	@$(PROD) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < $(FILE)
 	@printf "$(PROD_TAG) $(GREEN)✅ restored$(RESET)\n"
 
-prod-destroy: ## 💣 Stop production and delete its database volume (asks first)
+prod-destroy:
 	@printf "$(PROD_TAG) $(RED)💣 this deletes the production database volume.$(RESET)\n"
 	@read -p "   Type 'destroy production' to confirm: " answer; \
 	 if [ "$$answer" = "destroy production" ]; then \
 	   $(PROD) down -v; printf "$(PROD_TAG) $(GREEN)✅ destroyed$(RESET)\n"; \
 	 else printf "$(PROD_TAG) $(GREEN)🛟 aborted — nothing was removed$(RESET)\n"; fi
 
-prod-deploy: env prod-db-backup prod-build prod-up prod-migrate ## 📦 Full production roll-out (backup → build → up → migrate)
+prod-deploy: env prod-db-backup prod-build prod-up prod-migrate
 	@printf "$(PROD_TAG) $(GREEN)🎉 deployment complete$(RESET)\n"
 	@$(PROD) ps
 
-# ==============================================================================
-##@ 🧰 Local tooling (no docker)
-# ==============================================================================
-
-lint: ## 🧹 Run ESLint
+lint:
 	@printf "🧹 linting…\n" && npx eslint .
 
-typecheck: ## 🔍 Run the TypeScript compiler
+typecheck:
 	@printf "🔍 typechecking…\n" && npx tsc --noEmit
 
-build: ## 📦 Build the app on the host
+build:
 	@printf "📦 building…\n" && npm run build
 
-# ==============================================================================
-##@ 🧽 Housekeeping
-# ==============================================================================
-
-clean: ## 🧽 Remove local build artefacts
+clean:
 	@printf "🧽 removing .next and caches…\n"
 	@rm -rf .next out
 	@printf "$(GREEN)✅ clean$(RESET)\n"
 
-prune: ## 🗑️  Prune dangling docker images, containers and networks
+prune:
 	@printf "🗑️  pruning docker leftovers…\n"
 	@docker system prune -f
 	@printf "$(GREEN)✅ pruned$(RESET)\n"

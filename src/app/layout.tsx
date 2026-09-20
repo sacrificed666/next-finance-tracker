@@ -1,11 +1,15 @@
 import type { Metadata, Viewport } from "next";
+import { cookies, headers } from "next/headers";
 import { Montserrat } from "next/font/google";
-import "./globals.css";
+import "./globals.scss";
 import { StoreProvider } from "@/lib/store";
 import { AppShell } from "@/components/shell";
+import { LocaleBridge } from "@/components/locale-bridge";
+import { isLocale, LOCALE_COOKIE, matchLocale } from "@/lib/i18n/locales";
+import type { Locale } from "@/lib/types";
 
 const montserrat = Montserrat({
-  subsets: ["latin", "cyrillic"],
+  subsets: ["latin", "latin-ext", "cyrillic"],
   display: "swap",
   variable: "--font-montserrat",
 });
@@ -16,29 +20,34 @@ export const metadata: Metadata = {
     template: "%s — Finances",
   },
   description:
-    "Personal finance dashboard: income, expenses, subscriptions, investments and a wealth forecast across ₴ / $ / €. All data stays on your device.",
+    "Personal finance dashboard: income, expenses, subscriptions, investments and a wealth forecast across ₴ / $ / €.",
 };
 
 export const viewport: Viewport = {
-  // matches --bg in globals.css, so the browser chrome blends into the page
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f7f8f8" },
     { media: "(prefers-color-scheme: dark)", color: "#0f1112" },
   ],
 };
 
-// resolves the saved theme before first paint (see docs: preventing-flash-before-hydration);
-// dark is the app default — "system" only applies when the user picked it
 const themeScript = `(function(){try{var p=localStorage.getItem("finance-tracker:theme")||"dark";var d=p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-theme",d?"dark":"light")}catch(e){}})()`;
 
-export default function RootLayout({
+async function requestLocale(): Promise<Locale> {
+  const stored = (await cookies()).get(LOCALE_COOKIE)?.value;
+  if (isLocale(stored)) return stored;
+  const accept = (await headers()).get("accept-language") ?? "";
+  return matchLocale(accept.split(",").map((part) => part.split(";")[0].trim()));
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await requestLocale();
   return (
     <html
-      lang="en"
+      lang={locale}
       data-theme="dark"
       suppressHydrationWarning
       className={`${montserrat.variable} h-full antialiased`}
@@ -48,7 +57,9 @@ export default function RootLayout({
       </head>
       <body className="flex min-h-svh flex-col font-sans">
         <StoreProvider>
-          <AppShell>{children}</AppShell>
+          <LocaleBridge initialLocale={locale}>
+            <AppShell>{children}</AppShell>
+          </LocaleBridge>
         </StoreProvider>
       </body>
     </html>

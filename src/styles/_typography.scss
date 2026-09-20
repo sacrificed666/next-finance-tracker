@@ -1,0 +1,73 @@
+@layer components {
+  .num-hero,
+  .num-xl,
+  .num-lg,
+  .num-md,
+  .num-sm {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+
+  .num-hero {
+    font-size: clamp(2.25rem, 1.6rem + 2.4vw, 2.875rem);
+  }
+
+  .num-xl {
+    font-size: clamp(1.75rem, 1.4rem + 1.3vw, 2.125rem);
+  }
+
+  .num-lg {
+    font-size: 1.625rem;
+  }
+
+  .num-md {
+    font-size: 1.375rem;
+  }
+
+  .num-sm {
+    font-size: 1.125rem;
+    letter-spacing: -0.015em;
+  }
+
+  .page-title {
+    font-size: clamp(1.5rem, 1.25rem + 1vw, 1.75rem);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--ink-1);
+  }
+
+  .label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.35;
+    color: var(--ink-2);
+  }
+
+  .caption {
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--ink-3);
+  }
+
+  .body-strong {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--ink-1);
+  }
+
+  .card-title {
+    font-size: 0.75rem;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

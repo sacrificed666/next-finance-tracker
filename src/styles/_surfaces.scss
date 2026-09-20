@@ -1,0 +1,223 @@
+@use "lib" as *;
+
+@layer components {
+  .glass,
+  .glass-strong,
+  .btn-gradient,
+  .icon-btn {
+    position: relative;
+  }
+}
+
+.glass {
+  background:
+    radial-gradient(120% 90% at 8% -10%, var(--sheen), transparent 46%),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.1), transparent 34%),
+    var(--card);
+  border: 1px solid transparent;
+  @include card-shadow;
+
+  &::after {
+    @include rim;
+  }
+}
+
+.glass-strong {
+  background:
+    radial-gradient(120% 90% at 8% -10%, var(--sheen), transparent 46%),
+    var(--card-strong);
+  -webkit-backdrop-filter: blur(36px) saturate(2);
+  backdrop-filter: blur(36px) saturate(2);
+  border: 1px solid transparent;
+  @include card-shadow;
+
+  &::after {
+    @include rim;
+  }
+}
+
+.glow {
+  box-shadow:
+    inset 0 1px 0 var(--card-highlight),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+    0 -12px 44px -20px var(--glow-a),
+    0 20px 60px -24px var(--glow-b),
+    var(--card-shadow);
+}
+
+@include hover {
+  .glass-hover {
+    transition:
+      translate 240ms $ease,
+      box-shadow 240ms ease;
+
+    &:hover {
+      translate: 0 -2px;
+      box-shadow:
+        inset 0 1px 0 var(--card-highlight),
+        inset 0 -1px 0 var(--under-edge),
+        0 18px 40px rgba(10, 20, 16, 0.12),
+        var(--card-shadow);
+    }
+  }
+}
+
+.glass-el {
+  background: var(--fill-ghost);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--rim-light) 55%, transparent),
+    inset 0 -1px 0 var(--under-edge),
+    0 1px 2px color-mix(in oklab, var(--rim-shade) 45%, transparent);
+
+  @include hover {
+    &:hover {
+      box-shadow:
+        inset 0 1px 0 color-mix(in oklab, var(--rim-light) 80%, transparent),
+        inset 0 -1px 0 var(--under-edge),
+        0 2px 5px color-mix(in oklab, var(--rim-shade) 55%, transparent);
+    }
+  }
+}
+
+.glass-well {
+  background: var(--fill-ghost);
+  box-shadow:
+    inset 0 1px 2px var(--rim-shade),
+    inset 0 -1px 0 color-mix(in oklab, var(--rim-light) 40%, transparent);
+}
+
+.hero-number {
+  background: linear-gradient(
+    115deg,
+    var(--ink-1) 30%,
+    color-mix(in oklab, var(--accent) 72%, var(--ink-1))
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  @media (forced-colors: active) {
+    background: none;
+    color: CanvasText;
+    -webkit-text-fill-color: CanvasText;
+  }
+}
+
+.btn-gradient {
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--accent-grad);
+  color: var(--on-accent);
+  box-shadow:
+    0 4px 16px var(--glow-a),
+    0 2px 24px var(--glow-b),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+
+  &:hover {
+    box-shadow:
+      0 6px 22px var(--glow-a),
+      0 4px 32px var(--glow-b),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      115deg,
+      transparent 34%,
+      rgba(255, 255, 255, 0.3) 50%,
+      transparent 66%
+    );
+    transform: translateX(-130%);
+    transition: transform 720ms $ease;
+  }
+
+  @include hover {
+    &:hover::after {
+      transform: translateX(130%);
+    }
+  }
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--rim-light) 30%, transparent);
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: inherit;
+  }
+
+  @include hover {
+    &:hover {
+      background-color: var(--fill-press);
+      color: var(--ink-1);
+      box-shadow:
+        inset 0 1px 0 color-mix(in oklab, var(--rim-light) 55%, transparent),
+        0 2px 6px var(--rim-shade);
+    }
+
+    &-danger:hover {
+      background-color: color-mix(in oklab, var(--expense) 14%, transparent);
+      color: var(--expense);
+    }
+  }
+
+  &:active {
+    transform: scale(0.9);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+}
+
+.row-tap {
+  border-radius: 1rem;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+
+  @include hover {
+    &:hover {
+      background-color: var(--fill-hover);
+      box-shadow:
+        inset 0 1px 0 color-mix(in oklab, var(--rim-light) 45%, transparent),
+        inset 0 -1px 0 var(--under-edge);
+    }
+  }
+
+  &:active {
+    background-color: var(--fill-press);
+  }
+}
+
+.table-row {
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+
+  @include hover {
+    &:hover {
+      background-color: var(--fill-hover);
+      box-shadow:
+        inset 0 1px 0 color-mix(in oklab, var(--rim-light) 45%, transparent),
+        inset 0 -1px 0 var(--under-edge);
+    }
+  }
+}

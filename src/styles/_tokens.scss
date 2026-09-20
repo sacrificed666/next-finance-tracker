@@ -1,0 +1,149 @@
+@use "sass:list";
+
+$series-light: #778bf6, #899b00, #008472, #d570b8, #b74f38, #235185, #24a0be, #c38654, #a54691,
+  #4d64ca, #853025, #726d00, #aa61b1, #b07d00;
+$series-dark: #6257b9, #5e6b15, #0eac87, #b64580, #e36e40, #1d97e7, #0ca7b7, #8f5a00, #934797,
+  #316fcd, #c7777a, #9e9800, #9363a7, #d9a21b;
+$series-count: list.length($series-light);
+
+@mixin series($palette) {
+  @for $i from 1 through $series-count {
+    --series-#{$i}: #{list.nth($palette, $i)};
+  }
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  color-scheme: light;
+
+  --bg: #f7f8f8;
+  --card: rgba(255, 255, 255, 0.66);
+  --card-strong: rgba(255, 255, 255, 0.7);
+  --card-border: rgba(15, 20, 24, 0.07);
+  --card-highlight: rgba(255, 255, 255, 0.9);
+  --card-shadow: 0 8px 30px rgba(15, 22, 30, 0.08);
+  --ink-1: #12161a;
+  --ink-2: #4a5257;
+  --ink-3: #676a6c;
+
+  --rim-light: rgba(255, 255, 255, 0.85);
+  --rim-shade: rgba(15, 22, 30, 0.1);
+  --sheen: rgba(255, 255, 255, 0.28);
+  --under-edge: rgba(15, 22, 30, 0.05);
+  --grain: 0.032;
+  --grid-line: rgba(18, 22, 26, 0.032);
+  --grid-size: 46px;
+  --hairline: rgba(18, 22, 26, 0.1);
+  --fill-ghost: rgba(18, 22, 26, 0.045);
+  --fill-ghost-2: rgba(18, 22, 26, 0.085);
+  --fill-hover: rgba(18, 22, 26, 0.09);
+  --fill-press: rgba(18, 22, 26, 0.15);
+
+  --accent: #007a44;
+  --accent-2: #006a3c;
+  --accent-fill: #00cb75;
+  --accent-grad: linear-gradient(135deg, #03f0a6, #01a542);
+  --accent-soft: rgba(0, 203, 117, 0.14);
+  --on-accent: #07130c;
+  --wash-strong: rgba(3, 240, 166, 0.1);
+  --wash-soft: rgba(1, 165, 66, 0.07);
+  --vignette: rgba(18, 22, 26, 0.05);
+  --glow-a: rgba(3, 240, 166, 0.3);
+  --glow-b: rgba(1, 165, 66, 0.22);
+  --income: #007a44;
+  --expense: #d20049;
+  --warning: #c88004;
+
+  @include series($series-light);
+  --gridline: #e6e9ea;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0f1112;
+  --card: rgba(27, 30, 31, 0.62);
+  --card-strong: rgba(34, 38, 39, 0.66);
+  --card-border: rgba(240, 248, 250, 0.1);
+  --card-highlight: rgba(244, 250, 252, 0.07);
+  --card-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+  --ink-1: #eef1f2;
+  --ink-2: #a7aeb2;
+  --ink-3: #9da0a2;
+
+  --rim-light: rgba(255, 255, 255, 0.34);
+  --rim-shade: rgba(0, 0, 0, 0.4);
+  --sheen: rgba(255, 255, 255, 0.04);
+  --under-edge: rgba(0, 0, 0, 0.28);
+  --grain: 0.05;
+  --grid-line: rgba(236, 244, 246, 0.03);
+  --grid-size: 46px;
+  --hairline: rgba(236, 244, 246, 0.11);
+  --fill-ghost: rgba(236, 244, 246, 0.055);
+  --fill-ghost-2: rgba(236, 244, 246, 0.1);
+  --fill-hover: rgba(236, 244, 246, 0.11);
+  --fill-press: rgba(236, 244, 246, 0.18);
+
+  --accent: #00bc70;
+  --accent-2: #00995a;
+  --accent-fill: #00cb75;
+  --accent-grad: linear-gradient(135deg, #03f0a6, #01a542);
+  --accent-soft: rgba(0, 203, 117, 0.18);
+  --on-accent: #07130c;
+  --wash-strong: rgba(3, 240, 166, 0.09);
+  --wash-soft: rgba(1, 165, 66, 0.08);
+  --vignette: rgba(0, 0, 0, 0.28);
+  --glow-a: rgba(3, 240, 166, 0.26);
+  --glow-b: rgba(1, 165, 66, 0.2);
+  --income: #00bc70;
+  --expense: #ff7084;
+  --warning: #feba08;
+
+  @include series($series-dark);
+  --gridline: #262a2b;
+}
+
+@theme inline {
+  --font-sans: var(--font-montserrat), -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --color-bg: var(--bg);
+  --color-ink-1: var(--ink-1);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-hairline: var(--hairline);
+  --color-ghost: var(--fill-ghost);
+  --color-ghost-2: var(--fill-ghost-2);
+  --color-fill-hover: var(--fill-hover);
+  --color-fill-press: var(--fill-press);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fill: var(--accent-fill);
+  --color-on-accent: var(--on-accent);
+  --color-income: var(--income);
+  --color-expense: var(--expense);
+  --color-warning: var(--warning);
+
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-series-5: var(--series-5);
+  --color-series-6: var(--series-6);
+  --color-series-7: var(--series-7);
+  --color-series-8: var(--series-8);
+  --color-series-9: var(--series-9);
+  --color-series-10: var(--series-10);
+  --color-series-11: var(--series-11);
+  --color-series-12: var(--series-12);
+  --color-series-13: var(--series-13);
+  --color-series-14: var(--series-14);
+
+  --radius-chip: 0.75rem;
+  --radius-control: 0.875rem;
+  --radius-field: 1rem;
+  --radius-card: 1.5rem;
+  --radius-sheet: 1.75rem;
+}

@@ -1,15 +1,11 @@
-/**
- * Live exchange-rate sources, both free, keyless, and CORS-enabled:
- * - Monobank (primary): buy/sell card rates, matches typical personal
- *   conversion; rate-limited to ~1 request / 5 min per IP (429 on excess).
- * - NBU (fallback): official daily rate.
- * Conversion in the app uses the bank BUY rate (what you get selling
- * foreign currency), which is how the user's own spreadsheets convert.
- */
+export interface BuySell {
+  buy: number;
+  sell: number;
+}
 
 export interface FetchedRates {
-  USD: { buy: number; sell: number };
-  EUR: { buy: number; sell: number };
+  USD: BuySell;
+  EUR: BuySell;
   source: "monobank" | "nbu";
 }
 
@@ -28,6 +24,13 @@ interface MonoRow {
   rateCross?: number;
 }
 
+function monoPair(row: MonoRow | undefined): BuySell | null {
+  if (!row) return null;
+  if (row.rateBuy && row.rateSell) return { buy: row.rateBuy, sell: row.rateSell };
+  if (row.rateCross) return { buy: row.rateCross, sell: row.rateCross };
+  return null;
+}
+
 async function fetchMonobank(): Promise<FetchedRates> {
   const res = await fetch(MONOBANK_URL, { cache: "no-store" });
   if (res.status === 429) {
@@ -38,16 +41,12 @@ async function fetchMonobank(): Promise<FetchedRates> {
   if (!Array.isArray(rows)) throw new Error("Unexpected Monobank response");
   const find = (code: number) =>
     rows.find((r) => r.currencyCodeA === code && r.currencyCodeB === ISO_UAH);
-  const usd = find(ISO_USD);
-  const eur = find(ISO_EUR);
-  if (!usd?.rateBuy || !usd.rateSell || !eur?.rateBuy || !eur.rateSell) {
-    throw new Error("Monobank response has no USD/EUR buy-sell rates");
+  const usd = monoPair(find(ISO_USD));
+  const eur = monoPair(find(ISO_EUR));
+  if (!usd || !eur) {
+    throw new Error("Monobank response has no USD/EUR rates");
   }
-  return {
-    USD: { buy: usd.rateBuy, sell: usd.rateSell },
-    EUR: { buy: eur.rateBuy, sell: eur.rateSell },
-    source: "monobank",
-  };
+  return { USD: usd, EUR: eur, source: "monobank" };
 }
 
 interface NbuRow {
@@ -66,7 +65,6 @@ async function fetchNbu(): Promise<FetchedRates> {
   if (typeof usd !== "number" || typeof eur !== "number") {
     throw new Error("NBU response has no USD/EUR rates");
   }
-  // official rate has no spread — use it for both sides
   return {
     USD: { buy: usd, sell: usd },
     EUR: { buy: eur, sell: eur },
@@ -74,7 +72,6 @@ async function fetchNbu(): Promise<FetchedRates> {
   };
 }
 
-/** Monobank first, NBU as fallback; throws only when both fail */
 export async function fetchLiveRates(): Promise<FetchedRates> {
   try {
     return await fetchMonobank();

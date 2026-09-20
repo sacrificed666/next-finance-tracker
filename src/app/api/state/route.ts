@@ -1,8 +1,24 @@
 import { NextResponse } from "next/server";
-import { loadState, saveState, StateConflictError } from "@/lib/repo";
+import { cookies } from "next/headers";
+import { auth, OWNER_EMAIL } from "@/lib/auth";
+import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from "@/lib/i18n/locales";
+import { claimOrphanData, loadState, saveState, StateConflictError } from "@/lib/repo";
 
-// always hit Postgres — never prerender or cache this endpoint
 export const dynamic = "force-dynamic";
+
+async function currentUserId(): Promise<string | null> {
+  const session = await auth();
+  const id = session?.user?.id;
+  if (!id) return null;
+  if (OWNER_EMAIL && session.user?.email?.toLowerCase() === OWNER_EMAIL) {
+    await claimOrphanData(id);
+  }
+  return id;
+}
+
+function unauthorized() {
+  return NextResponse.json({ error: "Sign in to load your data." }, { status: 401 });
+}
 
 function fail(err: unknown, status = 500) {
   const message = err instanceof Error ? err.message : "Unexpected database error";
@@ -10,12 +26,6 @@ function fail(err: unknown, status = 500) {
   return NextResponse.json({ error: message }, { status });
 }
 
-/**
- * The revision is an opaque token internally, but on the wire it is an ETag,
- * which the spec says is a quoted string (optionally weak). Emitting a bare
- * token works in practice and then stops working behind the reverse proxy the
- * README recommends, so quote it here and unquote whatever comes back.
- */
 function toEtag(revision: string): string {
   return JSON.stringify(revision);
 }
@@ -23,35 +33,29 @@ function toEtag(revision: string): string {
 function fromIfMatch(header: string | null): string | null {
   if (header === null) return null;
   const value = header.trim();
-  // `*` means "as long as something is there" — no revision to compare against
   if (value === "*") return null;
   const unquoted = value.replace(/^W\//, "").replace(/^"(.*)"$/, "$1");
   return unquoted;
 }
 
-/**
- * GET /api/state — the whole dataset assembled from the normalized tables.
- * The revision it was read at rides along in `ETag`, and a write has to hand it
- * back so a stale tab cannot overwrite newer data (see PUT).
- */
 export async function GET() {
   try {
-    const { state, revision } = await loadState();
+    const userId = await currentUserId();
+    if (!userId) return unauthorized();
+    const preferred = (await cookies()).get(LOCALE_COOKIE)?.value;
+    const { state, revision } = await loadState(
+      userId,
+      isLocale(preferred) ? preferred : DEFAULT_LOCALE,
+    );
     return NextResponse.json(state, { headers: { ETag: toEtag(revision) } });
   } catch (err) {
     return fail(err);
   }
 }
 
-/**
- * PUT /api/state — replaces the dataset (validated server-side before writing).
- *
- * `If-Match` carries the revision the client is overwriting. Without it the
- * write is unconditional, which is what a script restoring a backup wants; the
- * app always sends one, so a second tab holding an older snapshot is refused
- * with 409 instead of quietly deleting everything saved since it loaded.
- */
 export async function PUT(request: Request) {
+  const userId = await currentUserId();
+  if (!userId) return unauthorized();
   let body: unknown;
   try {
     body = await request.json();
@@ -59,15 +63,11 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Body must be valid JSON" }, { status: 400 });
   }
   try {
-    // saveState runs the payload through normalizeState, so malformed rows are
-    // dropped rather than written
     const expected = fromIfMatch(request.headers.get("if-match"));
-    const revision = await saveState(body as never, expected);
+    const revision = await saveState(userId, body as never, expected);
     return NextResponse.json({ ok: true, revision }, { headers: { ETag: toEtag(revision) } });
   } catch (err) {
     if (err instanceof StateConflictError) {
-      // an ordinary outcome of two tabs, not a fault — a stack trace here would
-      // train whoever reads the logs to ignore the ones that do matter
       console.warn("[api/state] refused a stale write");
       return NextResponse.json({ error: err.message }, { status: 409 });
     }

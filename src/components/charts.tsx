@@ -14,9 +14,8 @@ import { formatMonthShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import type { Currency } from "@/lib/types";
 import { IconDisc, SegmentedControl } from "./ui";
+import { useT } from "@/lib/i18n";
 import { Icon, SUBJECT_SLOT, type IconName } from "./icons";
-
-/* ---------- shared plumbing ---------- */
 
 function useMeasure<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
   const ref = useRef<T>(null);
@@ -33,7 +32,6 @@ function useMeasure<T extends HTMLElement>(): [React.RefObject<T | null>, number
   return [ref, width];
 }
 
-/** clean axis ticks: 0 .. niceMax in `count` steps */
 function niceTicks(max: number, count = 4): number[] {
   if (max <= 0) return [0, 1];
   const rough = max / count;
@@ -45,21 +43,12 @@ function niceTicks(max: number, count = 4): number[] {
   return ticks;
 }
 
-/**
- * One unit for the whole axis, chosen from its top tick.
- *
- * `formatCompact` switches to "K" at ten thousand, which is right for a tile
- * standing on its own and wrong for a column of ticks: an axis topping out at
- * 15 000 came out as `0 / 5,000 / 10K / 15K` — two number formats stacked on
- * one line of enquiry. Pick the unit once, then apply it to every tick.
- */
 function axisFormatter(top: number): (v: number) => string {
   const div = top >= 1_000_000 ? 1_000_000 : top >= 1_000 ? 1_000 : 1;
   const suffix = div === 1_000_000 ? "M" : div === 1_000 ? "K" : "";
   return (v) => {
     if (v === 0) return "0";
     const scaled = v / div;
-    // one decimal only where the step actually needs it
     const text = Math.abs(scaled) < 10 && !Number.isInteger(scaled)
       ? scaled.toFixed(1)
       : String(Math.round(scaled));
@@ -67,7 +56,7 @@ function axisFormatter(top: number): (v: number) => string {
   };
 }
 
-const SERIES_VAR = (slot: number) => `var(--series-${((slot - 1) % 12) + 1})`;
+const SERIES_VAR = (slot: number) => `var(--series-${((slot - 1) % 14) + 1})`;
 
 function Tooltip({
   x,
@@ -82,13 +71,6 @@ function Tooltip({
 }) {
   const flip = x > containerWidth - 132;
   return (
-    /*
-     * Sized like a label, not like a card. It was 128px wide before its content
-     * had a say, at card padding and card radius, so reading one figure off a
-     * chart put a small panel over the very bars you were pointing at. Now the
-     * padding, the radius and the type are all one tier down, and the width is
-     * whatever the widest row actually needs.
-     */
     <div
       className="glass-strong pointer-events-none absolute z-10 w-max rounded-chip px-2.5 py-1.5 text-[11px] leading-tight"
       style={{
@@ -128,12 +110,11 @@ function TooltipRow({
   );
 }
 
-/** compact window selector for time-series charts (6M / 1Y / 2Y / 3Y) */
 export const CHART_PERIODS = [
-  { months: 6, label: "6M" },
-  { months: 12, label: "1Y" },
-  { months: 24, label: "2Y" },
-  { months: 36, label: "3Y" },
+  { months: 6, label: "period.6m" },
+  { months: 12, label: "period.1y" },
+  { months: 24, label: "period.2y" },
+  { months: 36, label: "period.3y" },
 ] as const;
 
 export function PeriodTabs({
@@ -145,30 +126,19 @@ export function PeriodTabs({
   onChange: (months: number) => void;
   options?: ReadonlyArray<{ months: number; label: string }>;
 }) {
-  // the same control as every other single choice in the app, in its compact
-  // size — it used to light the active tab up in place, with none of the
-  // travelling thumb or focus ring the rest of the radiogroups have
+  const { t, tk } = useT();
   return (
     <SegmentedControl
       size="sm"
-      label="Period"
+      label={t("chart.period")}
       className="shrink-0"
-      options={options.map((p) => ({ value: String(p.months), label: p.label }))}
+      options={options.map((p) => ({ value: String(p.months), label: tk(p.label, p.label) }))}
       value={String(value)}
       onChange={(months) => onChange(Number(months))}
     />
   );
 }
 
-/**
- * The numbers behind a chart, for anything that cannot see it.
- *
- * The breakdowns on this page double as their own text equivalent — every slice
- * is a labelled row with its amount. The two time-series charts had no such
- * thing: a `role="img"` and one `aria-label` saying the chart existed, and not
- * a single value anywhere. Visually hidden, so it costs the sighted layout
- * nothing.
- */
 function ChartTable({
   caption,
   columns,
@@ -230,8 +200,6 @@ export function ChartLegend({
   );
 }
 
-/* ---------- sparkline (stat tiles) ---------- */
-
 type Tone = "income" | "expense" | "accent";
 
 const TONE_COLOR: Record<Tone, string> = {
@@ -267,12 +235,6 @@ export function Sparkline({
   );
 }
 
-/**
- * The trend behind a stat tile: a filled area pinned to the bottom edge,
- * measured to whatever width the tile ends up with. It sits under the number
- * instead of beside it, so a long value can never be squeezed into two lines
- * by the chart next to it.
- */
 function SparkArea({ values, tone, height }: { values: number[]; tone: Tone; height: number }) {
   const [ref, width] = useMeasure<HTMLDivElement>();
   const color = TONE_COLOR[tone];
@@ -282,11 +244,6 @@ function SparkArea({ values, tone, height }: { values: number[]; tone: Tone; hei
   const px = (i: number) => (i / (values.length - 1)) * width;
   const py = (v: number) => height - 3 - ((v - min) / span) * (height - 8);
   const line = values.map((v, i) => `${i === 0 ? "M" : "L"}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join("");
-  // Per instance, not per tone: four tiles in a row all defined `spark-accent`,
-  // and `url(#spark-accent)` resolves to whichever one is first in the document
-  // — unmount that tile and the rest lose their fill. Stripped of punctuation
-  // because React's generated ids carry delimiters that do not belong in a URL
-  // fragment.
   const id = `spark-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <div ref={ref} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0" style={{ height }}>
@@ -316,11 +273,6 @@ function SparkArea({ values, tone, height }: { values: number[]; tone: Tone; hei
   );
 }
 
-/**
- * One headline figure. Every tile has the same skeleton — label, value, one
- * line of context — so a row of them scans as a row rather than four
- * differently-shaped cards.
- */
 export function StatTile({
   label,
   value,
@@ -336,49 +288,26 @@ export function StatTile({
   label: string;
   value: string;
   delta?: { text: string; good: boolean };
-  /** neutral context line, under the delta when there is one */
   hint?: string;
   spark?: number[];
-  /**
-   * What the figure is made of, when it has no history to draw. "Now" on the
-   * forecast is one number with no past — the app has no month-by-month record
-   * of net worth — so it sat flat and empty beside two tiles carrying curves.
-   * Its composition is the thing it does know.
-   */
   bar?: Array<{
     label: string;
     value: number;
-    /** a chart slot, for segments that are categories */
     colorSlot?: number;
-    /** an explicit colour, for segments that are verdicts (gains vs losses) */
     color?: string;
   }>;
   tone?: "income" | "expense";
-  /** where the figure comes from; makes the tile a link */
   href?: string;
-  /** sits in the tile's top-right corner, which was otherwise dead space */
   icon?: IconName;
   className?: string;
 }) {
   const sparkTone: Tone = tone ?? "accent";
   const barTotal = bar ? bar.reduce((sum, seg) => sum + Math.max(0, seg.value), 0) : 0;
-  // the lift is reserved for tiles that lead somewhere — every tile used to
-  // rise under the pointer and then do nothing when clicked
-  // the sparkline is a 40px band pinned to the bottom edge, so the text block
-  // has to end above it — a second context line used to be drawn straight
-  // across the curve
-  // `p-4 sm:p-5` is GlassCard's padding. A tile sitting in the same grid row
-  // as a card was inset 4px less on every side, so nothing lined up across the
-  // row — labels, figures and the tops of the two blocks all sat off by 4.
   const shell = `glass ${href ? "glass-hover" : ""} relative flex min-h-31 flex-col overflow-hidden rounded-card p-4 sm:p-5 ${
     spark && spark.length > 1 ? "pb-11" : ""
   } ${className}`;
   const body = (
     <>
-      {/* Left of the label, exactly like GlassCard's header. It was pinned
-          top-right, which meant a page of cards and tiles had its icons down
-          two different edges — the tiles' discs floated in the corner while
-          every card's sat against its title. */}
       {icon ? (
         <div className="flex items-center gap-2.5">
           <IconDisc
@@ -399,8 +328,6 @@ export function StatTile({
       >
         {value}
       </p>
-      {/* both lines when both are given: the hint used to be dropped whenever a
-          delta existed, which is exactly when a tile has most to explain */}
       {delta && (
         <p
           className={`relative z-1 mt-1.5 text-xs font-medium ${
@@ -455,10 +382,8 @@ export function StatTile({
   );
 }
 
-/* ---------- monthly income vs expense columns ---------- */
-
 export interface MonthPoint {
-  month: string; // yyyy-mm
+  month: string;
   income: number;
   expense: number;
 }
@@ -472,6 +397,7 @@ export function MonthlyColumns({
   currency: Currency;
   height?: number;
 }) {
+  const { t } = useT();
   const [ref, width] = useMeasure<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
 
@@ -485,28 +411,21 @@ export function MonthlyColumns({
   const y = (v: number) => pad.top + plotH - (v / top) * plotH;
 
   const band = data.length > 0 ? plotW / data.length : 0;
-  // A pair of bars plus the gap between them has to fit inside one band. The
-  // old floor of 6px did not care whether it did: at three years on a phone the
-  // band is ~7px wide, so two 6px bars and a 2px gap — 14px of ink — were being
-  // drawn in it, and every month bled into its neighbours until the chart was a
-  // solid slab. Bars can be hairlines if that is what the window costs.
   const barW = Math.max(1.5, Math.min(24, (band - Math.min(4, band * 0.25)) / 2 - 1));
   const barGap = Math.min(2, band * 0.06);
-  // thin x-axis labels on narrow containers (mobile) so short month names
-  // don't collide; always keep the most recent (rightmost) month labelled
   const labelStep = Math.max(1, Math.ceil(28 / Math.max(1, band)));
 
   return (
     <div>
       <ChartLegend
         items={[
-          { label: "Income", color: "var(--income)" },
-          { label: "Expenses", color: "var(--expense)" },
+          { label: t("tx.stat.income"), color: "var(--income)" },
+          { label: t("tx.stat.expenses"), color: "var(--expense)" },
         ]}
       />
       <ChartTable
-        caption="Income and expenses by month"
-        columns={["Month", "Income", "Expenses", "Net"]}
+        caption={t("chart.columns.caption")}
+        columns={[t("chart.month"), t("tx.stat.income"), t("tx.stat.expenses"), t("tx.stat.net")]}
         rows={data.map((d) => ({
           key: d.month,
           cells: [
@@ -519,8 +438,6 @@ export function MonthlyColumns({
       />
       <div ref={ref} className="relative mt-2" style={{ height }}>
         {width > 0 && (
-          // the table above carries the data; the drawing is decoration to
-          // anything that cannot see it, and announcing both reads it twice
           <svg width={width} height={height} aria-hidden>
             {ticks.map((t) => (
               <g key={t}>
@@ -552,7 +469,6 @@ export function MonthlyColumns({
                 </g>
               );
             })}
-            {/* hover hit bands */}
             {data.map((d, i) => (
               <rect
                 key={d.month}
@@ -570,9 +486,9 @@ export function MonthlyColumns({
         {hover !== null && data[hover] && (
           <Tooltip x={pad.left + band * hover + band / 2} y={pad.top} containerWidth={width}>
             <p className="mb-0.5 font-semibold text-ink-1">{formatMonthShort(data[hover].month)}</p>
-            <TooltipRow color="var(--income)" label="Income" value={formatMoney(data[hover].income, currency, { compact: true })} />
-            <TooltipRow color="var(--expense)" label="Expenses" value={formatMoney(data[hover].expense, currency, { compact: true })} />
-            <TooltipRow label="Net" value={formatMoney(data[hover].income - data[hover].expense, currency, { compact: true, sign: true })} />
+            <TooltipRow color="var(--income)" label={t("tx.stat.income")} value={formatMoney(data[hover].income, currency, { compact: true })} />
+            <TooltipRow color="var(--expense)" label={t("tx.stat.expenses")} value={formatMoney(data[hover].expense, currency, { compact: true })} />
+            <TooltipRow label={t("tx.stat.net")} value={formatMoney(data[hover].income - data[hover].expense, currency, { compact: true, sign: true })} />
           </Tooltip>
         )}
       </div>
@@ -593,12 +509,11 @@ function Column({
   y0: number;
   y1: number;
   color: string;
-  /** position in the series — staggers the grow-in so the row sweeps */
   index?: number;
 }) {
   const h = Math.max(0, y0 - y1);
   if (h < 0.5) return null;
-  const r = Math.min(4, w / 2, h); // rounded data-end, square baseline
+  const r = Math.min(4, w / 2, h);
   return (
     <path
       d={`M${x},${y0} L${x},${y1 + r} Q${x},${y1} ${x + r},${y1} L${x + w - r},${y1} Q${x + w},${y1} ${x + w},${y1 + r} L${x + w},${y0} Z`}
@@ -609,21 +524,14 @@ function Column({
   );
 }
 
-/* ---------- category breakdown: stacked bar + rows (table view) ---------- */
-
 export interface BreakdownSegment {
   id: string;
   label: string;
-  /** the emoji the user picked for this category or account, or an app icon */
   icon: ReactNode;
   value: number;
   colorSlot: number;
 }
 
-/**
- * Donut for a small part-to-whole (≤ 6 slices) with a hero total in the hole.
- * A legend keys the slices, so identity never rests on colour alone.
- */
 export function Donut({
   segments,
   currency,
@@ -632,59 +540,33 @@ export function Donut({
   stacked = false,
   legend = true,
 }: {
-  segments: BreakdownSegment[]; // sorted desc
+  segments: BreakdownSegment[];
   currency: Currency;
   centerLabel?: string;
-  /** fixed diameter; omit in `stacked` mode to auto-fit the container width */
   size?: number;
-  /** legend below the ring (fills a narrow column) instead of beside it */
   stacked?: boolean;
-  /** off when the card already lists the same slices in more detail */
   legend?: boolean;
 }) {
+  const { t } = useT();
   const [hover, setHover] = useState<string | null>(null);
   const [ref, width] = useMeasure<HTMLDivElement>();
   const total = segments.reduce((s, seg) => s + seg.value, 0);
 
-  /*
-   * Ring beside the legend only when there *is* a legend and the card is
-   * actually wide enough for both.
-   *
-   * `width` is this container's own width rather than a `sm:` breakpoint,
-   * because the viewport says nothing about the column the donut landed in: in
-   * a two-up grid on a 1152px laptop the legend was squeezed to about 70px and
-   * every category read as "C 69%".
-   *
-   * The `legend` half of the condition is the part that was missing. The one
-   * caller that turns the legend off — currency allocation, which lists its own
-   * slices underneath in more detail — still got the two-column layout, with
-   * nothing to put in the second column: a 190px ring pinned to the left edge
-   * of a 460px card and a quarter of the card left blank. It only showed up
-   * from `xl`, where that card is finally wide enough to trip the threshold.
-   */
   const sideBySide = legend && !stacked && width >= 360;
-  // Sharing the row, the ring takes a share of the width and leaves the rest to
-  // the legend; alone, it grows into the card. A fixed 220px ring in a 420px
-  // column left the labels 70px and stacking it instead made the card twice as
-  // tall as the chart beside it — scaling is what keeps both honest.
   const dim =
     size ??
     (sideBySide
-      ? // 36%: the legend needs room for a real name plus a percentage and an
-        // amount — at 42% "Subscriptions" still came out as "Subscripti…"
+      ?
         Math.max(140, Math.min(220, Math.round(width * 0.36)))
       : width > 0
-        ? // Alone in the card the ring is the card, so it takes most of the
-          // width rather than a token 224px cap left over from the days when a
-          // legend was stacked underneath it. 78% keeps a margin either side;
-          // the ceiling stops it turning into a dinner plate on a wide desktop.
+        ?
           Math.max(150, Math.min(288, Math.round(width * 0.78)))
         : 168);
   const stroke = Math.max(14, dim * 0.14);
   const radius = (dim - stroke) / 2;
   const cx = dim / 2;
   const c = 2 * Math.PI * radius;
-  const gap = segments.length > 1 ? 3 : 0; // px of surface between slices
+  const gap = segments.length > 1 ? 3 : 0;
 
   const arcs: Array<{ seg: BreakdownSegment; dashArray: string; dashOffset: number }> = [];
   let offset = 0;
@@ -699,8 +581,6 @@ export function Donut({
 
   const focused = hover ? segments.find((s) => s.id === hover) : null;
 
-  // one deterministic hit-test on the whole ring: which slice does the
-  // pointer's angle fall into? per-circle handlers flicker at slice seams.
   const hitTest = (e: React.PointerEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const scale = dim / rect.width;
@@ -711,7 +591,6 @@ export function Donut({
       setHover(null);
       return;
     }
-    // angle measured clockwise from the top (matches the -90° arc rotation)
     let ang = Math.atan2(x, -y);
     if (ang < 0) ang += 2 * Math.PI;
     const frac = ang / (2 * Math.PI);
@@ -741,21 +620,15 @@ export function Donut({
         height={dim}
         viewBox={`0 0 ${dim} ${dim}`}
         role="img"
-        aria-label={`${centerLabel ?? "Breakdown"} donut`}
+        aria-label={t("chart.donut", { label: centerLabel ?? t("chart.breakdown") })}
         className="shrink-0"
         onPointerMove={hitTest}
         onPointerLeave={() => setHover(null)}
-        // `pan-y`, not `none`: the ring is a full-width, ~200px-tall block in a
-        // phone-width card, and `none` made it a dead zone you could not scroll
-        // the page through. Vertical panning still belongs to the page;
-        // everything else is still ours to hit-test.
         style={{ touchAction: "pan-y" }}
       >
         <circle cx={cx} cy={cx} r={radius} fill="none" stroke="var(--fill-ghost)" strokeWidth={stroke} />
         <g className="chart-ring">
         {arcs.map(({ seg, dashArray, dashOffset }) => {
-          // `dimmed`, not `dim`: the diameter above is called that, and a slice
-          // that shadowed it here was one edit away from a silent geometry bug
           const dimmed = hover !== null && hover !== seg.id;
           return (
             <circle
@@ -777,7 +650,7 @@ export function Donut({
         })}
         </g>
         <text x={cx} y={cx - dim * 0.035} textAnchor="middle" fontSize={Math.max(10, dim * 0.062)} fontWeight={650} fill="var(--ink-3)" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          {focused ? focused.label : (centerLabel ?? "Total")}
+          {focused ? focused.label : (centerLabel ?? t("forecast.col.total"))}
         </text>
         <text x={cx} y={cx + dim * 0.082} textAnchor="middle" fontSize={Math.max(15, dim * 0.098)} fontWeight={700} className="tnum" fill="var(--ink-1)">
           {formatMoney(focused ? focused.value : total, currency, { compact: true })}
@@ -819,12 +692,12 @@ export function CategoryBreakdown({
   maxSegments = 6,
   rowExtra,
 }: {
-  segments: BreakdownSegment[]; // sorted desc
+  segments: BreakdownSegment[];
   currency: Currency;
   maxSegments?: number;
-  /** optional extra row content (e.g. budget meter), by segment id */
   rowExtra?: (id: string) => ReactNode;
 }) {
+  const { t } = useT();
   const total = segments.reduce((s, seg) => s + seg.value, 0);
   const shown = segments.slice(0, maxSegments);
   const rest = segments.slice(maxSegments);
@@ -835,9 +708,7 @@ export function CategoryBreakdown({
           ...shown,
           {
             id: "__other",
-            label: "Other",
-            // the app's own row, so it takes the app's own icon rather than a
-            // cardboard box that reads as one more category you chose
+            label: t("chart.other"),
             icon: <Icon name="ellipsis" size={14} strokeWidth={3} />,
             value: restValue,
             colorSlot: 0,
@@ -849,7 +720,7 @@ export function CategoryBreakdown({
 
   return (
     <div>
-      <div className="flex h-3.5 w-full gap-0.5 overflow-hidden rounded-full" role="img" aria-label="Expense breakdown by category">
+      <div className="flex h-3.5 w-full gap-0.5 overflow-hidden rounded-full" role="img" aria-label={t("chart.breakdownAria")}>
         {bars.map((seg, i) => (
           <div
             key={seg.id}
@@ -887,19 +758,17 @@ export function CategoryBreakdown({
   );
 }
 
-/* ---------- projection: stacked area ---------- */
-
 export interface AreaPoint {
-  label: string; // x label (month key)
-  a: number; // bottom series (savings)
-  b: number; // top series (investments)
+  label: string;
+  a: number;
+  b: number;
 }
 
 export function StackedArea({
   points,
   currency,
-  seriesA = "Savings",
-  seriesB = "Investments",
+  seriesA,
+  seriesB,
   height = 260,
   xTickEvery = 12,
   xTickFormat = (label: string) => label.slice(0, 4),
@@ -912,6 +781,9 @@ export function StackedArea({
   xTickEvery?: number;
   xTickFormat?: (label: string) => string;
 }) {
+  const { t } = useT();
+  const labelA = seriesA ?? t("forecast.savings");
+  const labelB = seriesB ?? t("balance.investments");
   const [ref, width] = useMeasure<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
 
@@ -946,8 +818,6 @@ export function StackedArea({
 
   if (n < 2) return null;
 
-  // a label needs ~38px of its own; on a narrow card that means showing every
-  // second or third tick rather than letting years run into each other
   const perLabel = plotW / Math.max(1, (n - 1) / xTickEvery);
   const labelEvery = xTickEvery * Math.max(1, Math.ceil(38 / Math.max(1, perLabel)));
 
@@ -955,13 +825,13 @@ export function StackedArea({
     <div>
       <ChartLegend
         items={[
-          { label: seriesA, color: "var(--series-1)" },
-          { label: seriesB, color: "var(--series-2)" },
+          { label: labelA, color: "var(--series-1)" },
+          { label: labelB, color: "var(--series-2)" },
         ]}
       />
       <ChartTable
-        caption={`${seriesA} and ${seriesB} over time`}
-        columns={["Point", seriesA, seriesB, "Total"]}
+        caption={t("chart.area.caption", { a: labelA, b: labelB })}
+        columns={[t("chart.point"), labelA, labelB, t("forecast.col.total")]}
         rows={points.map((p) => ({
           key: p.label,
           cells: [
@@ -1033,9 +903,9 @@ export function StackedArea({
         {hover !== null && points[hover] && (
           <Tooltip x={x(hover)} y={pad.top} containerWidth={width}>
             <p className="mb-0.5 font-semibold text-ink-1">{points[hover].label}</p>
-            <TooltipRow color="var(--series-2)" label={seriesB} value={formatMoney(points[hover].b, currency, { compact: true })} />
-            <TooltipRow color="var(--series-1)" label={seriesA} value={formatMoney(points[hover].a, currency, { compact: true })} />
-            <TooltipRow label="Total" value={formatMoney(points[hover].a + points[hover].b, currency, { compact: true })} />
+            <TooltipRow color="var(--series-2)" label={labelB} value={formatMoney(points[hover].b, currency, { compact: true })} />
+            <TooltipRow color="var(--series-1)" label={labelA} value={formatMoney(points[hover].a, currency, { compact: true })} />
+            <TooltipRow label={t("forecast.col.total")} value={formatMoney(points[hover].a + points[hover].b, currency, { compact: true })} />
           </Tooltip>
         )}
       </div>

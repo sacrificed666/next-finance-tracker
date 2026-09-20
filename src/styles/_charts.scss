@@ -1,0 +1,79 @@
+@use "lib" as *;
+
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.chart-bar {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: bar-grow 560ms $ease both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+@keyframes line-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.chart-line {
+  stroke-dasharray: var(--len, 1200);
+  stroke-dashoffset: var(--len, 1200);
+  animation: line-draw 1s $ease both;
+}
+
+@keyframes chart-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.chart-fade {
+  animation: chart-fade 700ms ease both;
+  animation-delay: var(--delay, 320ms);
+}
+
+@keyframes slice-in {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.bar-slice {
+  transform-origin: left;
+  animation: slice-in 520ms $ease both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+@keyframes ring-sweep {
+  from {
+    transform: rotate(-90deg) scale(0.94);
+    opacity: 0;
+  }
+
+  to {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+.chart-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ring-sweep 700ms $ease both;
+}
