@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, IconDisc, Money, type IconName } from "@/components/ui";
 import { useDialogStack, useFocusTrap, useScrollLock } from "@/components/ui/overlay";
@@ -105,12 +105,16 @@ function Palette({
   const router = useRouter();
   const pathname = usePathname();
   const panelRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
   const { settings } = state;
 
   useScrollLock(true);
   useFocusTrap(true, panelRef);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
   const isTopmost = useDialogStack(true);
 
   const go = (href: string) => () => {
@@ -151,8 +155,7 @@ function Palette({
     })),
   ];
 
-  // The field keeps up with typing; the results follow in the background.
-  const q = useDeferredValue(query).trim();
+  const q = query.trim();
   if (q !== "") {
     const balances = accountBalances(state);
     for (const acc of state.savings) {
@@ -278,7 +281,7 @@ function Palette({
         <div className="flex items-center gap-2.5 border-b border-hairline px-4 py-3">
           <Icon name="search" size={18} className="shrink-0 text-ink-3" />
           <input
-            autoFocus
+            ref={inputRef}
             value={query}
             onChange={(e) => onQuery(e.target.value)}
             placeholder={t("palette.placeholder")}
