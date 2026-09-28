@@ -562,6 +562,30 @@ export function syncSchedule(state: AppState, kind: ScheduleKind, id: string): A
   });
 }
 
+/**
+ * Stops recurring rules from `month` on: the entries they planned for this month and
+ * later go, past months keep theirs, and real payments matched to them stay. A rule
+ * that only began this month is removed altogether.
+ */
+export function stopSchedules(state: AppState, ids: string[], month: string): AppState {
+  const lastMonth = addMonths(month, -1);
+  let next = state;
+  for (const id of ids) {
+    const rule = next.recurring.find((r) => r.id === id);
+    if (!rule) continue;
+    if (rule.startMonth > lastMonth) {
+      next = deleteSchedule(next, "recurring", id);
+      continue;
+    }
+    next = syncSchedule(
+      { ...next, recurring: next.recurring.map((r) => (r.id === id ? { ...r, endMonth: lastMonth } : r)) },
+      "recurring",
+      id,
+    );
+  }
+  return next;
+}
+
 function lastPostedMonth(
   transactions: Transaction[],
   kind: ScheduleKind,

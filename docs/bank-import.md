@@ -47,9 +47,36 @@ countdown and carries on by itself. One request covers at most 31 days and an ho
 3. **Cashback** in the description for income.
 4. "Other expenses" / "Other income".
 
+## ⇄ Transfers, cash and jars
+
+`prepareImport` in `lib/finance/import.ts` reshapes what the bank sent before the preview shows it:
+
+- **Your own transfers.** Money moved between two linked accounts arrives as two lines — out of one,
+  into the other. Lines on different accounts within 15 minutes whose amounts match (directly, or
+  through Monobank's operation amount when you buy currency) become one transfer. Unpaired, they
+  would count as spending and income both.
+- **Cash machines.** A withdrawal (MCC 6010/6011) becomes a transfer to your cash account in that
+  currency, when you keep one.
+- **Jars.** Monobank jars ("банки") are listed next to the cards and can be linked to an account of
+  their own, so money put aside moves between accounts instead of looking spent.
+
+## 🗓️ Planned payments
+
+A recurring payment or a subscription posts a planned entry every month. When an imported operation
+is its real version — same direction and currency, within five days of the planned date, within 5%
+of the amount (20% when the description names the subscription, for a price that changed) — it
+**takes that entry's place**: the same entry, now with the real amount, day and bank id. Nothing is
+counted twice, and editing or deleting the schedule later keeps the real payments.
+
+Rules that post exactly their category's budget every month (Food 7,000 with a Food budget of
+7,000) are plans rather than payments: they pin the budget at 100% and hide what was spent. The
+recurring card points them out and offers to stop them from this month on — bills such as rent or
+utilities start unticked, since posting those at their budget is usually the real payment.
+
 ## 🔁 Duplicates
 
 Every imported entry keeps an `externalId` — `mono:<id>` for Monobank, `csv:<fingerprint>` for a
-statement row. A candidate is marked as already booked when its `externalId` is in the ledger, or
-when an entry with the same date, type, amount and note exists (for entries typed by hand before the
-import). Duplicates start unticked, so loading the same week twice adds nothing.
+statement row; a paired transfer also remembers its other line. A candidate is marked as already
+booked when its id is in the ledger, or when an entry with the same date, type, amount and note
+exists (for entries typed by hand before the import — planned postings do not count, they are
+matched instead). Duplicates start unticked, so loading the same week twice adds nothing.

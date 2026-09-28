@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { AddButton, Card, EmptyState, FilterPills, Icon, IconDisc, SummaryPanel, Unit } from "@/components/ui";
+import { AddButton, Button, Callout, Card, EmptyState, FilterPills, Icon, IconDisc, SummaryPanel, Unit } from "@/components/ui";
 import { addMonths, currentMonth, dateInMonth, formatDateShort, formatMonth, todayISO } from "@/lib/date";
+import { looksLikeFixedPayment, plansBookedAsSpending } from "@/lib/finance/categories";
 import { convert, formatMoney } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { sortItems } from "@/lib/state/listing";
 import { useStore } from "@/lib/state/store";
 import type { RecurringRule } from "@/lib/types";
 import { RecurringSheet } from "./recurring-sheet";
+import { StopPlansSheet } from "./stop-plans-sheet";
 import { recurringStatus, StatusBadge, type RecurringView } from "./shared";
 
 /** Rules that post an entry every month between a start and an optional end. */
@@ -17,6 +19,7 @@ export function RecurringCard({ month }: { month: string }) {
   const { t, tp, category } = useT();
   const [view, setView] = useState<RecurringView>("now");
   const [target, setTarget] = useState<RecurringRule | "new" | null>(null);
+  const [stopping, setStopping] = useState(false);
   const catById = new Map(state.categories.map((c) => [c.id, c]));
 
   const counts: Record<Exclude<RecurringView, "all">, number> = { now: 0, upcoming: 0, ended: 0 };
@@ -48,6 +51,10 @@ export function RecurringCard({ month }: { month: string }) {
   // When reading the current month: the next day a rule posts.
   const today = todayISO();
   const nowMonth = currentMonth();
+  // Rules that book a whole budget as spent every month. Bills among them are usually real
+  // payments; the hint speaks up only when something looks like a spending plan.
+  const booked = month === nowMonth ? plansBookedAsSpending(state, nowMonth) : [];
+  const plans = booked.filter((r) => !looksLikeFixedPayment(catById.get(r.categoryId)));
   const nextPost =
     month === nowMonth
       ? active
@@ -98,6 +105,18 @@ export function RecurringCard({ month }: { month: string }) {
               </p>
             )}
           </SummaryPanel>
+          {plans.length > 0 && (
+            <Callout tone="tip" title={tp("tx.rec.plans.title", plans.length)} className="mb-3">
+              <p>
+                {t("tx.rec.plans.body", {
+                  names: plans.map((r) => category(catById.get(r.categoryId))).join(", "),
+                })}
+              </p>
+              <Button size="sm" variant="ghost" className="mt-2" onClick={() => setStopping(true)}>
+                {t("tx.rec.plans.choose")}
+              </Button>
+            </Callout>
+          )}
           {state.recurring.length > 1 && (
             <div className="mb-3">
               <FilterPills label={t("tx.rec.view")} options={viewOptions} value={view} onChange={setView} />
@@ -155,6 +174,7 @@ export function RecurringCard({ month }: { month: string }) {
       )}
 
       {target && <RecurringSheet key={target === "new" ? "new" : target.id} target={target} onClose={() => setTarget(null)} />}
+      {stopping && <StopPlansSheet rules={booked} onClose={() => setStopping(false)} />}
     </Card>
   );
 }
