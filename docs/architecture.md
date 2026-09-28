@@ -12,7 +12,7 @@ browser ──▶ proxy.ts (session gate)
              ├▶ app/(auth)/login, register ─▶ features/auth/sign-in-page.tsx
              └▶ app/(app)/layout.tsx ─▶ components/layout/app-shell.tsx  (sidebar, tab bar, toasts)
                  └▶ page.tsx ─▶ features/<page>/<page>-page.tsx   "use client"
-                                 ├── useStore()  ──▶ GET/PUT /api/state ──▶ lib/server/repo.ts ──▶ PostgreSQL
+                                 ├── useStore()  ──▶ GET/PATCH /api/state ─▶ lib/server/repo.ts ──▶ PostgreSQL
                                  ├── lib/finance/*   (pure functions: maths, tax, achievements)
                                  └── lib/i18n        (dictionary + Intl formatting)
 ```
@@ -89,7 +89,8 @@ matcher: [
 | Concern | How it works |
 | --- | --- |
 | Load | `GET /api/state` on mount, except on `/login` and `/register` |
-| Save | Debounced `PUT /api/state` with an `ETag`; the server rejects stale writes |
+| Save | Half a second after the last edit, `PATCH /api/state` sends only what changed since the last save (`lib/state/changes.ts`): the records added or edited and the keys removed |
+| Other devices | Changes merge on the server record by record. A save built on an older revision comes back `stale`, and the tab pulls the newer state and lays its unsent edits over it; returning to the tab checks the revision with `HEAD /api/state` and does the same |
 | Undo | `update(fn, toastMessage)` keeps the previous state for one-click undo |
 | Background writes | `quietUpdate(fn)` saves without touching the undo slot — the daily net worth snapshot uses it |
 | Save status | `useSyncStatus()` — `sync` and the pending undo live in their own context, so a save or a toast closing re-renders only the sync dot and the toast, not every card |
@@ -111,7 +112,9 @@ sheet of its own.
 
 | Route | Purpose |
 | --- | --- |
-| `GET/PUT /api/state` | The whole `AppState`; `PUT` validates, normalises and persists it |
+| `GET /api/state` | The whole `AppState`, with its revision as the `ETag` |
+| `PATCH /api/state` | `{ base, changes }`: merges the changes into the stored state, normalises the result and writes only the records whose content changed |
+| `HEAD /api/state` | The revision alone, for the "did another device save?" check |
 | `POST /api/auth/register` | Owner-only registration (`OWNER_EMAIL`) |
 | `GET/POST /api/auth/[...nextauth]` | Auth.js handlers (credentials + optional Google) |
 | `GET/PATCH /api/profile` | Display name, avatar URL, about note |

@@ -15,6 +15,7 @@ import { DEFAULT_STATE, THEME_KEY } from "@/lib/constants";
 import { addMonths, currentMonth, dateInMonth, monthOf } from "@/lib/date";
 import { dueMonths } from "@/lib/finance/finmath";
 import { normalizeState } from "@/lib/state/backup";
+import { applyChanges, diffState, isEmptyChange } from "@/lib/state/changes";
 import type { AppState, RecurringRule, Subscription, Transaction } from "@/lib/types";
 
 export const PLANNING_HORIZON_MONTHS = 12;
@@ -28,7 +29,7 @@ export function uid(): string {
   return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export type SyncStatus = "idle" | "saving" | "error" | "conflict";
+export type SyncStatus = "idle" | "saving" | "error";
 
 interface StoreApi {
   state: AppState;
@@ -57,6 +58,12 @@ const StoreContext = createContext<StoreApi | null>(null);
 const SyncContext = createContext<SyncApi>({ sync: "idle", undoLabel: null });
 
 const STATE_ENDPOINT = "/api/state";
+/** How long a failed save waits before it tries again. */
+const RETRY_MS = 5_000;
+
+function unquote(etag: string | null): string {
+  return (etag ?? "").replace(/^W\//, "").replace(/^"(.*)"$/, "$1");
+}
 
 async function fetchState(): Promise<{ state: AppState; revision: string }> {
   const res = await fetch(STATE_ENDPOINT, { cache: "no-store" });
@@ -71,7 +78,7 @@ async function fetchState(): Promise<{ state: AppState; revision: string }> {
     const detail = await res.json().catch(() => null);
     throw new Error(detail?.error ?? `Server responded with ${res.status}`);
   }
-  const revision = res.headers.get("etag") ?? "";
+  const revision = unquote(res.headers.get("etag"));
   return { state: normalizeState(await res.json()), revision };
 }
 
@@ -82,14 +89,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [sync, setSync] = useState<SyncStatus>("idle");
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dirty = useRef(false);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedFromServer = useRef(false);
   const revision = useRef("");
-  const conflicted = useRef(false);
   const stateRef = useRef(state);
+  // The state as the server holds it, as far as this tab knows: a save sends only the
+  // difference between this and what is on screen.
+  const savedRef = useRef<AppState | null>(null);
   const savingRef = useRef(false);
   const resaveRef = useRef(false);
   const undoRef = useRef<AppState | null>(null);
+  const saveRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     stateRef.current = state;
@@ -97,13 +107,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(async () => {
     try {
-      conflicted.current = false;
       const loaded = await fetchState();
-      const materialized = materializeRecurring(loaded.state);
       loadedFromServer.current = true;
       revision.current = loaded.revision;
-      dirty.current = materialized !== loaded.state;
-      setState(materialized);
+      savedRef.current = loaded.state;
+      // Postings the schedules add on load are new records; the first save sends them.
+      setState(materializeRecurring(loaded.state));
       setLoadError(null);
       setSync("idle");
     } catch (err) {
@@ -113,6 +122,66 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /** Pulls what another device saved and lays this tab's unsent edits over it. */
+  const catchUp = useCallback(async () => {
+    const fresh = await fetchState();
+    const pending = savedRef.current ? diffState(savedRef.current, stateRef.current) : {};
+    savedRef.current = fresh.state;
+    revision.current = fresh.revision;
+    const next = materializeRecurring(applyChanges(fresh.state, pending));
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
+  const save = useCallback(async (): Promise<void> => {
+    if (savingRef.current) {
+      resaveRef.current = true;
+      return;
+    }
+    const base = savedRef.current;
+    if (!base) return;
+    const target = stateRef.current;
+    const changes = diffState(base, target);
+    if (isEmptyChange(changes)) {
+      setSync("idle");
+      return;
+    }
+    savingRef.current = true;
+    setSync("saving");
+    let failed = false;
+    try {
+      const res = await fetch(STATE_ENDPOINT, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ base: revision.current, changes }),
+      });
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+      const result = (await res.json()) as { revision: string; stale: boolean };
+      revision.current = result.revision;
+      savedRef.current = target;
+      // Another device saved in between: its records merged on the server, so fetch them.
+      if (result.stale) await catchUp();
+    } catch {
+      failed = true;
+    } finally {
+      savingRef.current = false;
+    }
+    if (failed) {
+      setSync("error");
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      retryTimer.current = setTimeout(() => void saveRef.current(), RETRY_MS);
+      return;
+    }
+    const more = resaveRef.current || stateRef.current !== target;
+    resaveRef.current = false;
+    if (more) void saveRef.current();
+    else setSync("idle");
+  }, [catchUp]);
+
+  useEffect(() => {
+    saveRef.current = save;
+  }, [save]);
+
   const pathname = usePathname();
   const onAuthRoute = AUTH_PATHS.has(pathname);
 
@@ -121,51 +190,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void load();
   }, [load, onAuthRoute]);
 
+  // Every change is saved half a second after the last one; an unchanged state sends nothing.
   useEffect(() => {
-    if (!hydrated || !loadedFromServer.current || !dirty.current) return;
-    if (conflicted.current) return;
-    const save = async (): Promise<void> => {
-      if (savingRef.current) {
-        resaveRef.current = true;
-        return;
-      }
-      savingRef.current = true;
-      setSync("saving");
-      try {
-        const res = await fetch(STATE_ENDPOINT, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "If-Match": revision.current,
-          },
-          body: JSON.stringify(stateRef.current),
-        });
-        if (res.status === 409) {
-          conflicted.current = true;
-          resaveRef.current = false;
-          setSync("conflict");
-          return;
-        }
-        if (!res.ok) throw new Error(`Server responded with ${res.status}`);
-        revision.current = res.headers.get("etag") ?? revision.current;
-        setSync("idle");
-      } catch {
-        setSync("error");
-        resaveRef.current = true;
-      } finally {
-        savingRef.current = false;
-        if (resaveRef.current) {
-          resaveRef.current = false;
-          void save();
-        }
-      }
-    };
+    if (!hydrated || !loadedFromServer.current) return;
     if (persistTimer.current) clearTimeout(persistTimer.current);
-    persistTimer.current = setTimeout(() => void save(), 500);
+    persistTimer.current = setTimeout(() => void saveRef.current(), 500);
     return () => {
       if (persistTimer.current) clearTimeout(persistTimer.current);
     };
   }, [state, hydrated]);
+
+  // Coming back to the tab: if another device saved meanwhile, pull its changes.
+  useEffect(() => {
+    if (!hydrated) return;
+    const check = async () => {
+      if (document.visibilityState !== "visible" || savingRef.current || !savedRef.current) return;
+      try {
+        const res = await fetch(STATE_ENDPOINT, { method: "HEAD", cache: "no-store" });
+        const latest = res.ok ? unquote(res.headers.get("etag")) : "";
+        if (latest && latest !== revision.current) await catchUp();
+      } catch {
+        // Offline: the next save or focus tries again.
+      }
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+    };
+  }, [hydrated, catchUp]);
 
   useEffect(() => {
     if (sync === "idle") return;
@@ -194,8 +248,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [theme, hydrated]);
 
   const markPending = useCallback((undoLabel: string | undefined, from: AppState) => {
-    dirty.current = true;
-    if (loadedFromServer.current && !conflicted.current) setSync("saving");
+    if (loadedFromServer.current) setSync("saving");
     undoRef.current = undoLabel ? from : null;
     setUndoLabel(undoLabel ?? null);
   }, []);
@@ -209,8 +262,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const quietUpdate = useCallback((fn: (s: AppState) => AppState) => {
-    dirty.current = true;
-    if (loadedFromServer.current && !conflicted.current) setSync("saving");
+    if (loadedFromServer.current) setSync("saving");
     setState((s) => fn(s));
   }, []);
 

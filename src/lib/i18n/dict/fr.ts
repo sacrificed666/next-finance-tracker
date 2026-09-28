@@ -60,10 +60,8 @@ export const fr: Dictionary = {
   "nav.settings.short": "Plus",
   "nav.signOut": "Se déconnecter",
 
-  "sync.outOfDate": "Obsolète",
   "sync.notSaved": "Non enregistré",
   "sync.saving": "Enregistrement",
-  "sync.conflictTitle": "Un autre onglet a enregistré après le chargement de celui-ci — rechargez pour vous mettre à jour",
   "sync.errorTitle": "Échec de l’enregistrement — vos dernières modifications n’existent que dans cet onglet",
   "sync.savingTitle": "Enregistrement…",
 
@@ -72,8 +70,6 @@ export const fr: Dictionary = {
   "theme.light.short": "Clair",
   "theme.dark.short": "Sombre",
 
-  "shell.conflictToast": "Enregistré ailleurs — cet onglet n’est plus à jour",
-  "shell.reload": "Recharger",
   "shell.dbTitle": "Base de données indisponible",
   "shell.dbBody": "L’application n’a pas pu charger vos données depuis Postgres. Vérifiez que le conteneur de la base tourne et que {env} est défini.",
   "shell.tryAgain": "Réessayer",

@@ -60,10 +60,8 @@ export const es: Dictionary = {
   "nav.settings.short": "Más",
   "nav.signOut": "Cerrar sesión",
 
-  "sync.outOfDate": "Desactualizado",
   "sync.notSaved": "Sin guardar",
   "sync.saving": "Guardando",
-  "sync.conflictTitle": "Otra pestaña guardó después de cargar esta — recarga para ponerte al día",
   "sync.errorTitle": "No se pudo guardar — tus últimos cambios solo están en esta pestaña",
   "sync.savingTitle": "Guardando…",
 
@@ -72,8 +70,6 @@ export const es: Dictionary = {
   "theme.light.short": "Claro",
   "theme.dark.short": "Oscuro",
 
-  "shell.conflictToast": "Guardado en otro lugar — esta pestaña está desactualizada",
-  "shell.reload": "Recargar",
   "shell.dbTitle": "Base de datos no disponible",
   "shell.dbBody": "La aplicación no pudo cargar tus datos desde Postgres. Comprueba que el contenedor de la base de datos está en marcha y que {env} está definido.",
   "shell.tryAgain": "Reintentar",

@@ -60,10 +60,8 @@ export const it: Dictionary = {
   "nav.settings.short": "Altro",
   "nav.signOut": "Esci",
 
-  "sync.outOfDate": "Non aggiornato",
   "sync.notSaved": "Non salvato",
   "sync.saving": "Salvataggio",
-  "sync.conflictTitle": "Un’altra scheda ha salvato dopo il caricamento di questa — ricarica per aggiornarti",
   "sync.errorTitle": "Salvataggio non riuscito — le ultime modifiche sono solo in questa scheda",
   "sync.savingTitle": "Salvataggio…",
 
@@ -72,8 +70,6 @@ export const it: Dictionary = {
   "theme.light.short": "Chiaro",
   "theme.dark.short": "Scuro",
 
-  "shell.conflictToast": "Salvato altrove — questa scheda non è aggiornata",
-  "shell.reload": "Ricarica",
   "shell.dbTitle": "Database non disponibile",
   "shell.dbBody": "L’app non è riuscita a caricare i dati da Postgres. Verifica che il container del database sia in esecuzione e che {env} sia impostato.",
   "shell.tryAgain": "Riprova",

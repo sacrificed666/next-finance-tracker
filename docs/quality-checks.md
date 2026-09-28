@@ -41,8 +41,9 @@ What is worth automating:
 | Forms | Open the sheets (account, investment, subscription) and confirm the fields for each kind |
 
 > [!IMPORTANT]
-> Intercept `PUT /api/state` in any browser test and answer `200` locally. The development database
-> holds real data — a test must never write to it.
+> Intercept every non-GET `/api/*` request (saves are `PATCH /api/state`) in any browser test and
+> answer `200` locally. The development database holds real data — a test must never write to it.
+> A test that has to write runs against a throwaway database restored from a backup.
 
 > [!WARNING]
 > Sign in through the credentials endpoint and reuse the session cookie. Do not disable the

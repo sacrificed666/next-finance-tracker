@@ -60,10 +60,8 @@ export const de: Dictionary = {
   "nav.settings.short": "Mehr",
   "nav.signOut": "Abmelden",
 
-  "sync.outOfDate": "Veraltet",
   "sync.notSaved": "Nicht gespeichert",
   "sync.saving": "Speichert",
-  "sync.conflictTitle": "Ein anderer Tab hat nach dem Laden dieses Tabs gespeichert — neu laden, um aufzuholen",
   "sync.errorTitle": "Speichern fehlgeschlagen — deine letzten Änderungen gibt es nur in diesem Tab",
   "sync.savingTitle": "Wird gespeichert…",
 
@@ -72,8 +70,6 @@ export const de: Dictionary = {
   "theme.light.short": "Hell",
   "theme.dark.short": "Dunkel",
 
-  "shell.conflictToast": "Anderswo gespeichert — dieser Tab ist veraltet",
-  "shell.reload": "Neu laden",
   "shell.dbTitle": "Datenbank nicht erreichbar",
   "shell.dbBody": "Die App konnte deine Daten nicht aus Postgres laden. Prüfe, ob der Datenbank-Container läuft und {env} gesetzt ist.",
   "shell.tryAgain": "Erneut versuchen",

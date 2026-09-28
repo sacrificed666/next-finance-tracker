@@ -58,10 +58,8 @@ export const en = {
   "nav.settings.short": "More",
   "nav.signOut": "Sign out",
 
-  "sync.outOfDate": "Out of date",
   "sync.notSaved": "Not saved",
   "sync.saving": "Saving",
-  "sync.conflictTitle": "Another tab saved after this one loaded — reload to catch up",
   "sync.errorTitle": "Could not save — your last changes are only in this tab",
   "sync.savingTitle": "Saving…",
 
@@ -70,8 +68,6 @@ export const en = {
   "theme.light.short": "Light",
   "theme.dark.short": "Dark",
 
-  "shell.conflictToast": "Saved elsewhere — this tab is out of date",
-  "shell.reload": "Reload",
   "shell.dbTitle": "Database unavailable",
   "shell.dbBody": "The app could not load your data from Postgres. Check that the database container is running and that {env} is set.",
   "shell.tryAgain": "Try again",

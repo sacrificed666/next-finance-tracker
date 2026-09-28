@@ -13,9 +13,8 @@ import { Sidebar } from "./sidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { hydrated, loadError, reload, undo, dismissUndo } = useStore();
-  const { sync, undoLabel } = useSyncStatus();
+  const { undoLabel } = useSyncStatus();
   const { t } = useT();
-  const conflict = sync === "conflict";
   const pathname = usePathname();
 
   // Entrance animations (cards rising, charts growing) play on the first screen only;
@@ -50,21 +49,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </div>
       <TabBar />
-      {conflict ? (
-        <Toast
-          message={t("shell.conflictToast")}
-          actionLabel={t("shell.reload")}
-          onAction={() => void reload()}
-        />
-      ) : (
-        undoLabel && (
-          <Toast
-            message={undoLabel}
-            actionLabel={t("common.undo")}
-            onAction={undo}
-            onDismiss={dismissUndo}
-          />
-        )
+      {undoLabel && (
+        <Toast message={undoLabel} actionLabel={t("common.undo")} onAction={undo} onDismiss={dismissUndo} />
       )}
     </>
   );

@@ -200,8 +200,8 @@ PostgreSQL 18, Node 26, Auth.js 5. Charts are hand-rolled SVG — no chart libra
 ## 📌 Good to know
 
 - **One owner.** Registration is limited to `OWNER_EMAIL`; every API route requires a session.
-- **Writes are guarded.** The store never saves a state it did not first read, `PUT /api/state`
-  refuses stale writes with a `409`, and destructive actions carry an undo.
+- **Saves are small and merge.** An edit sends only the records it changed; two devices editing
+  different records both keep their work, and destructive actions carry an undo.
 - **Exchange rates are current, not historical.** Old amounts in other currencies are converted at
   today's rate; cross-currency transfers are the exception and store what actually arrived.
 - **Back up before migrating or resetting**: Settings → Data → Export, or `make <env>-db-backup`.

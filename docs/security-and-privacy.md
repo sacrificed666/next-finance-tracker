@@ -63,10 +63,11 @@ database therefore shows which rows exist, but not a single amount, name or note
 Every API route calls `auth()` and answers `401` without a session, including `/api/inzhur`. The
 middleware additionally gates pages, so an unauthenticated browser never renders app HTML.
 
-`PUT /api/state` also:
+`PATCH /api/state` also:
 
-- normalises and validates the payload before writing (`normalizeState`);
-- compares an `ETag` to reject stale writes from another tab or device.
+- accepts only a change set of known collections (`parseChanges`), then merges it into the stored
+  state and runs the result through `normalizeState` before anything is written;
+- writes only the records whose content changed, so one edit re-seals one record.
 
 ## 🌐 What leaves your machine
 

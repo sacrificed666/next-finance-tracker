@@ -83,7 +83,7 @@ Columns that hold structured values use `jsonb`: `transactions.breakdown`, `tran
 `src/lib/state/backup.ts` exposes `normalizeState(raw)`, which is called:
 
 - when the server loads rows (`lib/server/repo.ts`),
-- when the server accepts a `PUT`,
+- when the server merges a save (`PATCH /api/state`),
 - when the client receives state,
 - when a JSON backup is imported.
 

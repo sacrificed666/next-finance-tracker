@@ -64,10 +64,8 @@ export const pl: Dictionary = {
   "nav.settings.short": "Więcej",
   "nav.signOut": "Wyloguj",
 
-  "sync.outOfDate": "Nieaktualne",
   "sync.notSaved": "Nie zapisano",
   "sync.saving": "Zapisywanie",
-  "sync.conflictTitle": "Inna karta zapisała zmiany po wczytaniu tej — odśwież, aby nadrobić",
   "sync.errorTitle": "Nie udało się zapisać — ostatnie zmiany są tylko w tej karcie",
   "sync.savingTitle": "Zapisywanie…",
 
@@ -76,8 +74,6 @@ export const pl: Dictionary = {
   "theme.light.short": "Jasny",
   "theme.dark.short": "Ciemny",
 
-  "shell.conflictToast": "Zapisano gdzie indziej — ta karta jest nieaktualna",
-  "shell.reload": "Odśwież",
   "shell.dbTitle": "Baza danych niedostępna",
   "shell.dbBody": "Aplikacja nie mogła wczytać danych z Postgres. Sprawdź, czy kontener bazy działa i czy ustawiono {env}.",
   "shell.tryAgain": "Spróbuj ponownie",

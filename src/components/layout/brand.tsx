@@ -8,19 +8,14 @@ import { useStore, useSyncStatus, type SyncStatus } from "@/lib/state/store";
 import { useT } from "@/lib/i18n";
 
 export function syncTitle(sync: SyncStatus, t: ReturnType<typeof useT>["t"]): string {
-  return sync === "conflict"
-    ? t("sync.conflictTitle")
-    : sync === "error"
-      ? t("sync.errorTitle")
-      : t("sync.savingTitle");
+  return sync === "error" ? t("sync.errorTitle") : t("sync.savingTitle");
 }
 
 export function SyncDot({ sync }: { sync: SyncStatus }) {
   const { t } = useT();
   if (sync === "idle") return null;
-  const bad = sync === "error" || sync === "conflict";
-  const label =
-    sync === "conflict" ? t("sync.outOfDate") : sync === "error" ? t("sync.notSaved") : t("sync.saving");
+  const bad = sync === "error";
+  const label = bad ? t("sync.notSaved") : t("sync.saving");
   const title = syncTitle(sync, t);
   return (
     <span
@@ -43,7 +38,7 @@ export function Brand() {
   const { sync } = useSyncStatus();
   const { t } = useT();
   const worth = netWorth(state, todayISO());
-  const bad = sync === "error" || sync === "conflict";
+  const bad = sync === "error";
   return (
     <Link
       href="/"

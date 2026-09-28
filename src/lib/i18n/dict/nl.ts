@@ -60,10 +60,8 @@ export const nl: Dictionary = {
   "nav.settings.short": "Meer",
   "nav.signOut": "Uitloggen",
 
-  "sync.outOfDate": "Verouderd",
   "sync.notSaved": "Niet opgeslagen",
   "sync.saving": "Opslaan",
-  "sync.conflictTitle": "Een ander tabblad heeft opgeslagen nadat dit tabblad was geladen — herlaad om bij te werken",
   "sync.errorTitle": "Opslaan mislukt — je laatste wijzigingen staan alleen in dit tabblad",
   "sync.savingTitle": "Opslaan…",
 
@@ -72,8 +70,6 @@ export const nl: Dictionary = {
   "theme.light.short": "Licht",
   "theme.dark.short": "Donker",
 
-  "shell.conflictToast": "Elders opgeslagen — dit tabblad is verouderd",
-  "shell.reload": "Herladen",
   "shell.dbTitle": "Database niet beschikbaar",
   "shell.dbBody": "De app kon je gegevens niet uit Postgres laden. Controleer of de databasecontainer draait en of {env} is ingesteld.",
   "shell.tryAgain": "Opnieuw proberen",

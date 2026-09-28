@@ -3,6 +3,15 @@ import "server-only";
 import type { PoolClient } from "pg";
 import { ensureSchema, getPool, withTransaction } from "@/lib/server/db";
 import { normalizeState } from "@/lib/state/backup";
+import {
+  applyChanges,
+  COLLECTION_NAMES,
+  keyOf,
+  stableJson,
+  type CollectionName,
+  type ItemOf,
+  type StateChanges,
+} from "@/lib/state/changes";
 import { pruneAttachments } from "@/lib/server/attachments";
 import { openRecord, sealRecord } from "@/lib/server/secrets";
 import type {
@@ -24,15 +33,10 @@ export interface StateEnvelope {
   revision: string;
 }
 
-export class StateConflictError extends Error {
-  constructor() {
-    super(
-      "This dataset changed somewhere else — another tab or device saved after you loaded it. Reload to pick up the newer version.",
-    );
-    this.name = "StateConflictError";
-  }
-}
+/** A pool or a client inside a transaction: anything that can run a query. */
+type Queryable = { query: PoolClient["query"] };
 
+/** The revision a save is based on; FOR UPDATE queues concurrent saves of one user behind each other. */
 async function currentRevision(client: PoolClient, userId: string): Promise<string> {
   const res = await client.query(
     `SELECT to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS revision
@@ -42,10 +46,24 @@ async function currentRevision(client: PoolClient, userId: string): Promise<stri
   return res.rows[0]?.revision ?? "";
 }
 
+/** The revision alone, for a cheap "has anything changed since?" check. */
+export async function stateRevision(userId: string): Promise<string> {
+  await ensureSchema();
+  const res = await getPool().query(
+    `SELECT to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS revision FROM settings WHERE user_id = $1`,
+    [userId],
+  );
+  return res.rows[0]?.revision ?? "";
+}
+
 export const UNCLAIMED_USER_ID = "00000000-0000-0000-0000-000000000000";
 
+// Data from before accounts existed is claimed once per server start, not on every request.
+const claimed = new Set<string>();
+
 export async function claimOrphanData(userId: string): Promise<number> {
-  if (userId === UNCLAIMED_USER_ID) return 0;
+  if (userId === UNCLAIMED_USER_ID || claimed.has(userId)) return 0;
+  claimed.add(userId);
   return withTransaction(async (client) => {
     let moved = 0;
     for (const table of [
@@ -69,7 +87,14 @@ export async function loadState(
   fallbackLocale: Locale = "en",
 ): Promise<StateEnvelope> {
   await ensureSchema();
-  const pool = getPool();
+  return loadStateWith(getPool(), userId, fallbackLocale);
+}
+
+async function loadStateWith(
+  pool: Queryable,
+  userId: string,
+  fallbackLocale: Locale,
+): Promise<StateEnvelope> {
 
   const sealedRows = (table: string) => pool.query(`SELECT secret FROM ${table} WHERE user_id = $1`, [userId]);
   const [rules, receivables, wishlist, plannedEvents, snapshots] = await Promise.all(
@@ -348,139 +373,101 @@ async function upsertSealed<T>(
   );
 }
 
-/** Writes a whole sealed-only table: every item upserted, anything no longer in the list removed. */
-async function saveSealed<T>(
-  client: PoolClient,
-  userId: string,
-  table: (typeof SEALED_TABLES)[number],
-  items: T[],
-  keyOf: (item: T) => string,
-): Promise<void> {
-  await upsertSealed(client, userId, table, "id", keyOf, items);
-  await deleteMissing(client, userId, table, "id", items.map(keyOf));
-}
+/** Where each collection is stored, and the column its key lives in. */
+const TABLES: { [K in CollectionName]: { table: string; key: string } } = {
+  transactions: { table: "transactions", key: "id" },
+  categories: { table: "categories", key: "id" },
+  recurring: { table: "recurring_rules", key: "id" },
+  subscriptions: { table: "subscriptions", key: "id" },
+  savings: { table: "savings_accounts", key: "id" },
+  investments: { table: "investments", key: "id" },
+  budgets: { table: "budgets", key: "category_id" },
+  debts: { table: "debts", key: "id" },
+  rules: { table: "category_rules", key: "id" },
+  receivables: { table: "receivables", key: "id" },
+  wishlist: { table: "wishlist_items", key: "id" },
+  plannedEvents: { table: "planned_events", key: "id" },
+  snapshots: { table: "net_worth_snapshots", key: "id" },
+};
 
-async function deleteMissing(
-  client: PoolClient,
-  userId: string,
-  table: string,
-  keyColumn: string,
-  keys: string[],
-): Promise<void> {
-  await client.query(
-    `DELETE FROM ${table} WHERE user_id = $1 AND ${keyColumn} <> ALL($2::text[])`,
-    [userId, keys],
+/** Rows written before records were sealed; the first save after that re-seals everything. */
+async function hasUnsealedRows(client: PoolClient, userId: string): Promise<boolean> {
+  const tables = [...new Set(Object.values(TABLES).map((t) => t.table))];
+  const res = await client.query(
+    `SELECT ${tables.map((t) => `EXISTS (SELECT 1 FROM ${t} WHERE user_id = $1 AND secret IS NULL)`).join(" OR ")} AS unsealed`,
+    [userId],
   );
+  return res.rows[0]?.unsealed === true;
 }
 
-export async function saveState(
+/** Writes the records whose content differs between two states; returns how many rows it touched. */
+async function writeDifferences(
+  client: PoolClient,
   userId: string,
-  incoming: AppState,
-  expectedRevision: string | null = null,
-): Promise<string> {
-  await ensureSchema();
-  const state = normalizeState(incoming);
+  before: AppState,
+  after: AppState,
+  everything: boolean,
+): Promise<number> {
+  let touched = 0;
+  for (const name of COLLECTION_NAMES) {
+    const { table, key } = TABLES[name];
+    const k = (item: ItemOf<typeof name>) => keyOf(name, item);
+    const previous = new Map((before[name] as ItemOf<typeof name>[]).map((item) => [k(item), stableJson(item)]));
+    const items = after[name] as ItemOf<typeof name>[];
+    const changed = everything ? items : items.filter((item) => previous.get(k(item)) !== stableJson(item));
+    const kept = new Set(items.map(k));
+    const removed = [...previous.keys()].filter((id) => !kept.has(id));
+    if (changed.length > 0) await upsertSealed(client, userId, table, key, k, changed);
+    if (removed.length > 0) {
+      await client.query(`DELETE FROM ${table} WHERE user_id = $1 AND ${key} = ANY($2::text[])`, [userId, removed]);
+    }
+    touched += changed.length + removed.length;
+  }
+  return touched;
+}
 
+export interface SaveResult {
+  revision: string;
+  /** Someone else saved after this client last loaded: it should pull their changes. */
+  stale: boolean;
+  /** Rows actually written. */
+  written: number;
+}
+
+/**
+ * Applies a client's changes to the stored state. The merged state goes through
+ * normalizeState like any other input, and only records whose content differs from
+ * what is stored are written — an edit touches one row, not the whole database.
+ *
+ * Saves no longer fail on an out-of-date base: changes from two devices merge record
+ * by record, and `stale` tells the client to pull what the other device wrote.
+ */
+export async function saveChanges(
+  userId: string,
+  changes: StateChanges,
+  baseRevision: string | null,
+  fallbackLocale: Locale = "en",
+): Promise<SaveResult> {
+  await ensureSchema();
   return withTransaction(async (client) => {
-    if (expectedRevision !== null) {
-      const stored = await currentRevision(client, userId);
-      if (stored !== "" && stored !== expectedRevision) throw new StateConflictError();
+    const stored = await currentRevision(client, userId);
+    const { state: current } = await loadStateWith(client, userId, fallbackLocale);
+    const merged = normalizeState(applyChanges(current, changes));
+    const reseal = stored !== "" && (await hasUnsealedRows(client, userId));
+
+    let written = await writeDifferences(client, userId, current, merged, reseal);
+    const settingsChanged = stableJson(current.settings) !== stableJson(merged.settings);
+    const stale = baseRevision !== null && stored !== "" && baseRevision !== stored;
+
+    if (written === 0 && !settingsChanged && stored !== "") {
+      return { revision: stored, stale, written };
+    }
+    if (merged.transactions !== current.transactions) {
+      await pruneAttachments(client, userId, merged.transactions.flatMap((tx) => tx.attachmentIds ?? []));
     }
 
-    await upsertSealed(
-      client,
-      userId,
-      "categories",
-      "id",
-      (c: Category) => c.id,
-      state.categories,
-    );
-
-    await upsertSealed(
-      client,
-      userId,
-      "recurring_rules",
-      "id",
-      (r: RecurringRule) => r.id,
-      state.recurring,
-    );
-
-    await upsertSealed(
-      client,
-      userId,
-      "subscriptions",
-      "id",
-      (sub: Subscription) => sub.id,
-      state.subscriptions,
-    );
-
-    await upsertSealed(
-      client,
-      userId,
-      "transactions",
-      "id",
-      (t: Transaction) => t.id,
-      state.transactions,
-    );
-
-    await upsertSealed(
-      client,
-      userId,
-      "savings_accounts",
-      "id",
-      (a: SavingsAccount) => a.id,
-      state.savings,
-    );
-
-    await upsertSealed(
-      client,
-      userId,
-      "investments",
-      "id",
-      (i: Investment) => i.id,
-      state.investments,
-    );
-
-    await upsertSealed(
-      client,
-      userId,
-      "budgets",
-      "category_id",
-      (b: Budget) => b.categoryId,
-      state.budgets,
-    );
-
-    await upsertSealed(
-      client,
-      userId,
-      "debts",
-      "id",
-      (d: Debt) => d.id,
-      state.debts,
-    );
-
-    await deleteMissing(client, userId, "transactions", "id", state.transactions.map((t) => t.id));
-    await deleteMissing(client, userId, "recurring_rules", "id", state.recurring.map((r) => r.id));
-    await deleteMissing(client, userId, "subscriptions", "id", state.subscriptions.map((s) => s.id));
-    await deleteMissing(client, userId, "savings_accounts", "id", state.savings.map((a) => a.id));
-    await deleteMissing(client, userId, "investments", "id", state.investments.map((i) => i.id));
-    await deleteMissing(client, userId, "budgets", "category_id", state.budgets.map((b) => b.categoryId));
-    await deleteMissing(client, userId, "debts", "id", state.debts.map((d) => d.id));
-    await deleteMissing(client, userId, "categories", "id", state.categories.map((c) => c.id));
-
-    await saveSealed(client, userId, "category_rules", state.rules, (r) => r.id);
-    await saveSealed(client, userId, "receivables", state.receivables, (r) => r.id);
-    await saveSealed(client, userId, "wishlist_items", state.wishlist, (w) => w.id);
-    await saveSealed(client, userId, "planned_events", state.plannedEvents, (e) => e.id);
-    await saveSealed(client, userId, "net_worth_snapshots", state.snapshots, (snap) => snap.date);
-    await pruneAttachments(
-      client,
-      userId,
-      state.transactions.flatMap((tx) => tx.attachmentIds ?? []),
-    );
-
-    const st = state.settings;
-    const written = await client.query(
+    const st = merged.settings;
+    const res = await client.query(
       `INSERT INTO settings (user_id, locale, secret, base_currency, theme, tax_rate_pct, tax_fixed_uah,
                              tax_regime, tax_vat_pct, tax_label, rate_usd, rate_eur, rates_meta,
                              rates_updated_at, rates_source, updated_at)
@@ -504,6 +491,7 @@ export async function saveState(
        RETURNING to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS revision`,
       [userId, st.locale, sealRecord(st)],
     );
-    return written.rows[0].revision as string;
+    written += 1;
+    return { revision: res.rows[0].revision as string, stale, written };
   });
 }

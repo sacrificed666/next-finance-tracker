@@ -64,10 +64,8 @@ export const uk: Dictionary = {
   "nav.settings.short": "Ще",
   "nav.signOut": "Вийти",
 
-  "sync.outOfDate": "Застаріло",
   "sync.notSaved": "Не збережено",
   "sync.saving": "Збереження",
-  "sync.conflictTitle": "Інша вкладка зберегла зміни після завантаження цієї — оновіть сторінку",
   "sync.errorTitle": "Не вдалося зберегти — останні зміни є лише в цій вкладці",
   "sync.savingTitle": "Збереження…",
 
@@ -76,8 +74,6 @@ export const uk: Dictionary = {
   "theme.light.short": "Світла",
   "theme.dark.short": "Темна",
 
-  "shell.conflictToast": "Збережено в іншому місці — ця вкладка застаріла",
-  "shell.reload": "Оновити",
   "shell.dbTitle": "База даних недоступна",
   "shell.dbBody": "Застосунок не зміг завантажити дані з Postgres. Перевірте, що контейнер бази запущено і змінна {env} задана.",
   "shell.tryAgain": "Спробувати ще",
