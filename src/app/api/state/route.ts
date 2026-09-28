@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { auth, OWNER_EMAIL } from "@/lib/auth";
+import { auth, OWNER_EMAIL } from "@/lib/server/auth";
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from "@/lib/i18n/locales";
-import { claimOrphanData, loadState, saveState, StateConflictError } from "@/lib/repo";
+import { claimOrphanData, loadState, saveState, StateConflictError } from "@/lib/server/repo";
 
 export const dynamic = "force-dynamic";
 

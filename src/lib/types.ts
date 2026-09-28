@@ -65,6 +65,14 @@ export interface Transaction {
   subscriptionId?: string;
   breakdown?: IncomeBreakdown;
   tax?: IncomeTax;
+  /** Free labels across categories: a trip, a project, a gift. */
+  tags?: string[];
+  /** Where an imported entry came from ("mono:<id>", "csv:<hash>") — keeps a re-import from duplicating it. */
+  externalId?: string;
+  /** Pieces of one purchase split across categories share this id. */
+  splitId?: string;
+  /** Photos of the receipt, stored separately and fetched on demand. */
+  attachmentIds?: string[];
 }
 
 export interface RecurringRule {
@@ -165,6 +173,68 @@ export interface Budget {
   categoryId: string;
   limit: number;
   currency: Currency;
+  /** Unspent money from last month is added to this month's limit. */
+  rollover?: boolean;
+}
+
+/** "Description contains … → category", applied to imported entries. */
+export interface CategoryRule {
+  id: string;
+  match: string;
+  categoryId: string;
+  type: "income" | "expense";
+}
+
+/** Money someone owes you. Counts towards net worth until it is repaid. */
+export interface Receivable {
+  id: string;
+  name: string;
+  icon: string;
+  amount: number;
+  currency: Currency;
+  /** When the money was lent. */
+  date: string;
+  dueDate?: string;
+  /** How much has come back so far. */
+  repaid: number;
+  note?: string;
+}
+
+export type WishPriority = "high" | "normal" | "low";
+
+/** Something you want to buy. */
+export interface WishItem {
+  id: string;
+  name: string;
+  icon: string;
+  price: number;
+  currency: Currency;
+  priority: WishPriority;
+  url?: string;
+  note?: string;
+  /** The month you plan to buy it; it then shows up in the forecast. */
+  month?: string;
+  createdAt: string;
+}
+
+/** A one-off amount the forecast adds in a given month: a purchase (negative) or a windfall. */
+export interface PlannedEvent {
+  id: string;
+  month: string;
+  amount: number;
+  currency: Currency;
+  note: string;
+}
+
+/** Net worth on one day, in hryvnias, with the rates of that day so it converts faithfully later. */
+export interface NetWorthSnapshot {
+  date: string;
+  total: number;
+  savings: number;
+  investments: number;
+  debts: number;
+  receivables: number;
+  rates: { USD: number; EUR: number };
 }
 
 export type DebtKind = "mortgage" | "loan" | "card";
@@ -198,6 +268,10 @@ export interface Settings {
   };
   ratesUpdatedAt?: string;
   ratesSource: RatesSource;
+  /** Tax obligations marked as paid: obligation id → the day it was paid. */
+  taxPaid?: Record<string, string>;
+  /** Monobank account id → the app account its operations are booked to. */
+  bankLinks?: Record<string, string>;
 }
 
 export interface AppState {
@@ -210,5 +284,10 @@ export interface AppState {
   investments: Investment[];
   budgets: Budget[];
   debts: Debt[];
+  rules: CategoryRule[];
+  receivables: Receivable[];
+  wishlist: WishItem[];
+  plannedEvents: PlannedEvent[];
+  snapshots: NetWorthSnapshot[];
   settings: Settings;
 }

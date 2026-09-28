@@ -1,3 +1,6 @@
+// The two glows used to drift. They hold still now: a full-screen layer moving every
+// frame kept the GPU busy even on an idle page and made every blurred bar or panel
+// above it re-render with it, which is what made scrolling on phones stutter.
 .app-backdrop {
   position: fixed;
   inset: 0;
@@ -34,8 +37,6 @@
       transparent 88%
     );
     opacity: 0.55;
-    animation: drift-a 52s ease-in-out infinite alternate;
-    will-change: transform;
   }
 
   &::after {
@@ -62,26 +63,4 @@
     transparent 86%
   );
   opacity: 0.5;
-  animation: drift-b 71s ease-in-out infinite alternate;
-  will-change: transform;
-}
-
-@keyframes drift-a {
-  from {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-
-  to {
-    transform: translate3d(10vmax, 8vmax, 0) scale(1.15);
-  }
-}
-
-@keyframes drift-b {
-  from {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-
-  to {
-    transform: translate3d(-9vmax, -7vmax, 0) scale(1.12);
-  }
 }

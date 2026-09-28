@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { auth } from "@/lib/server/auth";
 import {
   avatarProblem,
   birthdayProblem,
@@ -7,7 +7,7 @@ import {
   saveProfile,
   websiteProblem,
   type ProfilePatch,
-} from "@/lib/profile";
+} from "@/lib/server/profile";
 
 export const dynamic = "force-dynamic";
 

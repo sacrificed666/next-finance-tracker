@@ -1,4 +1,4 @@
-import { DEFAULT_TAX_PROFILE } from "./tax";
+import { DEFAULT_TAX_PROFILE } from "@/lib/finance/tax";
 import type {
   AccountKind,
   AppState,
@@ -143,6 +143,9 @@ export const CORE_CURRENCIES: Currency[] = ["UAH", "USD", "EUR"];
 
 export const FOREIGN_CURRENCIES = ["USD", "EUR"] as const;
 
+/** Fixed chart slots, so each currency keeps its colour on every screen. */
+export const CURRENCY_SLOT: Record<Currency, number> = { UAH: 1, USD: 2, EUR: 3 };
+
 export const CURRENCY_SYMBOL: Record<Currency, string> = {
   UAH: "₴",
   USD: "$",
@@ -272,6 +275,11 @@ export const DEFAULT_STATE: AppState = {
   investments: [],
   budgets: [],
   debts: [],
+  rules: [],
+  receivables: [],
+  wishlist: [],
+  plannedEvents: [],
+  snapshots: [],
   settings: {
     baseCurrency: "UAH",
     theme: "dark",

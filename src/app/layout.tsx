@@ -1,12 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { cookies, headers } from "next/headers";
 import { Montserrat } from "next/font/google";
 import "./globals.scss";
-import { StoreProvider } from "@/lib/store";
-import { AppShell } from "@/components/shell";
-import { LocaleBridge } from "@/components/locale-bridge";
-import { isLocale, LOCALE_COOKIE, matchLocale } from "@/lib/i18n/locales";
-import type { Locale } from "@/lib/types";
+import { StoreProvider } from "@/lib/state/store";
+import { LocaleBridge } from "@/components/providers/locale-bridge";
+import { ServiceWorker } from "@/components/providers/service-worker";
+import { requestLocale, serverMessages } from "@/lib/i18n/server";
 
 const montserrat = Montserrat({
   subsets: ["latin", "latin-ext", "cyrillic"],
@@ -21,6 +19,9 @@ export const metadata: Metadata = {
   },
   description:
     "Personal finance dashboard: income, expenses, subscriptions, investments and a wealth forecast across ₴ / $ / €.",
+  applicationName: "Finances",
+  // Installed on an iPhone: its own window, named like the app, with the normal status bar.
+  appleWebApp: { capable: true, title: "Finances", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
@@ -30,14 +31,8 @@ export const viewport: Viewport = {
   ],
 };
 
+// Applied before first paint so a reload never flashes the wrong theme.
 const themeScript = `(function(){try{var p=localStorage.getItem("finance-tracker:theme")||"dark";var d=p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-theme",d?"dark":"light")}catch(e){}})()`;
-
-async function requestLocale(): Promise<Locale> {
-  const stored = (await cookies()).get(LOCALE_COOKIE)?.value;
-  if (isLocale(stored)) return stored;
-  const accept = (await headers()).get("accept-language") ?? "";
-  return matchLocale(accept.split(",").map((part) => part.split(";")[0].trim()));
-}
 
 export default async function RootLayout({
   children,
@@ -56,9 +51,12 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="flex min-h-svh flex-col font-sans">
+        <div className="app-backdrop" aria-hidden />
+        <div className="orb-b" aria-hidden />
+        <ServiceWorker />
         <StoreProvider>
-          <LocaleBridge initialLocale={locale}>
-            <AppShell>{children}</AppShell>
+          <LocaleBridge initialLocale={locale} initialMessages={serverMessages(locale)}>
+            {children}
           </LocaleBridge>
         </StoreProvider>
       </body>

@@ -18,7 +18,7 @@ is only used to project forward.
 
 ## 🔁 Return types are automatic
 
-`src/lib/returns.ts` decides which options a kind supports, so nothing nonsensical can be selected:
+`src/lib/finance/returns.ts` decides which options a kind supports, so nothing nonsensical can be selected:
 
 ```ts
 deposit → interest    choices: capitalise | pay out      (+ frequency when capitalised)
@@ -60,12 +60,12 @@ requires a session.
 
 > [!WARNING]
 > Scraping depends on the published page structure. If Inzhur redesigns, the route falls back to the
-> built-in defaults in `src/lib/inzhur.ts` — update the regular expressions in
+> built-in defaults in `src/lib/market/inzhur.ts` — update the regular expressions in
 > `src/app/api/inzhur/route.ts` when that happens.
 
 ## 🔮 Projections
 
-`projectedSnapshot(inv, today, date)` looks one year ahead on the Balance page:
+`projectedSnapshot(inv, today, date)` looks one year ahead on the Investments page:
 
 - accrual kinds grow by their contracted rate and schedule;
 - market kinds with reinvested returns compound the expected rate;

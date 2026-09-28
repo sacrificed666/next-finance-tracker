@@ -14,7 +14,7 @@
   transform-box: fill-box;
   transform-origin: bottom;
   animation: bar-grow 560ms $ease both;
-  animation-delay: calc(var(--i, 0) * 45ms);
+  animation-delay: calc(min(var(--i, 0), 12) * 45ms);
 }
 
 @keyframes line-draw {
@@ -57,7 +57,7 @@
 .bar-slice {
   transform-origin: left;
   animation: slice-in 520ms $ease both;
-  animation-delay: calc(var(--i, 0) * 70ms);
+  animation-delay: calc(min(var(--i, 0), 8) * 70ms);
 }
 
 @keyframes ring-sweep {
@@ -76,4 +76,22 @@
   transform-box: fill-box;
   transform-origin: center;
   animation: ring-sweep 700ms $ease both;
+}
+
+// Charts grow in once, on the first screen after a load. After that (other pages,
+// another month) they are drawn at once: SVG animations repaint on the main thread
+// for about a second, and replaying them on every visit read as lag.
+:root[data-entered] {
+  .chart-bar,
+  .bar-slice,
+  .chart-ring,
+  .chart-fade {
+    animation: none;
+  }
+
+  .chart-line {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
 }

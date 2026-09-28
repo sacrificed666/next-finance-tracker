@@ -5,20 +5,12 @@ import { DEFAULT_CATEGORY_NAMES, LEGACY_DEFAULT_NAMES } from "../constants";
 import type { Category, Locale } from "../types";
 import { setFormatLocale } from "./format";
 import { LOCALE_COOKIE, localeInfo } from "./locales";
-import { en, type MessageKey } from "./dict/en";
-import { uk } from "./dict/uk";
-import { de } from "./dict/de";
-import { fr } from "./dict/fr";
-import { es } from "./dict/es";
-import { pl } from "./dict/pl";
-import { it } from "./dict/it";
-import { nl } from "./dict/nl";
+import type { MessageKey } from "./dict/en";
+import type { Messages } from "./messages";
 
 export type { MessageKey } from "./dict/en";
 
 type Vars = Record<string, string | number>;
-
-const DICTS: Record<Locale, Record<string, string>> = { en, uk, de, fr, es, pl, it, nl };
 
 export interface I18n {
   locale: Locale;
@@ -37,21 +29,18 @@ function interpolate(template: string, vars?: Vars): string {
   );
 }
 
-function makeI18n(locale: Locale): I18n {
-  const dict = DICTS[locale] ?? en;
+// Every dictionary carries every English key (the Dictionary type enforces it), so a
+// lookup needs no English fallback — and English need not ride along in the bundle.
+function makeI18n(locale: Locale, dict: Messages): I18n {
   const intl = localeInfo(locale).intl;
   const rules = new Intl.PluralRules(intl);
-  const lookup = (key: string): string | undefined => dict[key] ?? (en as Record<string, string>)[key];
+  const lookup = (key: string): string | undefined => dict[key];
 
   const t = (key: MessageKey, vars?: Vars) => interpolate(lookup(key) ?? key, vars);
 
   const tp = (key: string, count: number, vars?: Vars) => {
     const form = rules.select(count);
-    const template =
-      dict[`${key}.${form}`] ??
-      dict[`${key}.other`] ??
-      (en as Record<string, string>)[`${key}.${count === 1 ? "one" : "other"}`] ??
-      key;
+    const template = dict[`${key}.${form}`] ?? dict[`${key}.other`] ?? key;
     return interpolate(template, { count, ...vars });
   };
 
@@ -73,10 +62,18 @@ function makeI18n(locale: Locale): I18n {
   return { locale, intl, t, tp, has, tk, category };
 }
 
-const I18nContext = createContext<I18n>(makeI18n("en"));
+const I18nContext = createContext<I18n>(makeI18n("en", {}));
 
-export function I18nProvider({ locale, children }: { locale: Locale; children: ReactNode }) {
-  const value = useMemo(() => makeI18n(locale), [locale]);
+export function I18nProvider({
+  locale,
+  messages,
+  children,
+}: {
+  locale: Locale;
+  messages: Messages;
+  children: ReactNode;
+}) {
+  const value = useMemo(() => makeI18n(locale, messages), [locale, messages]);
   setFormatLocale(value.intl);
 
   useEffect(() => {
@@ -89,8 +86,4 @@ export function I18nProvider({ locale, children }: { locale: Locale; children: R
 
 export function useT(): I18n {
   return useContext(I18nContext);
-}
-
-export function translate(locale: Locale, key: MessageKey, vars?: Vars): string {
-  return makeI18n(locale).t(key, vars);
 }

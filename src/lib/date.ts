@@ -157,3 +157,11 @@ export function formatWeekday(dateISO: string): string {
   const [y, m, d] = dateISO.split("-").map(Number);
   return capitalize(dtf({ weekday: "short" }).format(utc(y, m, d)));
 }
+
+/** Clock time of the next full hour, when rates and prices refresh again. */
+export function nextHourLabel(): string {
+  const next = new Date();
+  next.setMinutes(0, 0, 0);
+  next.setHours(next.getHours() + 1);
+  return formatTime(next.toISOString());
+}

@@ -24,5 +24,8 @@ export default function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|icon.svg|brands/|games/).*)"],
+  // The manifest, service worker and icons load before sign-in, and without cookies.
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|manifest.webmanifest|sw.js|icons/|brands/|games/).*)",
+  ],
 };

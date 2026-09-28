@@ -11,7 +11,7 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["src/lib/store.tsx", "src/lib/i18n/**/*.tsx"],
+    files: ["src/lib/state/store.tsx", "src/lib/i18n/**/*.tsx"],
     rules: {
       "react-hooks/set-state-in-effect": "off",
     },

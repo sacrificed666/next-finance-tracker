@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { INZHUR_FUNDS, type InzhurQuote } from "@/lib/inzhur";
+import { auth } from "@/lib/server/auth";
+import { INZHUR_FUNDS, type InzhurQuote } from "@/lib/market/inzhur";
 
 export const dynamic = "force-dynamic";
 

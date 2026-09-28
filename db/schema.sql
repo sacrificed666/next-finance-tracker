@@ -351,3 +351,40 @@ ALTER TABLE settings ALTER COLUMN rate_usd DROP NOT NULL;
 ALTER TABLE settings ALTER COLUMN rate_eur DROP NOT NULL;
 ALTER TABLE settings ALTER COLUMN rates_source DROP NOT NULL;
 ALTER TABLE settings ALTER COLUMN tax_vat_pct DROP NOT NULL;
+
+-- Records added after encryption: nothing but the key and the sealed payload.
+DO $$
+DECLARE
+    t text;
+BEGIN
+    FOREACH t IN ARRAY ARRAY[
+        'category_rules', 'receivables', 'wishlist_items', 'planned_events', 'net_worth_snapshots'
+    ] LOOP
+        EXECUTE format(
+            'CREATE TABLE IF NOT EXISTS %I (
+                 user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                 id      text NOT NULL,
+                 secret  text,
+                 PRIMARY KEY (user_id, id)
+             )', t);
+    END LOOP;
+END $$;
+
+-- Server-only credentials for bank connections; never sent to the browser.
+CREATE TABLE IF NOT EXISTS integrations (
+    user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider   text NOT NULL CHECK (provider IN ('monobank')),
+    secret     text NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, provider)
+);
+
+-- Receipt photos, sealed like every other record.
+CREATE TABLE IF NOT EXISTS attachments (
+    user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id         text NOT NULL,
+    mime       text NOT NULL,
+    secret     text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, id)
+);

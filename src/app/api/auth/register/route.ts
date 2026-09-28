@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { getPool } from "@/lib/db";
-import { sealRecord } from "@/lib/secrets";
-import { hashPassword, passwordProblem } from "@/lib/password";
-import { OWNER_EMAIL } from "@/lib/auth-config";
-import { clientKey, rateLimit } from "@/lib/rate-limit";
+import { getPool } from "@/lib/server/db";
+import { sealRecord } from "@/lib/server/secrets";
+import { hashPassword, passwordProblem } from "@/lib/server/password";
+import { OWNER_EMAIL } from "@/lib/server/auth-config";
+import { clientKey, rateLimit } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { getPool } from "@/lib/db";
-import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
-import { clientKey, rateLimit } from "@/lib/rate-limit";
+import { auth } from "@/lib/server/auth";
+import { getPool } from "@/lib/server/db";
+import { hashPassword, passwordProblem, verifyPassword } from "@/lib/server/password";
+import { clientKey, rateLimit } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 

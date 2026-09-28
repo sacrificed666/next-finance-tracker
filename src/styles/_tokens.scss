@@ -20,6 +20,8 @@ $series-count: list.length($series-light);
   --bg: #f7f8f8;
   --card: rgba(255, 255, 255, 0.66);
   --card-strong: rgba(255, 255, 255, 0.7);
+  // Dialogs and tooltips: nearly opaque, so they need no backdrop blur.
+  --card-solid: rgba(251, 252, 252, 0.97);
   --card-border: rgba(15, 20, 24, 0.07);
   --card-highlight: rgba(255, 255, 255, 0.9);
   --card-shadow: 0 8px 30px rgba(15, 22, 30, 0.08);
@@ -37,6 +39,7 @@ $series-count: list.length($series-light);
   --hairline: rgba(18, 22, 26, 0.1);
   --fill-ghost: rgba(18, 22, 26, 0.045);
   --fill-ghost-2: rgba(18, 22, 26, 0.085);
+  --row-stripe: rgba(18, 22, 26, 0.028);
   --fill-hover: rgba(18, 22, 26, 0.09);
   --fill-press: rgba(18, 22, 26, 0.15);
 
@@ -65,6 +68,7 @@ $series-count: list.length($series-light);
   --bg: #0f1112;
   --card: rgba(27, 30, 31, 0.62);
   --card-strong: rgba(34, 38, 39, 0.66);
+  --card-solid: rgba(31, 35, 36, 0.97);
   --card-border: rgba(240, 248, 250, 0.1);
   --card-highlight: rgba(244, 250, 252, 0.07);
   --card-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
@@ -82,6 +86,7 @@ $series-count: list.length($series-light);
   --hairline: rgba(236, 244, 246, 0.11);
   --fill-ghost: rgba(236, 244, 246, 0.055);
   --fill-ghost-2: rgba(236, 244, 246, 0.1);
+  --row-stripe: rgba(236, 244, 246, 0.034);
   --fill-hover: rgba(236, 244, 246, 0.11);
   --fill-press: rgba(236, 244, 246, 0.18);
 
@@ -143,7 +148,7 @@ $series-count: list.length($series-light);
 
   --radius-chip: 0.75rem;
   --radius-control: 0.875rem;
-  --radius-field: 1rem;
-  --radius-card: 1.5rem;
+  --radius-field: 0.875rem;
+  --radius-card: 1.25rem;
   --radius-sheet: 1.75rem;
 }
