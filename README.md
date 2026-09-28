@@ -13,18 +13,29 @@ environments. Your data lives in your own database — no amounts ever leave the
 
 ### 📊 Dashboard
 
-Net worth in every currency you use, this month's income, spending and net flow, a 12-month cash-flow
-chart, spending by category with budget meters, the composition of what you own, a five-year outlook
-and a quick-add form.
+Net worth over the last year — from **daily snapshots** the app records by itself — this month's
+income, spending and savings rate against last month, a quick-add form, a cash-flow chart, spending
+by category with every budget's meter, **cash ahead** (what your liquid accounts will hold each day
+of the next 30 or 60 days, and the day they would dip below zero), subscriptions, your largest
+holdings and the currencies you hold them in.
+
+Every page follows the same skeleton: a full-width main block with the page's headline figure, its
+trend or make-up and the figures that explain it, then a wide main column with charts and lists and a
+narrow side column with summaries and breakdowns.
 
 ### 💸 Expenses
 
-A month-by-month ledger with search, type, category and account filters, plus:
+A month-by-month ledger with search, type, category and account filters, the month's spending per
+day, and a pace chart of the running total against the month before, plus:
 
 - **Recurring rules** that post a transaction each month between a start and an optional end month.
 - **Subscriptions** with a real lifetime — monthly or yearly, billed from one month until another,
   so services that no longer bill drop out of the list instead of lingering.
-- **Budgets** per category, including everything spent in its subcategories.
+- **Budgets** per category, including everything spent in its subcategories. A budget can **carry
+  over** last month's unspent money, and warns on the day this month's pace would run it out.
+- **Tags** across categories (`#trip`, `#work`), with a tag filter and search.
+- **Split one purchase** across several categories — a supermarket receipt with food and household.
+- **Receipt photos** on any entry, shrunk in the browser and stored encrypted.
 
 ### 🧾 Income
 
@@ -34,19 +45,40 @@ Salary, freelance, interest, dividends, sales or gifts, each landing in a real a
 - **Per-entry taxation**: FOP groups 1, 2, 3, 3 + VAT, 4, the general system, or your own regime.
   The breakdown is shown while you type and stored with the entry.
 - A **limit card** that tracks this year's taxed income against the group's annual ceiling.
+- **Income by month** with the tax withheld stacked on top, so each column's height is the gross.
+- A **tax calendar** for FOP groups 1–3: declarations, single tax, military levy, ЄСВ and VAT with
+  their deadlines, each ticked off once paid.
+- A **quarterly summary** — income, tax and ЄСВ per quarter, with foreign-currency income converted at
+  the **NBU rate of the day it arrived**, as the declaration needs it.
 
-### 🏦 Balance
+### 🏦 Accounts
 
-Accounts and investments as one balance sheet, every row shown in all the currencies you use.
+Every account with its balance in all the currencies you use, savings goals and debts — with how
+many months of spending your emergency fund covers and how the money splits by account type or
+currency.
 
 - **Balances are derived, never typed over** — opening balance plus everything booked to the account.
 - **Cryptocurrency accounts** hold several coins at once (25 supported), priced live from CoinGecko.
 - **Game item accounts** for CS2, Dota 2, Team Fortress 2, Rust, PUBG or a custom game.
-- **Investments** know how they earn: deposits capitalise or pay out, bonds pay coupons, funds pay
+- **Savings goals** roll up into one card: overall progress, the goals closest to done, and what it
+  takes each month to meet every deadline.
+- **Debts** with payoff dates, interest left and monthly payment plans.
+- **Empty accounts** fold into one row at the end of the list until you ask to see them.
+- **Money owed to you** — what you lent, to whom, when it is due and how much came back; it counts
+  towards net worth.
+
+### 📈 Investments
+
+Deposits, bonds, funds, stocks and cryptocurrency on their own page: totals, where they head over
+the next year, allocation by type, and the positions — as detailed cards or a compact returns table.
+
+- **Every position** knows how it earns: deposits capitalise or pay out, bonds pay coupons, funds pay
   dividends, stocks and cryptocurrency grow in price. The app picks the right model per kind.
 - **Inzhur funds** (REIT, Energy, MilTech) pull their NAV, forecast yield and payout type straight
   from the published fund pages.
-- **Debts** with payoff dates, interest left and monthly payment plans.
+- **Next 12 months** shows what your investments are expected to add over the coming year.
+- **Schedule** sums the monthly top-ups going in and the interest and dividends coming out, lists
+  the positions that mature next, and offers **reinvest or withdraw** for any whose term has ended.
 
 ### 🔮 Forecast
 
@@ -54,6 +86,21 @@ Project savings and investments 1–40 years ahead: cautious, base and optimisti
 planned events in any currency, optional debt subtraction, a goal with the date you reach it, and a
 year-by-year table. Growth comes from what you actually hold and from the monthly contributions set
 on your investments — nothing has to be typed twice.
+
+A **wishlist** sits beside it: what you want, what it costs, how many months of your usual surplus it
+takes, and — once you give it a month — a planned event in the forecast.
+
+### 📅 Calendar
+
+The month as a grid: every day's spending shaded by size, entries and tax deadlines as coloured dots,
+the month's key dates — maturing investments, money due back, wishlist plans — and the day you tap
+listed in full, with a button that adds an entry on exactly that date.
+
+### 📑 Reports
+
+Any period — a month, a quarter, half a year, a year — against the one before: categories compared
+side by side, each category's trend as a small chart, the biggest changes, the largest expenses,
+spending by tag, and a year in review.
 
 ### 🧑‍🚀 Profile
 
@@ -65,8 +112,18 @@ explanation and a tip that links to the page where you would fix it.
 ### ⚙️ Settings
 
 Language, base currency, theme, the full category tree with subcategories, and JSON export / import.
+**Bank import** reads Monobank directly (with your personal token, kept encrypted on the server) or any
+bank's CSV statement, suggests a category for every row from your own rules and the merchant code, and
+skips what is already in the ledger.
 **Exchange rates and asset prices refresh automatically every hour** from Monobank (with the official
 NBU rate as a fallback) and CoinGecko — no buttons to press.
+
+### ⌨️ Everywhere
+
+- **Ctrl + K** (⌘K on a Mac) opens a command palette: jump to any page, account or position, start a
+  new entry, switch the theme, or find an entry by its note, category, tag or amount.
+- **Installable** as an app on a phone or desktop, with shortcuts to add an expense or income from
+  the icon.
 
 ### 🌍 Eight languages
 
@@ -108,6 +165,7 @@ Everything else lives in [`docs/`](./docs/README.md):
 | [Accounts and assets](./docs/accounts-and-assets.md) | Account kinds, cryptocurrency, game items, logos |
 | [Investments](./docs/investments.md) | Valuation, return types, Inzhur, live prices |
 | [Budgets and schedules](./docs/budgets-and-schedules.md) | Categories, budgets, recurring, subscriptions |
+| [Bank import](./docs/bank-import.md) | Monobank, CSV statements, categorisation rules, duplicates |
 | [Gamification](./docs/gamification.md) | XP, levels, achievements, health score |
 | [Internationalisation](./docs/internationalisation.md) | Locales, dictionaries, plurals |
 | [Design system](./docs/design-system.md) | Surfaces, layout rules, contrast and colour rationale |

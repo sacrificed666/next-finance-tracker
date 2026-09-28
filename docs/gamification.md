@@ -1,7 +1,7 @@
 # 🎮 Gamification
 
 Everything on the Profile page is derived from your own data by pure functions in
-`src/lib/achievements.ts`. Nothing is stored: delete a transaction and the numbers move back.
+`src/lib/finance/achievements.ts`. Nothing is stored: delete a transaction and the numbers move back.
 
 ```ts
 gamification(state) → { facts, health, achievements, xp, level }

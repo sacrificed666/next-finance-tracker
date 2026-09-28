@@ -5,7 +5,7 @@ contribution, and the mix depends on the group. The app models this per income e
 
 ## 🗂️ Supported regimes
 
-`src/lib/tax.ts` defines every regime with the 2026 reference numbers
+`src/lib/finance/tax.ts` defines every regime with the 2026 reference numbers
 (`MINIMUM_WAGE_UAH = 8 647`, `LIVING_MINIMUM_UAH = 3 328`, `ESV_MIN_UAH = 1 902.34`).
 
 | Regime | What is deducted | Annual income limit |
@@ -53,6 +53,9 @@ that applied when they were recorded, even if you change regimes later.
 | Income → Add / Edit | Regime picker, live breakdown, custom fields for `custom` |
 | Income → stat tiles | Tax paid this year, effective rate, number of taxed entries |
 | Income → limit card | Gross taxed income this year against the group's annual limit |
+| Income → tax calendar | The next declarations and payments with their deadlines; tick one off once paid |
+| Income → by quarter | Income, tax and ЄСВ per quarter, foreign income at the NBU rate of its day |
+| Calendar | Every deadline on its day |
 | Expenses → categories | The default category tree includes a "Taxes" parent |
 
 The annual limit card watches the regime of your latest taxed income and turns amber above 90% of
@@ -62,9 +65,24 @@ the limit.
 > There is no global tax switch in Settings. The app remembers the regime you used last and offers
 > it for the next income — that is `settings.tax`, updated quietly when you save a new entry.
 
+## 📅 The tax calendar
+
+`lib/finance/tax-calendar.ts` builds a year's obligations from the regime of your taxed income
+(FOP groups 1, 2, 3 and 3 + VAT). A deadline that falls on a weekend moves to the Monday.
+
+| Obligation | Group 3, 3 + VAT | Groups 1 and 2 |
+| --- | --- | --- |
+| Declaration | Quarterly, 40 days after the quarter | Yearly, 60 days after the year |
+| Single tax and military levy | Quarterly, 50 days after the quarter | Monthly, by the 20th |
+| ЄСВ | Quarterly, by the 20th after the quarter (3 × the minimum) | The same |
+| VAT (3 + VAT only) | Monthly declaration by the 20th, payment ten days later | — |
+
+Marking an item paid stores it in `settings.taxPaid`; the side card shows what is unpaid, including
+anything overdue by up to 45 days.
+
 ## ⚠️ What this is not
 
 > [!CAUTION]
 > These numbers are a planning aid, not tax advice or a declaration. Rates, minimum wage and the
-> social contribution change by law — check `src/lib/tax.ts` at the start of every year and update
+> social contribution change by law — check `src/lib/finance/tax.ts` at the start of every year and update
 > the constants in one place.

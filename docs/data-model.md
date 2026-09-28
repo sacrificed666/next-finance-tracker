@@ -16,7 +16,12 @@ interface AppState {
   investments: Investment[];     // deposits, bonds, funds, stocks, cryptocurrency
   budgets: Budget[];             // monthly limit per category
   debts: Debt[];                 // loans, mortgages, card debt
-  settings: Settings;            // base currency, locale, theme, rates, tax profile
+  receivables: Receivable[];     // money you lent and expect back
+  rules: CategoryRule[];         // "description contains … → category", for imports
+  wishlist: WishItem[];          // things to buy, with a price and a priority
+  plannedEvents: PlannedEvent[]; // one-off amounts the forecast adds in a given month
+  snapshots: NetWorthSnapshot[]; // one per day: net worth and its parts, in UAH
+  settings: Settings;            // base currency, locale, theme, rates, tax profile, paid taxes, bank links
 }
 ```
 
@@ -24,12 +29,15 @@ interface AppState {
 
 | Entity | Key fields | Notes |
 | --- | --- | --- |
-| `Transaction` | `type`, `amount`, `currency`, `categoryId`, `date`, `accountId`, `toAccountId`, `tax`, `breakdown` | Transfers carry `toAmount` for cross-currency moves; `amount` on a taxed income is the **net** amount, with the gross kept in `tax.gross` |
+| `Transaction` | `type`, `amount`, `currency`, `categoryId`, `date`, `accountId`, `toAccountId`, `tax`, `breakdown`, `tags?`, `splitId?`, `attachmentIds?`, `externalId?` | Transfers carry `toAmount` for cross-currency moves; `amount` on a taxed income is the **net** amount, with the gross kept in `tax.gross`. The pieces of a split purchase share a `splitId`; imported entries keep the bank's id in `externalId` |
 | `Category` | `kind`, `parentId?`, `icon`, `colorSlot` | One level of nesting; charts roll children into parents |
 | `SavingsAccount` | `kind`, `currency`, `openingBalance`, `holdings?`, `goal?`, `bank?`, `game?` | Balance = opening balance + ledger + coin holdings |
 | `Investment` | `kind`, `principal`, `annualRatePct`, `marketValue?`, `quantity?`, `fund?`, `compounding` | Valuation depends on the kind — see [Investments](./investments.md) |
 | `Subscription` | `price`, `period`, `dayOfMonth`, `startMonth`, `endMonth?`, `active` | A subscription lives between two months; see [Budgets and schedules](./budgets-and-schedules.md) |
-| `Settings` | `baseCurrency`, `locale`, `theme`, `rates`, `ratesMeta`, `tax` | `tax` remembers the regime last used when adding income |
+| `Budget` | `categoryId`, `limit`, `currency`, `rollover?` | With `rollover`, last month's unspent amount is added to this month's limit — one month's worth, never more |
+| `Receivable` | `name`, `amount`, `currency`, `date`, `dueDate?`, `repaid` | Counts towards net worth until repaid in full |
+| `NetWorthSnapshot` | `date`, `total`, `savings`, `investments`, `debts`, `receivables`, `rates` | Written quietly once a day (and again when the total moves), so the history shows what you really had, not a recomputation |
+| `Settings` | `baseCurrency`, `locale`, `theme`, `rates`, `ratesMeta`, `tax`, `taxPaid?`, `bankLinks?` | `tax` remembers the regime last used when adding income; `taxPaid` marks tax-calendar items as paid; `bankLinks` maps Monobank cards to accounts |
 
 ## 🧱 Database schema
 
@@ -45,8 +53,17 @@ Tables: `users`, `accounts`, `sessions`, `verification_token` (Auth.js), plus `s
 `categories`, `recurring_rules`, `subscriptions`, `transactions`, `savings_accounts`,
 `investments`, `budgets`, `debts` — every row scoped by `user_id`.
 
+Newer record types use **sealed-only** tables with nothing but `(user_id, id, secret)`:
+`category_rules`, `receivables`, `wishlist_items`, `planned_events` and `net_worth_snapshots` (keyed by
+date). Two more hold data that never travels with `AppState`:
+
+| Table | Holds |
+| --- | --- |
+| `integrations` | One row per connected bank (`provider = 'monobank'`): the sealed token and card list |
+| `attachments` | Receipt photos, sealed, with their type. Photos no entry refers to any more are removed a day after the save that dropped them |
+
 > [!NOTE]
-> The app also applies the schema on first database use (`src/lib/db.ts`), so a fresh container is
+> The app also applies the schema on first database use (`src/lib/server/db.ts`), so a fresh container is
 > usable without a manual migration step.
 
 Every data table also has a `secret` column holding the encrypted record — see
@@ -63,9 +80,9 @@ Columns that hold structured values use `jsonb`: `transactions.breakdown`, `tran
 
 ## 🧼 Normalisation is the gate
 
-`src/lib/backup.ts` exposes `normalizeState(raw)`, which is called:
+`src/lib/state/backup.ts` exposes `normalizeState(raw)`, which is called:
 
-- when the server loads rows (`lib/repo.ts`),
+- when the server loads rows (`lib/server/repo.ts`),
 - when the server accepts a `PUT`,
 - when the client receives state,
 - when a JSON backup is imported.

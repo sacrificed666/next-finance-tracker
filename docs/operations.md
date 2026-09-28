@@ -48,7 +48,8 @@ The dev container mounts the repository and runs `next dev`. Two details are wor
 
 There is no migration tool — `db/schema.sql` is idempotent and is the migration:
 
-1. Add the table or column with `IF NOT EXISTS`.
+1. Add the table or column with `IF NOT EXISTS`. A new record type that needs no queryable columns
+   goes into the sealed-only loop at the end of the file — `(user_id, id, secret)` and nothing else.
 2. Update the matching `CHECK` constraint by dropping and recreating it.
 3. Run `make dev-migrate`, then the same target on staging and production.
 
@@ -76,6 +77,9 @@ ignored by Git on purpose.
 | Cryptocurrency prices missing | CoinGecko throttling; previous prices are kept and the error is shown inline |
 | Inzhur values stale | `/api/inzhur` caches for 10 minutes; check container logs for scrape failures |
 | Logos redirect to `/login` | A public folder missing from the `proxy.ts` matcher |
+| Monobank import waits a minute per card | Monobank allows one statement request a minute; the card counts down and continues |
+| "Monobank didn't accept this token" | The personal token was revoked or mistyped — create a new one at `api.monobank.ua` |
+| Installed app shows an old version | The service worker is fetched with `no-store`; closing every window of the app picks up the new one |
 
 Container logs: `make dev-logs` (or `stage-` / `prod-`). The app logs one line per request with the
 route, status and timing.

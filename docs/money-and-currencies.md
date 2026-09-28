@@ -46,7 +46,7 @@ convert(amount, "USD", "EUR", rates)  // through UAH
 
 ## 🔢 Formatting
 
-`src/lib/money.ts` formats through `Intl.NumberFormat` using the active locale, so the same number
+`src/lib/finance/money.ts` formats through `Intl.NumberFormat` using the active locale, so the same number
 reads naturally in every language:
 
 | Helper | Example (en) | Example (uk) |

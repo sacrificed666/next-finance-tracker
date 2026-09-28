@@ -36,6 +36,9 @@ Every record is stored as an **AES-256-GCM** ciphertext, not as readable columns
 | `savings_accounts`, `investments`, `budgets`, `debts` | The whole entity, including balances and coin holdings |
 | `settings` | Everything except the interface language |
 | `users` | Name, avatar, about, occupation, location, link and birthday |
+| `category_rules`, `receivables`, `wishlist_items`, `planned_events`, `net_worth_snapshots` | The whole entity — these tables have no other columns |
+| `integrations` | The Monobank token and card list |
+| `attachments` | The receipt photo itself |
 
 Each row keeps only its `id`, its `user_id` and a `secret` column that holds
 `enc.v1.<iv+tag+ciphertext>` in base64; the old plaintext columns are written as `NULL`. A dump of the
@@ -72,11 +75,17 @@ middleware additionally gates pages, so an unauthenticated browser never renders
 | Monobank / NBU rates | Nothing but the request | Browser |
 | CoinGecko prices | Coin ids and a target currency | Browser |
 | Inzhur fund pages | Nothing but the request | Server |
+| Monobank personal API | Your token, a card id and a period — only when you connect or load a statement | Server |
+| NBU rate by date | A currency and a date | Server |
 | Flags (flagcdn), brand favicons | The image URL | Browser |
 
 > [!IMPORTANT]
 > No amounts, balances, categories or names are sent anywhere. Everything else stays in your
-> PostgreSQL database.
+> PostgreSQL database. The Monobank token is sealed on the server and is never sent back to the
+> browser, not even masked.
+
+The installed app's service worker (`public/sw.js`) caches only the build's static files and icons.
+Pages and API responses are never stored on the device.
 
 ## 🧪 Input hardening
 
@@ -85,6 +94,9 @@ middleware additionally gates pages, so an unauthenticated browser never renders
 - Coin icons are accepted only from CoinGecko's domain.
 - Text fields are length-limited (name 80, about 500, labels 60).
 - Numbers are clamped during normalisation (rates > 0, percentages 0–200, quantities ≥ 0).
+- Receipt photos are shrunk to WebP in the browser; the server accepts only WebP, JPEG or PNG up to
+  1.5 MB, at most 30 uploads a minute, and serves them back only to their owner.
+- Tags are trimmed, de-duplicated regardless of case, at most 24 characters and 8 per entry.
 
 ## 🧱 Response headers
 

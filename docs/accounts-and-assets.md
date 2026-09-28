@@ -30,9 +30,9 @@ interface CoinHolding {
 
 - The account balance is `Σ quantity × price` plus the cash sitting on the account
   (`openingBalance` + ledger movements).
-- 25 popular coins are available (`src/lib/crypto.ts`), including BTC, ETH, USDT, SOL, TON, WBT.
+- 25 popular coins are available (`src/lib/market/crypto.ts`), including BTC, ETH, USDT, SOL, TON, WBT.
 - Prices come from CoinGecko in the account's own currency; **Load prices** in the form and
-  **Prices** on the Balance page both refresh them, and saving fetches any missing price
+  the hourly refresh both update them, and saving fetches any missing price
   automatically.
 - The account row lists its coins, so `0.0015 BTC · 0.031 ETH` is visible without opening anything.
 
@@ -56,7 +56,7 @@ with your own name and an optional HTTPS logo URL.
 
 ## 🏷️ Brands and logos
 
-`src/lib/brands.ts` lists the supported brands in three groups:
+`src/lib/catalog/brands.ts` lists the supported brands in three groups:
 
 | Group | Brands |
 | --- | --- |
@@ -81,11 +81,17 @@ smaller than 24 px, which used to slip through as blurry letter placeholders.
   stay exact.
 - Cryptocurrency accounts have no reconcile button: their value follows the coin prices.
 
+## 🤝 Money owed to you
+
+Money you lent is a `Receivable`: who has it, how much, since when, an optional due date and how much
+has come back. The Accounts page lists them beside debts with what is still out and how many are
+overdue; the outstanding part counts towards net worth, and due dates appear in the Calendar.
+
 ## 📊 Where accounts show up
 
 | Screen | Use |
 | --- | --- |
-| Balance → Accounts | Table with per-currency columns, goals, search, kind filter, sorting |
+| Accounts | Table with per-currency columns, goals, search, kind filter, sorting; goal summary and debts beside it |
 | Dashboard | Net worth split by kind |
 | Expenses / Income | Account picker on every entry, and account filters in the ledger |
 | Profile → Financial health | Liquid accounts feed the emergency fund, all of them feed diversification |

@@ -46,7 +46,7 @@ Plural forms follow `Intl.PluralRules`. English, German, Spanish, French, Italia
 
 ## 🕒 Dates, numbers and money
 
-`setFormatLocale()` pushes the active locale into `lib/date.ts` and `lib/money.ts`, which use
+`setFormatLocale()` pushes the active locale into `lib/date.ts` and `lib/finance/money.ts`, which use
 `Intl.DateTimeFormat` and `Intl.NumberFormat`. Month names, weekday names, decimal separators and
 compact notation all follow the language without any translated strings.
 
@@ -59,6 +59,18 @@ compact notation all follow the language without any translated strings.
 
 Changing the language in Settings writes both the account setting and the cookie, so the sign-in page
 greets you in the right language before any data is loaded.
+
+## 📦 How dictionaries reach the browser
+
+Only one language travels with a page. The root layout picks the locale on the server and passes that
+dictionary to `LocaleBridge` as a prop (`serverMessages` in `lib/i18n/server.ts`), so the first render
+needs nothing more. The other seven are separate chunks behind `loadMessages` in
+`lib/i18n/messages.ts`: switching language loads the new one, and the page keeps showing the old
+language until it has arrived. Client-side navigation never resends the dictionary.
+
+> [!TIP]
+> Never import a dictionary from client code. One static `import { uk } from "./dict/uk"` puts that
+> language back into every page's bundle — before this split all eight added 690 KB to each load.
 
 ## ➕ Adding a language
 

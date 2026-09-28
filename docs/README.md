@@ -20,10 +20,11 @@ money tracker built with Next.js 16, React 19, PostgreSQL and Tailwind v4.
 | Page | What it covers |
 | --- | --- |
 | [Money and currencies](./money-and-currencies.md) | Base currency, exchange rates, rounding, formatting |
-| [Taxes](./taxes.md) | FOP groups, VAT, custom regimes, per-income tax, annual limits |
+| [Taxes](./taxes.md) | FOP groups, VAT, custom regimes, per-income tax, annual limits, tax calendar |
 | [Accounts and assets](./accounts-and-assets.md) | Account kinds, cryptocurrency accounts, game items, brand logos |
 | [Investments](./investments.md) | Valuation, return types, Inzhur funds, live prices |
-| [Budgets and schedules](./budgets-and-schedules.md) | Categories, budgets, recurring rules, subscriptions |
+| [Budgets and schedules](./budgets-and-schedules.md) | Categories, budgets with rollover, recurring rules, subscriptions |
+| [Bank import](./bank-import.md) | Monobank, CSV statements, categorisation rules, duplicates |
 
 ## 🎮 Experience
 
@@ -49,8 +50,9 @@ docker/                per-environment compose overlays (development, staging, p
 docs/                  you are here
 public/brands/         self-hosted bank, fintech and exchange logos
 public/games/          self-hosted game icons for game-item accounts
-src/app/               routes: pages, API handlers, global styles
-src/components/        UI kit (ui.tsx), charts, navigation, one file per page
-src/lib/               domain logic: money, taxes, investments, gamification, i18n, persistence
+src/app/               routes: (auth) and (app) route groups, API handlers, global styles
+src/features/          one folder per page: the page, its cards and its editing sheets
+src/components/        UI kit (ui/), charts, form pickers, app shell and navigation
+src/lib/               server-only code, finance maths, market data, catalogues, client state, i18n
 Makefile               every operational command, grouped by environment
 ```

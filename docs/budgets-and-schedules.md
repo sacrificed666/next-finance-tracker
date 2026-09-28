@@ -25,6 +25,12 @@ per budget, the total left for the month, and marks anything above 100%.
 > Budgets are evaluated per calendar month, including transactions in child categories and
 > subscriptions posted in that month.
 
+- **Rollover.** Turn on "Carry over what's left" and whatever the budget did not use last month is
+  added to this month's limit (`budgetLimit` in `lib/finance/categories.ts`). Only one month carries
+  over, so an old surplus never piles up; an overspent month carries nothing.
+- **Pace.** From the third day of the current month, a budget still under its limit shows the day it
+  would run out if spending carried on at this month's rate.
+
 ## 🔁 Recurring rules
 
 A recurring rule posts one transaction each month on a chosen day, between `startMonth` and an
