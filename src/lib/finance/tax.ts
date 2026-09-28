@@ -1,9 +1,51 @@
 import { convert } from "@/lib/finance/money";
 import type { Currency, Settings, TaxProfile, TaxRegimeId } from "@/lib/types";
 
-export const MINIMUM_WAGE_UAH = 8647;
-export const LIVING_MINIMUM_UAH = 3328;
-export const ESV_MIN_UAH = 1902.34;
+/**
+ * What FOP taxes are tied to, set each year by the State Budget law: the minimum wage
+ * (the ЄСВ minimum, group 2's single tax, the military levy of groups 1, 2 and 4, and
+ * every annual limit) and the subsistence minimum for the able-bodied (group 1's
+ * single tax). Add a row every January; until then the latest known year stands in,
+ * and the tax cards say so.
+ */
+export const TAX_YEARS: Record<number, { minimumWage: number; livingMinimum: number }> = {
+  2025: { minimumWage: 8000, livingMinimum: 3028 },
+  2026: { minimumWage: 8647, livingMinimum: 3328 },
+};
+
+const KNOWN_YEARS = Object.keys(TAX_YEARS)
+  .map(Number)
+  .sort((a, b) => a - b);
+
+export interface TaxYearValues {
+  /** The year whose figures are used — the one asked for, or the nearest known one. */
+  year: number;
+  minimumWage: number;
+  livingMinimum: number;
+  /** False when the asked-for year is not in the table yet. */
+  known: boolean;
+}
+
+export function taxYearValues(year: number): TaxYearValues {
+  const exact = TAX_YEARS[year];
+  if (exact) return { year, ...exact, known: true };
+  const nearest = year > KNOWN_YEARS[KNOWN_YEARS.length - 1] ? KNOWN_YEARS[KNOWN_YEARS.length - 1] : KNOWN_YEARS[0];
+  return { year: nearest, ...TAX_YEARS[nearest], known: false };
+}
+
+const cents = (n: number) => Math.round(n * 100) / 100;
+
+/** The monthly ЄСВ minimum: 22% of the minimum wage. */
+export function esvMinimum(year: number): number {
+  return cents(taxYearValues(year).minimumWage * 0.22);
+}
+
+const CURRENT_YEAR = new Date().getFullYear();
+const CURRENT = taxYearValues(CURRENT_YEAR);
+
+export const MINIMUM_WAGE_UAH = CURRENT.minimumWage;
+export const LIVING_MINIMUM_UAH = CURRENT.livingMinimum;
+export const ESV_MIN_UAH = esvMinimum(CURRENT_YEAR);
 
 export interface TaxComponent {
   id: string;
@@ -25,133 +67,150 @@ export interface TaxRegime {
   editable: boolean;
 }
 
-export const TAX_REGIMES: TaxRegime[] = [
-  {
-    id: "none",
-    labelKey: "tax.regime.none",
-    shortKey: "tax.regime.none.short",
-    hintKey: "tax.regime.none.hint",
-    ratePct: 0,
-    fixedUAH: 0,
-    vatPct: 0,
-    annualLimitUAH: 0,
-    components: [],
-    editable: false,
-  },
-  {
-    id: "fop1",
-    labelKey: "tax.regime.fop1",
-    shortKey: "tax.regime.fop1.short",
-    hintKey: "tax.regime.fop1.hint",
-    ratePct: 0,
-    fixedUAH: 332.8 + 864.7 + ESV_MIN_UAH,
-    vatPct: 0,
-    annualLimitUAH: 1_444_049,
-    components: [
-      { id: "single", labelKey: "tax.part.singleTax", fixedUAH: 332.8 },
-      { id: "levy", labelKey: "tax.part.militaryLevy", fixedUAH: 864.7 },
-      { id: "esv", labelKey: "tax.part.esv", fixedUAH: ESV_MIN_UAH },
-    ],
-    editable: false,
-  },
-  {
-    id: "fop2",
-    labelKey: "tax.regime.fop2",
-    shortKey: "tax.regime.fop2.short",
-    hintKey: "tax.regime.fop2.hint",
-    ratePct: 0,
-    fixedUAH: 1729.4 + 864.7 + ESV_MIN_UAH,
-    vatPct: 0,
-    annualLimitUAH: 7_211_598,
-    components: [
-      { id: "single", labelKey: "tax.part.singleTax", fixedUAH: 1729.4 },
-      { id: "levy", labelKey: "tax.part.militaryLevy", fixedUAH: 864.7 },
-      { id: "esv", labelKey: "tax.part.esv", fixedUAH: ESV_MIN_UAH },
-    ],
-    editable: false,
-  },
-  {
-    id: "fop3",
-    labelKey: "tax.regime.fop3",
-    shortKey: "tax.regime.fop3.short",
-    hintKey: "tax.regime.fop3.hint",
-    ratePct: 6,
-    fixedUAH: ESV_MIN_UAH,
-    vatPct: 0,
-    annualLimitUAH: 10_094_049,
-    components: [
-      { id: "single", labelKey: "tax.part.singleTax", ratePct: 5 },
-      { id: "levy", labelKey: "tax.part.militaryLevy", ratePct: 1 },
-      { id: "esv", labelKey: "tax.part.esv", fixedUAH: ESV_MIN_UAH },
-    ],
-    editable: false,
-  },
-  {
-    id: "fop3vat",
-    labelKey: "tax.regime.fop3vat",
-    shortKey: "tax.regime.fop3vat.short",
-    hintKey: "tax.regime.fop3vat.hint",
-    ratePct: 4,
-    fixedUAH: ESV_MIN_UAH,
-    vatPct: 20,
-    annualLimitUAH: 10_094_049,
-    components: [
-      { id: "vat", labelKey: "tax.part.vat", ratePct: 20 },
-      { id: "single", labelKey: "tax.part.singleTax", ratePct: 3 },
-      { id: "levy", labelKey: "tax.part.militaryLevy", ratePct: 1 },
-      { id: "esv", labelKey: "tax.part.esv", fixedUAH: ESV_MIN_UAH },
-    ],
-    editable: false,
-  },
-  {
-    id: "fop4",
-    labelKey: "tax.regime.fop4",
-    shortKey: "tax.regime.fop4.short",
-    hintKey: "tax.regime.fop4.hint",
-    ratePct: 0,
-    fixedUAH: 864.7 + ESV_MIN_UAH,
-    vatPct: 0,
-    annualLimitUAH: 0,
-    components: [
-      { id: "levy", labelKey: "tax.part.militaryLevy", fixedUAH: 864.7 },
-      { id: "esv", labelKey: "tax.part.esv", fixedUAH: ESV_MIN_UAH },
-    ],
-    editable: false,
-  },
-  {
-    id: "general",
-    labelKey: "tax.regime.general",
-    shortKey: "tax.regime.general.short",
-    hintKey: "tax.regime.general.hint",
-    ratePct: 45,
-    fixedUAH: 0,
-    vatPct: 0,
-    annualLimitUAH: 0,
-    components: [
-      { id: "pit", labelKey: "tax.part.pit", ratePct: 18 },
-      { id: "levy", labelKey: "tax.part.militaryLevy", ratePct: 5 },
-      { id: "esv", labelKey: "tax.part.esvPct", ratePct: 22 },
-    ],
-    editable: false,
-  },
-  {
-    id: "custom",
-    labelKey: "tax.regime.custom",
-    shortKey: "tax.regime.custom.short",
-    hintKey: "tax.regime.custom.hint",
-    ratePct: 6,
-    fixedUAH: ESV_MIN_UAH,
-    vatPct: 0,
-    annualLimitUAH: 0,
-    components: [],
-    editable: true,
-  },
-];
+/** Every regime with the fixed amounts and limits of one year. */
+function buildRegimes(year: number): TaxRegime[] {
+  const { minimumWage: mw, livingMinimum: lm } = taxYearValues(year);
+  const esv = cents(mw * 0.22);
+  const levy = cents(mw * 0.1);
+  const group1 = cents(lm * 0.1);
+  const group2 = cents(mw * 0.2);
+  return [
+    {
+      id: "none",
+      labelKey: "tax.regime.none",
+      shortKey: "tax.regime.none.short",
+      hintKey: "tax.regime.none.hint",
+      ratePct: 0,
+      fixedUAH: 0,
+      vatPct: 0,
+      annualLimitUAH: 0,
+      components: [],
+      editable: false,
+    },
+    {
+      id: "fop1",
+      labelKey: "tax.regime.fop1",
+      shortKey: "tax.regime.fop1.short",
+      hintKey: "tax.regime.fop1.hint",
+      ratePct: 0,
+      fixedUAH: cents(group1 + levy + esv),
+      vatPct: 0,
+      annualLimitUAH: 167 * mw,
+      components: [
+        { id: "single", labelKey: "tax.part.singleTax", fixedUAH: group1 },
+        { id: "levy", labelKey: "tax.part.militaryLevy", fixedUAH: levy },
+        { id: "esv", labelKey: "tax.part.esv", fixedUAH: esv },
+      ],
+      editable: false,
+    },
+    {
+      id: "fop2",
+      labelKey: "tax.regime.fop2",
+      shortKey: "tax.regime.fop2.short",
+      hintKey: "tax.regime.fop2.hint",
+      ratePct: 0,
+      fixedUAH: cents(group2 + levy + esv),
+      vatPct: 0,
+      annualLimitUAH: 834 * mw,
+      components: [
+        { id: "single", labelKey: "tax.part.singleTax", fixedUAH: group2 },
+        { id: "levy", labelKey: "tax.part.militaryLevy", fixedUAH: levy },
+        { id: "esv", labelKey: "tax.part.esv", fixedUAH: esv },
+      ],
+      editable: false,
+    },
+    {
+      id: "fop3",
+      labelKey: "tax.regime.fop3",
+      shortKey: "tax.regime.fop3.short",
+      hintKey: "tax.regime.fop3.hint",
+      ratePct: 6,
+      fixedUAH: esv,
+      vatPct: 0,
+      annualLimitUAH: 1167 * mw,
+      components: [
+        { id: "single", labelKey: "tax.part.singleTax", ratePct: 5 },
+        { id: "levy", labelKey: "tax.part.militaryLevy", ratePct: 1 },
+        { id: "esv", labelKey: "tax.part.esv", fixedUAH: esv },
+      ],
+      editable: false,
+    },
+    {
+      id: "fop3vat",
+      labelKey: "tax.regime.fop3vat",
+      shortKey: "tax.regime.fop3vat.short",
+      hintKey: "tax.regime.fop3vat.hint",
+      ratePct: 4,
+      fixedUAH: esv,
+      vatPct: 20,
+      annualLimitUAH: 1167 * mw,
+      components: [
+        { id: "vat", labelKey: "tax.part.vat", ratePct: 20 },
+        { id: "single", labelKey: "tax.part.singleTax", ratePct: 3 },
+        { id: "levy", labelKey: "tax.part.militaryLevy", ratePct: 1 },
+        { id: "esv", labelKey: "tax.part.esv", fixedUAH: esv },
+      ],
+      editable: false,
+    },
+    {
+      id: "fop4",
+      labelKey: "tax.regime.fop4",
+      shortKey: "tax.regime.fop4.short",
+      hintKey: "tax.regime.fop4.hint",
+      ratePct: 0,
+      fixedUAH: cents(levy + esv),
+      vatPct: 0,
+      annualLimitUAH: 0,
+      components: [
+        { id: "levy", labelKey: "tax.part.militaryLevy", fixedUAH: levy },
+        { id: "esv", labelKey: "tax.part.esv", fixedUAH: esv },
+      ],
+      editable: false,
+    },
+    {
+      id: "general",
+      labelKey: "tax.regime.general",
+      shortKey: "tax.regime.general.short",
+      hintKey: "tax.regime.general.hint",
+      ratePct: 45,
+      fixedUAH: 0,
+      vatPct: 0,
+      annualLimitUAH: 0,
+      components: [
+        { id: "pit", labelKey: "tax.part.pit", ratePct: 18 },
+        { id: "levy", labelKey: "tax.part.militaryLevy", ratePct: 5 },
+        { id: "esv", labelKey: "tax.part.esvPct", ratePct: 22 },
+      ],
+      editable: false,
+    },
+    {
+      id: "custom",
+      labelKey: "tax.regime.custom",
+      shortKey: "tax.regime.custom.short",
+      hintKey: "tax.regime.custom.hint",
+      ratePct: 6,
+      fixedUAH: esv,
+      vatPct: 0,
+      annualLimitUAH: 0,
+      components: [],
+      editable: true,
+    },
+  ];
+}
 
-const REGIME_BY_ID = new Map(TAX_REGIMES.map((r) => [r.id, r]));
+/** The regimes as they stand this year. */
+export const TAX_REGIMES: TaxRegime[] = buildRegimes(CURRENT_YEAR);
 
-export function taxRegime(id: TaxRegimeId | undefined): TaxRegime {
-  return REGIME_BY_ID.get(id ?? "fop3") ?? TAX_REGIMES[3];
+const BY_YEAR = new Map<number, Map<TaxRegimeId, TaxRegime>>([[CURRENT_YEAR, new Map(TAX_REGIMES.map((r) => [r.id, r]))]]);
+
+/** A regime with the fixed amounts and limit of `year` (this year when left out). */
+export function taxRegime(id: TaxRegimeId | undefined, year: number = CURRENT_YEAR): TaxRegime {
+  let regimes = BY_YEAR.get(year);
+  if (!regimes) {
+    regimes = new Map(buildRegimes(year).map((r) => [r.id, r]));
+    BY_YEAR.set(year, regimes);
+  }
+  return regimes.get(id ?? "fop3") ?? regimes.get("fop3")!;
 }
 
 export const DEFAULT_TAX_PROFILE: TaxProfile = {
@@ -243,8 +302,9 @@ export function grossFromNet(
 export function regimeAnnualHeadroom(
   id: TaxRegimeId,
   grossThisYearUAH: number,
+  year: number = CURRENT_YEAR,
 ): { limit: number; used: number; remaining: number; pct: number } | null {
-  const limit = taxRegime(id).annualLimitUAH;
+  const limit = taxRegime(id, year).annualLimitUAH;
   if (limit <= 0) return null;
   const used = Math.max(0, grossThisYearUAH);
   return {

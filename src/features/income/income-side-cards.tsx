@@ -7,7 +7,7 @@ import { CURRENCIES, CURRENCY_SLOT, CURRENCY_SYMBOL } from "@/lib/constants";
 import { addMonths, currentMonth, monthOf, todayISO } from "@/lib/date";
 import { incomeByCategory, rollupToParents } from "@/lib/finance/finmath";
 import { convert, formatMoney, formatPercent } from "@/lib/finance/money";
-import { regimeAnnualHeadroom, taxRegime } from "@/lib/finance/tax";
+import { regimeAnnualHeadroom, taxRegime, taxYearValues } from "@/lib/finance/tax";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import type { TaxRegimeId } from "@/lib/types";
@@ -34,9 +34,13 @@ export function TaxLimitCard() {
     .sort((a, b) => b.headroom.pct - a.headroom.pct);
 
   if (limits.length === 0) return null;
+  const figures = taxYearValues(Number(nowMonth.slice(0, 4)));
 
   return (
     <Card title={t("tax.limit.title", { year: nowMonth.slice(0, 4) })} subtitle={tp("tax.limit.regimes", limits.length)} icon="shield">
+      {!figures.known && (
+        <p className="caption mb-3 text-warning">{t("tax.yearUnknown", { year: nowMonth.slice(0, 4), used: figures.year })}</p>
+      )}
       <ul className="space-y-3.5">
         {limits.map(({ regime, headroom }) => (
           <li key={regime}>

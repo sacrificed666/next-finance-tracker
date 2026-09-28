@@ -263,3 +263,13 @@ describe("schedules keep real payments", () => {
     expect(out.transactions[0].recurringId).toBeUndefined();
   });
 });
+
+describe("tax payments marked paid", () => {
+  it("are replaced by the real bank payment instead of doubled", () => {
+    const marker: Transaction = { id: "tax:2026-Q3:esv", type: "expense", amount: 5707.02, currency: "UAH", categoryId: "cat-taxes", date: "2026-10-20", note: "ЄСВ" };
+    const s = { ...state, transactions: [marker] };
+    const [c] = prepareImport(s, [line({ externalId: "mono:esv", accountId: "black", amount: 5707.02, date: "2026-10-20", description: "ЄСВ ФОП" })]);
+    expect(c.duplicate).toBe(false);
+    expect(c.planned?.id).toBe("tax:2026-Q3:esv");
+  });
+});

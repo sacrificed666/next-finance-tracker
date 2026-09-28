@@ -1,11 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, Icon, SummaryPanel } from "@/components/ui";
+import { Button, Card, Fact, Facts, Icon, SummaryPanel } from "@/components/ui";
 import { formatDate, formatDateShort, formatMonth, todayISO } from "@/lib/date";
 import { formatMoney } from "@/lib/finance/money";
-import { taxRegime } from "@/lib/finance/tax";
-import { hasTaxCalendar, taxObligations, upcomingObligations, type TaxObligation } from "@/lib/finance/tax-calendar";
+import { taxRegime, taxYearValues } from "@/lib/finance/tax";
+import {
+  declarationFigures,
+  hasTaxCalendar,
+  incomeBook,
+  incomeBookCsv,
+  recordTaxPayments,
+  taxObligations,
+  upcomingObligations,
+  type RateOf,
+  type TaxObligation,
+} from "@/lib/finance/tax-calendar";
 import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 
@@ -46,11 +56,9 @@ export function TaxCalendarCard() {
     if (days === 0) return t("taxcal.today");
     return `${formatDateShort(o.due)} · ${tp("taxcal.inDays", days)}`;
   };
+  // Paid: remembered on the calendar and booked as an expense under taxes, so it shows in spending.
   const markPaid = (o: TaxObligation) =>
-    update(
-      (s) => ({ ...s, settings: { ...s.settings, taxPaid: { ...(s.settings.taxPaid ?? {}), [o.id]: today } } }),
-      t("taxcal.paidToast", { name: name(o) }),
-    );
+    update((s) => recordTaxPayments(s, [o], true, today, name), t("taxcal.paidToast", { name: name(o) }));
 
   return (
     <Card title={t("taxcal.title")} subtitle={tk(taxRegime(regime).labelKey, regime)} icon="receipt">
@@ -128,6 +136,7 @@ function useNbuRates(keys: string[]): Map<string, number> {
 export function QuarterlyTaxCard() {
   const { state, update } = useStore();
   const { t } = useT();
+  const periodLabel = usePeriodLabel();
   const today = todayISO();
   const year = Number(today.slice(0, 4));
   const regime = state.settings.tax.regime;
@@ -173,15 +182,25 @@ export function QuarterlyTaxCard() {
   const yearDeclaration = obligations.find(
     (o) => o.kind === "declaration" && (o.period === `${year}-Q4` || o.period === String(year)),
   );
+  const name = (o: TaxObligation) => t(`taxcal.${o.kind}`, { period: periodLabel(o.period) });
   const toggle = (row: (typeof quarters)[number]) =>
-    update((s) => {
-      const next = { ...(s.settings.taxPaid ?? {}) };
-      for (const o of row.payments) {
-        if (row.settled) delete next[o.id];
-        else next[o.id] = today;
-      }
-      return { ...s, settings: { ...s.settings, taxPaid: next } };
-    });
+    update((s) => recordTaxPayments(s, row.payments, !row.settled, today, name));
+
+  // Hryvnias per unit on a day: the NBU rate once it is published, today's rate before that.
+  const rateOf: RateOf = (currency, date) => nbu.get(`${currency}:${date}`) ?? state.settings.rates[currency as "USD" | "EUR"] ?? 1;
+  const downloadBook = () => {
+    const blob = new Blob([incomeBookCsv(incomeBook(state, year, rateOf))], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `income-book-${year}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  // The declaration for the last quarter that has ended counts everything since 1 January.
+  const lastQuarter = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
+  const declaration = lastQuarter > 0 ? declarationFigures(state, year, lastQuarter, rateOf) : null;
+  const figures = taxYearValues(year);
   const money = (v: number) => (v > 0.5 ? formatMoney(v, "UAH", { compact: true }) : "—");
 
   return (
@@ -229,6 +248,29 @@ export function QuarterlyTaxCard() {
           </tbody>
         </table>
       </div>
+      {declaration && declaration.incomeToDate > 0 && (
+        <div className="mt-3">
+          <p className="card-title mb-1.5">{t("taxcal.decl.title", { period: periodLabel(`${year}-Q${declaration.quarter}`) })}</p>
+          <Facts>
+            <Fact label={t("taxcal.decl.income")}>{formatMoney(declaration.incomeToDate, "UAH")}</Fact>
+            <Fact label={t("taxcal.decl.single")}>{formatMoney(declaration.singleToDate, "UAH")}</Fact>
+            <Fact label={t("taxcal.decl.levy")}>{formatMoney(declaration.levyToDate, "UAH")}</Fact>
+            <Fact label={t("taxcal.decl.quarter")}>
+              {formatMoney(declaration.singleThisQuarter + declaration.levyThisQuarter, "UAH")}
+            </Fact>
+          </Facts>
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="caption min-w-0 flex-1">{t("taxcal.book.hint")}</p>
+        <Button variant="ghost" size="sm" onClick={downloadBook} disabled={yearIncome.length === 0}>
+          <Icon name="arrowDown" size={14} />
+          {t("taxcal.book")}
+        </Button>
+      </div>
+      {!figures.known && (
+        <p className="caption mt-2 text-warning">{t("tax.yearUnknown", { year, used: figures.year })}</p>
+      )}
       <p className="caption mt-3">
         {fxKeys.length > 0 ? `${t("taxcal.nbuNote")} ` : ""}
         {yearDeclaration && t("taxcal.declared", { date: formatDate(yearDeclaration.due) })}

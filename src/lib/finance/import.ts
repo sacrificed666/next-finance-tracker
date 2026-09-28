@@ -92,11 +92,20 @@ export function suggestCategory(state: AppState, description: string, type: "inc
   return state.categories.find((c) => c.kind === type && !c.parentId)?.id ?? "";
 }
 
+/**
+ * An entry that stands in for a payment the bank will report: a recurring payment or
+ * subscription posting, or a tax marked paid in the tax calendar (id "tax:…"). The
+ * real operation takes its place instead of being counted next to it.
+ */
+function isPlaceholder(tx: Transaction): boolean {
+  return Boolean(tx.recurringId || tx.subscriptionId || tx.id.startsWith("tax:"));
+}
+
 /** Flags candidates already in the ledger, so they start unticked in the preview. */
 export function markDuplicates(state: AppState, candidates: ImportCandidate[]): ImportCandidate[] {
   const ids = new Set(state.transactions.map((tx) => tx.externalId).filter(Boolean));
   // Planned postings are not duplicates of the real payment: matchPlanned pairs them up instead.
-  const typed = state.transactions.filter((tx) => tx.externalId || !(tx.recurringId || tx.subscriptionId));
+  const typed = state.transactions.filter((tx) => tx.externalId || !isPlaceholder(tx));
   const loose = new Set(
     typed.map((tx) => `${tx.date}|${tx.type}|${tx.amount.toFixed(2)}|${(tx.note ?? "").toLocaleLowerCase()}`),
   );
@@ -199,9 +208,7 @@ const NAMED_TOLERANCE = 0.2;
  * subscription ("YouTube") allows a price that has since changed.
  */
 export function matchPlanned(state: AppState, candidates: ImportCandidate[]): ImportCandidate[] {
-  const planned = state.transactions.filter(
-    (t) => (t.recurringId || t.subscriptionId) && !t.externalId && t.type !== "transfer",
-  );
+  const planned = state.transactions.filter((t) => isPlaceholder(t) && !t.externalId && t.type !== "transfer");
   if (planned.length === 0) return candidates;
   const taken = new Set<string>();
   return candidates.map((c) => {
