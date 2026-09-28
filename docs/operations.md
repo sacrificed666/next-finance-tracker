@@ -54,18 +54,36 @@ There is no migration tool — `db/schema.sql` is idempotent and is the migratio
 3. Run `make dev-migrate`, then the same target on staging and production.
 
 > [!WARNING]
-> Always dump before migrating real data: `make prod-db-backup`. Restores are `psql` replays, so a
-> dump is the only rollback you have.
+> Always dump before migrating real data: `make prod-db-backup-now`. A dump is the only rollback you
+> have.
 
 ## 💾 Backups
 
+Production backs itself up. The `backup` service in `docker/production.yml` runs
+`docker/backup.sh`:
+
+- every night at `BACKUP_HOUR` (in `TZ`, `Europe/Kyiv` by default) it writes a compressed
+  `pg_dump` to `backups/auto/prod-YYYYmmdd-HHMMSS.dump`;
+- it reads each dump back with `pg_restore --list` before keeping it, so a broken file is logged
+  and dropped instead of silently replacing a good one;
+- it deletes dumps older than `BACKUP_KEEP_DAYS` (14 by default);
+- on start it takes one straight away when today has none, so a fresh deploy is covered at once.
+
 ```bash
-make prod-db-backup                       # → backups/prod-YYYYmmdd-HHMMSS.sql
-make prod-db-restore FILE=backups/prod-….sql
+make prod-backups                          # list the nightly dumps
+make prod-db-backup-now                    # one more, checked, next to the nightly ones
+make prod-db-backup                        # a plain SQL dump → backups/prod-YYYYmmdd-HHMMSS.sql
+make prod-db-restore FILE=backups/auto/prod-….dump   # .dump or .sql — the target picks the tool
+make prod-logs                             # the backup service logs a line for every run
 ```
 
-Backups are plain `pg_dump` output. Keep them outside the server as well — the `backups/` folder is
-ignored by Git on purpose.
+> [!IMPORTANT]
+> A dump is the database as stored: every financial record inside is still sealed with
+> `DATA_ENCRYPTION_KEY`. Without that key a backup restores rows nobody can read, so keep the key
+> in a password manager — never in the same place as the dumps.
+
+`backups/` is ignored by Git on purpose. Copy it off the server as well (a nightly `rsync` or
+`rclone` of `backups/auto` is enough): a backup on the same disk does not survive that disk.
 
 ## 🩺 Health and troubleshooting
 

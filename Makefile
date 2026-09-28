@@ -40,7 +40,7 @@ ROW := printf "  $(CYAN)%-20s$(RESET) %s\n"
         stage-build stage-up stage-down stage-restart stage-logs stage-ps stage-shell \
         stage-psql stage-migrate stage-db-backup stage-db-restore stage-destroy stage-deploy \
         prod-build prod-up prod-down prod-restart prod-logs prod-ps prod-shell prod-psql \
-        prod-migrate prod-db-backup prod-db-restore prod-destroy prod-deploy \
+        prod-migrate prod-db-backup prod-db-backup-now prod-backups prod-db-restore prod-destroy prod-deploy \
         lint typecheck build config prune clean
 
 help:
@@ -90,7 +90,9 @@ help:
 	@$(ROW) "prod-psql" "🐘 Open psql against the production database"
 	@$(ROW) "prod-migrate" "🧬 Apply db/schema.sql to the production database"
 	@$(ROW) "prod-db-backup" "💾 Dump the production database into ./backups"
-	@$(ROW) "prod-db-restore" "♻️  Restore the production database (FILE=…)"
+	@$(ROW) "prod-db-backup-now" "🛟 Take a checked backup into ./backups/auto now"
+	@$(ROW) "prod-backups" "🗂️  List the nightly backups (kept BACKUP_KEEP_DAYS)"
+	@$(ROW) "prod-db-restore" "♻️  Restore the production database (FILE=….sql or ….dump)"
 	@$(ROW) "prod-destroy" "💣 Stop production and delete its database volume (asks first)"
 	@$(ROW) "prod-deploy" "📦 Full production roll-out (backup → build → up → migrate)"
 	@printf "\n$(BOLD)🧰 Local tooling (no docker)$(RESET)\n"
@@ -187,7 +189,10 @@ dev-db-backup:
 dev-db-restore:
 	@[ -n "$(FILE)" ] || { printf "$(RED)❌ pass FILE=backups/dev-….sql$(RESET)\n"; exit 1; }
 	@printf "$(DEV_TAG) ♻️  restoring from $(FILE)…\n"
-	@$(DEV) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < $(FILE)
+	@case "$(FILE)" in \
+	  *.dump) $(DEV) exec -T db pg_restore --clean --if-exists --no-owner -U $(PG_USER) -d $(PG_DB) < $(FILE) ;; \
+	  *) $(DEV) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < $(FILE) ;; \
+	esac
 	@printf "$(DEV_TAG) $(GREEN)✅ restored$(RESET)\n"
 
 dev-destroy:
@@ -248,7 +253,10 @@ stage-db-backup:
 stage-db-restore:
 	@[ -n "$(FILE)" ] || { printf "$(RED)❌ pass FILE=backups/stage-….sql$(RESET)\n"; exit 1; }
 	@printf "$(STAGE_TAG) ♻️  restoring from $(FILE)…\n"
-	@$(STAGE) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < $(FILE)
+	@case "$(FILE)" in \
+	  *.dump) $(STAGE) exec -T db pg_restore --clean --if-exists --no-owner -U $(PG_USER) -d $(PG_DB) < $(FILE) ;; \
+	  *) $(STAGE) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < $(FILE) ;; \
+	esac
 	@printf "$(STAGE_TAG) $(GREEN)✅ restored$(RESET)\n"
 
 stage-destroy:
@@ -306,10 +314,20 @@ prod-db-backup:
 	@$(PROD) exec -T db pg_dump -U $(PG_USER) -d $(PG_DB) > $(BACKUP_DIR)/prod-$(STAMP).sql
 	@printf "$(PROD_TAG) $(GREEN)✅ saved$(RESET) $(BACKUP_DIR)/prod-$(STAMP).sql\n"
 
+prod-db-backup-now:
+	@printf "$(PROD_TAG) 🛟 taking a checked backup…\n"
+	@$(PROD) run --rm -e BACKUP_ONCE=1 backup
+
+prod-backups:
+	@ls -lh $(BACKUP_DIR)/auto 2>/dev/null || printf "$(PROD_TAG) no nightly backups yet — the backup service writes them to $(BACKUP_DIR)/auto\n"
+
 prod-db-restore:
 	@[ -n "$(FILE)" ] || { printf "$(RED)❌ pass FILE=backups/prod-….sql$(RESET)\n"; exit 1; }
 	@printf "$(PROD_TAG) $(YELLOW)⚠️ restoring over live data from $(FILE)$(RESET)\n"
-	@$(PROD) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < $(FILE)
+	@case "$(FILE)" in \
+	  *.dump) $(PROD) exec -T db pg_restore --clean --if-exists --no-owner -U $(PG_USER) -d $(PG_DB) < $(FILE) ;; \
+	  *) $(PROD) exec -T db psql -v ON_ERROR_STOP=1 -U $(PG_USER) -d $(PG_DB) < $(FILE) ;; \
+	esac
 	@printf "$(PROD_TAG) $(GREEN)✅ restored$(RESET)\n"
 
 prod-destroy:

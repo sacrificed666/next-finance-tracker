@@ -101,6 +101,7 @@ types per investment kind).
 | --- | --- | --- |
 | JSON (app data only) | Settings → Data → Download | Browser download, restorable via Import |
 | SQL (everything) | `make dev-db-backup` / `stage-` / `prod-` | `backups/<env>-<timestamp>.sql` |
+| Nightly (production) | The `backup` service, checked and kept 14 days — see [Operations](./operations.md#-backups) | `backups/auto/prod-<timestamp>.dump` |
 
 Restore with `make dev-db-restore FILE=backups/dev-….sql`.
 
