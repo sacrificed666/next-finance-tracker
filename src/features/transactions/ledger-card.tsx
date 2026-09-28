@@ -7,6 +7,7 @@ import {
   AddButton,
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
   FilterPills,
   Icon,
@@ -15,6 +16,7 @@ import {
   SearchInput,
   SegmentedControl,
   SortSelect,
+  TextInput,
   Toolbar,
   ToolbarSlot,
 } from "@/components/ui";
@@ -22,6 +24,7 @@ import { addMonths, formatDate, formatDateShort, formatMonth, formatMonthShort, 
 import { descendantsOf } from "@/lib/finance/categories";
 import { convert, formatMoney } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
+import { normalizeTags } from "@/lib/state/backup";
 import { matchesQuery, oneOf, sortItems, usePersistentState } from "@/lib/state/listing";
 import { useStore } from "@/lib/state/store";
 import type { Transaction, TxType } from "@/lib/types";
@@ -42,11 +45,29 @@ export function LedgerCard({
   onAdd: () => void;
   onEdit: (tx: Transaction) => void;
 }) {
-  const { state } = useStore();
+  const { state, update } = useStore();
   const { t, tp, category } = useT();
   const { settings } = state;
   const base = settings.baseCurrency;
   const today = todayISO();
+
+  // Selecting: rows tick instead of opening, and a bar acts on everything ticked at once.
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [tagDraft, setTagDraft] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const stopSelecting = () => {
+    setSelecting(false);
+    setSelected(new Set());
+    setTagDraft("");
+  };
 
   const [query, setQuery] = useState("");
   const [type, setType] = useState<TxType | "all">("all");
@@ -153,13 +174,25 @@ export function LedgerCard({
     const to = tx.toAccountId ? accountById.get(tx.toAccountId) : undefined;
     const parent = cat?.parentId ? catById.get(cat.parentId) : undefined;
     const note = tx.note?.trim();
+    const ticked = selected.has(tx.id);
     return (
       <button
         key={tx.id}
         type="button"
-        onClick={() => onEdit(tx)}
-        className="row-tap flex w-full items-center gap-3 px-2.5 py-2 text-left"
+        onClick={() => (selecting ? toggle(tx.id) : onEdit(tx))}
+        aria-pressed={selecting ? ticked : undefined}
+        className={`row-tap flex w-full items-center gap-3 px-2.5 py-2 text-left ${selecting && ticked ? "bg-accent-soft" : ""}`}
       >
+        {selecting && (
+          <span
+            aria-hidden
+            className={`grid size-5 shrink-0 place-items-center rounded-md border ${
+              ticked ? "border-transparent bg-accent-fill text-on-accent" : "border-ink-3/60 text-transparent"
+            }`}
+          >
+            <Icon name="check" size={13} strokeWidth={3} />
+          </span>
+        )}
         <IconDisc colorSlot={isTransfer ? undefined : cat?.colorSlot} className="size-9 rounded-full text-base">
           {isTransfer ? "⇄" : (cat?.icon ?? "❓")}
         </IconDisc>
@@ -202,6 +235,41 @@ export function LedgerCard({
   const addButton = (variant: "primary" | "ghost") => (
     <AddButton variant={variant} onClick={onAdd} label={t("common.add")} />
   );
+
+  // Bulk actions over the ticked entries. A category only fits entries of its own kind;
+  // transfers and the other kind are left as they were.
+  const picked = state.transactions.filter((tx) => selected.has(tx.id));
+  const setCategory = (categoryId: string) => {
+    const kind = catById.get(categoryId)?.kind;
+    if (!kind) return;
+    const ids = new Set(picked.filter((tx) => tx.type === kind).map((tx) => tx.id));
+    if (ids.size === 0) return;
+    update(
+      (s) => ({ ...s, transactions: s.transactions.map((tx) => (ids.has(tx.id) ? { ...tx, categoryId } : tx)) }),
+      tp("tx.bulk.recategorised", ids.size, { category: category(catById.get(categoryId)) }),
+    );
+  };
+  const addTag = () => {
+    const tag = normalizeTags([tagDraft])?.[0];
+    if (!tag) return;
+    update(
+      (s) => ({
+        ...s,
+        transactions: s.transactions.map((tx) =>
+          selected.has(tx.id) ? { ...tx, tags: normalizeTags([...(tx.tags ?? []), tag]) } : tx,
+        ),
+      }),
+      tp("tx.bulk.tagged", selected.size, { tag }),
+    );
+    setTagDraft("");
+  };
+  const removeSelected = () => {
+    const n = selected.size;
+    update((s) => ({ ...s, transactions: s.transactions.filter((tx) => !selected.has(tx.id)) }), tp("tx.bulk.deleted", n));
+    setConfirmDelete(false);
+    stopSelecting();
+  };
+  const allVisibleTicked = ledger.length > 0 && ledger.every((tx) => selected.has(tx.id));
 
   return (
     <Card
@@ -302,6 +370,14 @@ export function LedgerCard({
                 {t("filter.reset")}
               </Button>
             )}
+            <Button
+              variant={selecting ? "primary" : "ghost"}
+              size="sm"
+              className="shrink-0"
+              onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+            >
+              {selecting ? t("tx.bulk.done") : t("tx.bulk.select")}
+            </Button>
           </Toolbar>
           {ledger.length > 0 && (
             <p className="tnum mb-2 px-1 text-xs text-ink-3">
@@ -360,6 +436,69 @@ export function LedgerCard({
           })}
         </div>
       )}
+
+      {selecting && (
+        <div className="glass-solid sticky bottom-20 z-10 mt-3 space-y-2 rounded-field p-2.5 md:bottom-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-ink-1">{tp("tx.bulk.count", selected.size)}</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelected(allVisibleTicked ? new Set() : new Set(ledger.map((tx) => tx.id)))}
+            >
+              {allVisibleTicked ? t("tx.bulk.none") : tp("tx.bulk.all", ledger.length)}
+            </Button>
+          </div>
+          {selected.size > 0 && (
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center">
+              <OptionPicker
+                size="sm"
+                label={t("tx.bulk.category")}
+                placeholder={t("tx.bulk.category")}
+                value=""
+                onChange={setCategory}
+                groups={categoryGroups.map((g) => ({ ...g, items: g.items.filter((i) => i.value !== "") }))}
+              />
+              <form
+                className="flex min-w-0 items-center gap-1.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  addTag();
+                }}
+              >
+                <div className="min-w-0 flex-1">
+                  <TextInput
+                    value={tagDraft}
+                    onChange={(e) => setTagDraft(e.target.value)}
+                    placeholder={t("tx.bulk.tagPlaceholder")}
+                    aria-label={t("tx.bulk.tag")}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <Button type="submit" variant="ghost" size="sm" className="shrink-0 whitespace-nowrap" disabled={!tagDraft.trim()}>
+                  {t("tx.bulk.tag")}
+                </Button>
+              </form>
+              <Button
+                variant="danger"
+                size="sm"
+                className="justify-self-start whitespace-nowrap"
+                onClick={() => setConfirmDelete(true)}
+              >
+                {t("tx.bulk.delete")}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={removeSelected}
+        title={tp("tx.bulk.deleteTitle", selected.size)}
+        message={t("tx.bulk.deleteMessage")}
+        confirmLabel={t("tx.bulk.delete")}
+      />
     </Card>
   );
 }

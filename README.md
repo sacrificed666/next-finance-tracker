@@ -36,6 +36,7 @@ day, and a pace chart of the running total against the month before, plus:
 - **Tags** across categories (`#trip`, `#work`), with a tag filter and search.
 - **Split one purchase** across several categories — a supermarket receipt with food and household.
 - **Receipt photos** on any entry, shrunk in the browser and stored encrypted.
+- **Bulk edit** — tick several entries to change their category, add a tag or delete them at once.
 
 ### 🧾 Income
 
