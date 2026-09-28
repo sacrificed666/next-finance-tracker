@@ -253,9 +253,10 @@ Measured with a 4× slower CPU (a mid-range phone), these are the rules the surf
 - **Entrance animations play once.** Cards rise and charts grow on the first screen after a load;
   `:root[data-entered]` (set 1.3 s after the data arrives) switches them off, so another page or
   another month is drawn at once instead of repainting SVG for a second.
-- **Controls answer before the cards.** Month and period switchers, the ledger search and the palette
-  update at once and pass a `useDeferredValue` copy to the heavy cards, which redraw in the background
-  and are interrupted by the next click.
+- **Controls answer before the cards.** Month and period switchers, the ledger search and the
+  forecast sliders update at once and pass a `useDeferredValue` copy to the heavy cards, which redraw
+  in the background and are interrupted by the next click. The command palette does not: its list is
+  cheap, and Enter must act on the results for what was just typed.
 
 ## 🎨 One brand colour, split by job
 

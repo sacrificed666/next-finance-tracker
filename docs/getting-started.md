@@ -74,8 +74,9 @@ with `stage-` and `prod-` prefixes.
 ```bash
 npm install          # once, for the local toolchain
 npx tsc --noEmit     # types, including every translation key
-npx eslint src       # lint
+npx eslint src e2e   # lint
 npm test             # unit tests
+npm run e2e          # browser tests against the running dev stack
 npx next build       # production build
 ```
 

@@ -50,6 +50,8 @@ src/
   app/manifest.ts         the installable app's manifest (name, icons, shortcuts), in the visitor's language
 public/sw.js              the service worker: static files cached, an offline page, never any data
 public/icons/             app icons for installs (192, 512, maskable)
+e2e/                      Playwright browser tests (playwright.config.ts); unit tests sit next to the code as *.test.ts
+.github/workflows/ci.yml  checks and browser tests on every push
 ```
 
 > [!TIP]

@@ -4,12 +4,13 @@
 
 ```bash
 npx tsc --noEmit     # types — also proves every locale has every translation key
-npx eslint src       # lint
+npx eslint src e2e   # lint
 npm test             # unit tests
+npm run e2e          # browser tests, against the running dev stack
 npx next build       # production build, catches server/client boundary mistakes
 ```
 
-Run all four before calling a change done. The type check is the cheapest way to catch a missing
+Run all five before calling a change done; CI runs the same on every push. The type check is the cheapest way to catch a missing
 translation, a renamed field or an enum that drifted away from the database constraint.
 
 ## 🧪 Unit tests
@@ -42,28 +43,49 @@ identical to English. Anything it flags is either a real bug or a deliberate loa
 > Product names ("Inzhur", "Google") and short words that genuinely match English are the only
 > acceptable "same as English" results.
 
-## 🌐 Browser smoke tests
+## 🌐 Browser tests
 
-A headless Chrome pass over the app catches what unit-level checks cannot: hydration errors, missing
-translations rendered as raw keys and layout that breaks on small screens.
+Playwright drives Chromium through the app at 1440 px and 390 px (`playwright.config.ts`, `e2e/`),
+catching what unit tests cannot: hydration errors, raw translation keys, layout that breaks on a
+phone, and the flows that tie pages together.
 
-What is worth automating:
-
-| Check | What it does |
+| File | What it checks |
 | --- | --- |
-| Page sweep | Visit every route in several locales, fail on console errors or a visible `some.key.like.this` |
-| Overflow | Compare `document.scrollWidth` with the viewport at 390 px and report any element wider than the screen |
-| Screenshots | Capture each page at 1440 px and 390 px for a visual diff by eye |
-| Forms | Open the sheets (account, investment, subscription) and confirm the fields for each kind |
+| `e2e/pages.spec.ts` | Every page renders without page or console errors and shows no key from `en.ts` untranslated; a visitor without a session lands on the sign-in page |
+| `e2e/layout.spec.ts` | No page is wider than the screen, and no block scrolls by only a few pixels |
+| `e2e/flows.spec.ts` | The command palette opens, filters and navigates; an entry opens from the address bar and closing clears it; a change is saved as a change set |
+
+```bash
+npm run e2e                                   # against http://localhost:3000
+E2E_BASE_URL=http://localhost:3001 npm run e2e   # against another stack
+E2E_USER_ID=<uuid> npm run e2e                # as a real account, read-only
+```
+
+- The session is minted from `AUTH_SECRET` (from the environment or `.env`) for an **empty test
+  user**, so the suite never sees real data unless `E2E_USER_ID` asks for an account.
+- Two browsers run in parallel: the dev server compiles pages on first request and falls behind with
+  more.
 
 > [!IMPORTANT]
-> Intercept every non-GET `/api/*` request (saves are `PATCH /api/state`) in any browser test and
-> answer `200` locally. The development database holds real data — a test must never write to it.
-> A test that has to write runs against a throwaway database restored from a backup.
+> The fixtures answer every non-GET `/api/*` request locally, and every test goes through them. The
+> development database holds real data — a test must never write to it. A check that has to write
+> runs against a throwaway database restored from a backup, never against the development one.
 
 > [!WARNING]
-> Sign in through the credentials endpoint and reuse the session cookie. Do not disable the
-> middleware to make tests easier; the gate is part of what you are testing.
+> Do not disable the middleware to make tests easier; the gate is part of what is being tested.
+
+## 🤖 Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on pull requests:
+
+| Job | Steps |
+| --- | --- |
+| **Types, lint, unit tests, build** | `npm ci`, `tsc --noEmit`, `eslint src e2e`, `npm test`, `next build` |
+| **Browser tests** | A Postgres service, secrets generated for the run, the standalone production build started on port 3000, then `npx playwright test`; the report, traces and server log are kept for seven days when it fails |
+
+> [!NOTE]
+> CI needs no repository secrets: `AUTH_SECRET` and `DATA_ENCRYPTION_KEY` are random for each run and
+> the database starts empty.
 
 ## 🧭 Manual pass before release
 

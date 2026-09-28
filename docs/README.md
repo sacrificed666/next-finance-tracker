@@ -40,7 +40,7 @@ money tracker built with Next.js 16, React 19, PostgreSQL and Tailwind v4.
 | --- | --- |
 | [Operations](./operations.md) | Docker stacks, Makefile targets, migrations, backups, hot reload |
 | [Security and privacy](./security-and-privacy.md) | Sessions, password hashing, what leaves the machine |
-| [Quality checks](./quality-checks.md) | Type checks, linting, dictionary validation, browser smoke tests |
+| [Quality checks](./quality-checks.md) | Type checks, linting, unit and browser tests, dictionary validation, CI |
 
 ## 🗺️ Repository map
 
