@@ -147,7 +147,7 @@ export function Sheet({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`sheet-panel glass-solid flex max-h-[92dvh] w-full flex-col rounded-t-sheet outline-none sm:rounded-sheet ${
+        className={`sheet-panel glass-solid flex max-h-[calc(100dvh-1.5rem)] w-full flex-col rounded-t-sheet outline-none sm:max-h-[calc(100dvh-3rem)] sm:rounded-sheet ${
           wide ? "sm:max-w-3xl" : "sm:max-w-md"
         }`}
       >

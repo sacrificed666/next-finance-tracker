@@ -496,6 +496,7 @@ export const en = {
   "taxcal.col.levy": "Levy",
   "taxcal.col.esv": "ЄСВ",
   "taxcal.col.vat": "VAT",
+  "taxcal.col.taxes": "Taxes",
   "taxcal.col.paid": "Paid",
   "taxcal.paid": "Paid",
   "taxcal.notYet": "Not yet",

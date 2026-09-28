@@ -179,13 +179,13 @@ export function ReportsPage() {
                 {cats.length === 0 ? (
                   <p className="caption">{t("tx.where.empty")}</p>
                 ) : (
-                  <div className="-mx-1 overflow-x-auto px-1">
-                    <table className="data-table min-w-120">
+                  <div className="table-scroll">
+                    <table className="data-table sm:min-w-120">
                       <thead>
                         <tr>
-                          <th className="text-left">{t("common.category")}</th>
+                          <th className="w-full text-left">{t("common.category")}</th>
                           <th className="w-[34%] text-right">{label(r.start)}</th>
-                          <th className="text-right">{label(r.prevStart)}</th>
+                          <th className="hidden text-right sm:table-cell">{label(r.prevStart)}</th>
                           <th className="text-right">{t("reports.change")}</th>
                         </tr>
                       </thead>
@@ -196,7 +196,7 @@ export function ReportsPage() {
                           const { icon, name } = catName(c.id);
                           return (
                             <tr key={c.id}>
-                              <td>
+                              <td className="max-w-0">
                                 <span className="flex min-w-0 items-center gap-2">
                                   <span aria-hidden>{icon}</span>
                                   <span className="truncate text-ink-1">{name}</span>
@@ -210,7 +210,7 @@ export function ReportsPage() {
                                   <span className="tnum w-18 shrink-0 font-semibold text-ink-1">{money(c.value)}</span>
                                 </span>
                               </td>
-                              <td className="tnum text-right text-ink-3">{money(c.before)}</td>
+                              <td className="tnum hidden text-right text-ink-3 sm:table-cell">{money(c.before)}</td>
                               <td className={`tnum text-right text-xs font-semibold ${diff > 0.5 ? "text-expense" : diff < -0.5 ? "text-income" : "text-ink-3"}`}>
                                 {Math.abs(diff) <= 0.5 ? "—" : pct !== null ? `${diff > 0 ? "+" : "−"}${formatPercent(Math.abs(pct), 0)}` : t("reports.new")}
                               </td>

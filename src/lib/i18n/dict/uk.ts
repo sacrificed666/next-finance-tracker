@@ -530,6 +530,7 @@ export const uk: Dictionary = {
   "taxcal.col.levy": "ВЗ",
   "taxcal.col.esv": "ЄСВ",
   "taxcal.col.vat": "ПДВ",
+  "taxcal.col.taxes": "Податки",
   "taxcal.col.paid": "Сплачено",
   "taxcal.paid": "Сплачено",
   "taxcal.notYet": "Ні",

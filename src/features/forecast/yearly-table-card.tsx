@@ -15,14 +15,15 @@ export function YearlyTableCard({ f, view, withDebts }: { f: Forecast; view: Cur
 
   return (
     <Card title={t("forecast.yearly", { currency: view })} icon="calendar">
-      <div className="-mx-1 overflow-x-auto px-1">
-        <table className="data-table min-w-104">
+      <div className="table-scroll">
+        <table className="data-table sm:min-w-104">
           <thead>
             <tr>
               <th className="text-left">{t("forecast.col.year")}</th>
-              <th className="text-right">{t("forecast.savings")}</th>
-              <th className="text-right">{t("balance.investments")}</th>
-              {showDebts && <th className="text-right">{t("balance.debts")}</th>}
+              {/* On a phone the parts step aside so the table fits without scrolling sideways. */}
+              <th className="hidden text-right sm:table-cell">{t("forecast.savings")}</th>
+              <th className="hidden text-right sm:table-cell">{t("balance.investments")}</th>
+              {showDebts && <th className="hidden text-right sm:table-cell">{t("balance.debts")}</th>}
               <th className="w-[34%] text-right">{t("forecast.col.total")}</th>
               <th className="text-right">{t("forecast.col.added")}</th>
             </tr>
@@ -38,12 +39,12 @@ export function YearlyTableCard({ f, view, withDebts }: { f: Forecast; view: Cur
                       {i === 0 ? t("forecast.now") : p.month.slice(0, 4)}
                     </span>
                   </td>
-                  <td className="tnum text-right text-ink-2">{formatMoney(f.show(p.savings, i), view, { compact: true })}</td>
-                  <td className="tnum text-right text-ink-2">
+                  <td className="tnum hidden text-right text-ink-2 sm:table-cell">{formatMoney(f.show(p.savings, i), view, { compact: true })}</td>
+                  <td className="tnum hidden text-right text-ink-2 sm:table-cell">
                     {formatMoney(f.show(p.investments, i), view, { compact: true })}
                   </td>
                   {showDebts && (
-                    <td className="tnum text-right text-expense">
+                    <td className="tnum hidden text-right text-expense sm:table-cell">
                       {p.debt > 0 ? `−${formatMoney(f.show(p.debt, i), view, { compact: true })}` : "—"}
                     </td>
                   )}

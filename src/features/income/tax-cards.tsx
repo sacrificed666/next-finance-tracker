@@ -186,16 +186,18 @@ export function QuarterlyTaxCard() {
 
   return (
     <Card title={t("taxcal.quarterly")} subtitle={t("taxcal.quarterly.subtitle", { year })} icon="calendar">
-      <div className="-mx-1 overflow-x-auto px-1">
-        <table className="data-table min-w-120">
+      <div className="table-scroll">
+        <table className="data-table sm:min-w-120">
           <thead>
             <tr>
               <th className="text-left">{t("taxcal.col.quarter")}</th>
               <th className="text-right">{t("taxcal.col.income")}</th>
-              <th className="text-right">{t("taxcal.col.single")}</th>
-              <th className="text-right">{t("taxcal.col.levy")}</th>
-              <th className="text-right">{t("taxcal.col.esv")}</th>
-              {hasVat && <th className="text-right">{t("taxcal.col.vat")}</th>}
+              {/* On a phone the four parts fold into one total, so the table fits the screen. */}
+              <th className="text-right sm:hidden">{t("taxcal.col.taxes")}</th>
+              <th className="hidden text-right sm:table-cell">{t("taxcal.col.single")}</th>
+              <th className="hidden text-right sm:table-cell">{t("taxcal.col.levy")}</th>
+              <th className="hidden text-right sm:table-cell">{t("taxcal.col.esv")}</th>
+              {hasVat && <th className="hidden text-right sm:table-cell">{t("taxcal.col.vat")}</th>}
               <th className="w-24 text-right">{t("taxcal.col.paid")}</th>
             </tr>
           </thead>
@@ -204,10 +206,11 @@ export function QuarterlyTaxCard() {
               <tr key={row.period}>
                 <td className="font-semibold text-ink-1">{t("taxcal.quarter", { q: row.q, year })}</td>
                 <td className="tnum text-right text-ink-1">{money(row.gross)}</td>
-                <td className="tnum text-right text-ink-2">{money(row.single)}</td>
-                <td className="tnum text-right text-ink-2">{money(row.levy)}</td>
-                <td className="tnum text-right text-ink-2">{money(row.esv)}</td>
-                {hasVat && <td className="tnum text-right text-ink-2">{money(row.vat)}</td>}
+                <td className="tnum text-right text-ink-2 sm:hidden">{money(row.single + row.levy + row.esv + row.vat)}</td>
+                <td className="tnum hidden text-right text-ink-2 sm:table-cell">{money(row.single)}</td>
+                <td className="tnum hidden text-right text-ink-2 sm:table-cell">{money(row.levy)}</td>
+                <td className="tnum hidden text-right text-ink-2 sm:table-cell">{money(row.esv)}</td>
+                {hasVat && <td className="tnum hidden text-right text-ink-2 sm:table-cell">{money(row.vat)}</td>}
                 <td className="text-right">
                   <button
                     type="button"

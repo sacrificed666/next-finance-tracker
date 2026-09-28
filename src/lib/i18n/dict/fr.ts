@@ -498,6 +498,7 @@ export const fr: Dictionary = {
   "taxcal.col.levy": "Contrib. mil.",
   "taxcal.col.esv": "ЄСВ",
   "taxcal.col.vat": "TVA",
+  "taxcal.col.taxes": "Impôts",
   "taxcal.col.paid": "Payé",
   "taxcal.paid": "Payé",
   "taxcal.notYet": "Pas encore",

@@ -498,6 +498,7 @@ export const nl: Dictionary = {
   "taxcal.col.levy": "Heffing",
   "taxcal.col.esv": "ЄСВ",
   "taxcal.col.vat": "Btw",
+  "taxcal.col.taxes": "Belastingen",
   "taxcal.col.paid": "Betaald",
   "taxcal.paid": "Betaald",
   "taxcal.notYet": "Nog niet",

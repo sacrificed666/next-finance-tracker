@@ -272,6 +272,17 @@
     color: var(--ink-1);
   }
 
+  // A wide table's own sideways scroll, for phones. Sideways only: any `overflow-x`
+  // makes the other axis scrollable too, and the table's negative block margin then
+  // counts as 4 px of vertical overflow — a stray scrollbar beside every table.
+  .table-scroll {
+    margin-inline: -0.25rem;
+    padding-inline: 0.25rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+  }
+
   .data-table {
     width: 100%;
     border-collapse: separate;
