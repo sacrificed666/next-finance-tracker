@@ -7,7 +7,7 @@ import { Button, Card, IconDisc, SegmentedControl, TextInput } from "@/component
 import { CURRENCY_SYMBOL } from "@/lib/constants";
 import { pad } from "@/lib/date";
 import { guessMapping, parseCsv, type CsvMapping } from "@/lib/finance/csv";
-import { markDuplicates, suggestCategory, toTransactions, type ImportCandidate } from "@/lib/finance/import";
+import { applyImport, prepareImport, suggestCategory, type ImportCandidate } from "@/lib/finance/import";
 import { formatMoney } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { uid, useStore } from "@/lib/state/store";
@@ -17,9 +17,11 @@ import { ImportPreviewSheet } from "./import-preview";
 
 interface MonoAccount {
   id: string;
+  kind?: "card" | "jar";
   currency: Currency | null;
   type: string;
   maskedPan: string;
+  title?: string;
   balance: number;
 }
 
@@ -118,7 +120,7 @@ export function ImportCard() {
     });
 
   const openPreview = (title: string, found: ImportCandidate[]) => {
-    const candidates = markDuplicates(state, found).sort((a, b) => b.date.localeCompare(a.date));
+    const candidates = prepareImport(state, found);
     setSelected(new Set(candidates.filter((c) => !c.duplicate).map((c) => c.externalId)));
     setPreview({ title, candidates });
   };
@@ -150,14 +152,27 @@ export function ImportCard() {
           return setError(await failure(res));
         }
         const { items } = (await res.json()) as {
-          items: Array<{ id: string; time: number; description: string; comment?: string; mcc: number; amount: number }>;
+          items: Array<{
+            id: string;
+            time: number;
+            description: string;
+            comment?: string;
+            mcc: number;
+            amount: number;
+            opAmount?: number;
+            opCurrency?: Currency;
+          }>;
         };
         for (const item of items) {
           const type = item.amount < 0 ? "expense" : "income";
           const description = [item.description, item.comment].filter(Boolean).join(" · ");
+          const foreign = item.opCurrency && item.opCurrency !== acc.currency;
           found.push({
             externalId: `mono:${item.id}`,
             date: dateOf(item.time),
+            time: item.time,
+            opAmount: foreign ? item.opAmount : undefined,
+            opCurrency: foreign ? item.opCurrency : undefined,
             type,
             amount: Math.abs(item.amount),
             currency: acc.currency!,
@@ -188,7 +203,7 @@ export function ImportCard() {
     if (!preview) return;
     const picked = preview.candidates.filter((c) => selected.has(c.externalId));
     update(
-      (s) => ({ ...s, transactions: [...s.transactions, ...toTransactions(picked, undefined, uid)] }),
+      (s) => applyImport(s, picked, uid),
       tp("import.done", picked.length),
     );
     setPreview(null);
@@ -242,11 +257,13 @@ export function ImportCard() {
               <ul className="rows">
                 {trackable.map((acc) => (
                   <li key={acc.id} className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-2.5 py-2 sm:grid-cols-[auto_minmax(0,1fr)_14rem]">
-                    <IconDisc colorSlot={5} className="size-8 rounded-chip text-sm">
-                      💳
+                    <IconDisc colorSlot={acc.kind === "jar" ? 2 : 5} className="size-8 rounded-chip text-sm">
+                      {acc.kind === "jar" ? "🫙" : "💳"}
                     </IconDisc>
                     <span className="min-w-0">
-                      <span className="block truncate text-sm text-ink-1">{acc.maskedPan || acc.type}</span>
+                      <span className="block truncate text-sm text-ink-1">
+                        {acc.kind === "jar" ? (acc.title || t("import.mono.jar")) : acc.maskedPan || acc.type}
+                      </span>
                       <span className="tnum block text-xs text-ink-3">
                         {formatMoney(acc.balance, acc.currency!)} · {CURRENCY_SYMBOL[acc.currency!]}
                       </span>

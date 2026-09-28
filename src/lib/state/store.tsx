@@ -377,7 +377,10 @@ export function deleteSchedule(
       kind === "subscription"
         ? state.subscriptions.filter((s) => s.id !== id)
         : state.subscriptions,
-    transactions: state.transactions.filter((t) => !isPostingOf(t, kind, id)),
+    // Planned postings go with the schedule; real payments matched to them stay as plain entries.
+    transactions: state.transactions.flatMap((t) =>
+      !isPostingOf(t, kind, id) ? [t] : t.externalId ? [{ ...t, recurringId: undefined, subscriptionId: undefined }] : [],
+    ),
   });
 }
 
@@ -530,6 +533,8 @@ export function syncSchedule(state: AppState, kind: ScheduleKind, id: string): A
 
   const transactions = state.transactions.flatMap((t) => {
     if (!isPostingOf(t, kind, id)) return [t];
+    // A posting an import replaced with the real payment keeps what the bank said.
+    if (t.externalId) return [t];
     const month = postingMonth(t, kind, id);
     if (!covered.has(month)) return [];
     if (rule) return [{ id: t.id, ...recurringPosting(rule, month) }];

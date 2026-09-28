@@ -13,10 +13,14 @@ export const MONO_MAX_RANGE_S = 31 * 86_400 + 3_600;
 
 export interface MonoAccount {
   id: string;
+  /** A card account, or a jar ("банка") — Monobank's savings pots, with their own statement. */
+  kind: "card" | "jar";
   /** Null for a currency the app does not track. */
   currency: Currency | null;
   type: string;
   maskedPan: string;
+  /** A jar's name. */
+  title?: string;
   /** In the account's currency, major units. */
   balance: number;
 }
@@ -29,6 +33,9 @@ export interface MonoItem {
   mcc: number;
   /** In the account's currency, major units; negative is money out. */
   amount: number;
+  /** The operation in its own currency when that differs (a dollar purchase on a hryvnia card). */
+  opAmount?: number;
+  opCurrency?: Currency;
 }
 
 interface MonoStored {
@@ -91,6 +98,7 @@ export async function deleteMono(userId: string): Promise<void> {
 interface ClientInfo {
   name?: string;
   accounts?: Array<{ id: string; balance: number; type?: string; currencyCode: number; maskedPan?: string[] }>;
+  jars?: Array<{ id: string; title?: string; balance: number; currencyCode: number }>;
 }
 
 /** Checks the token against Monobank, then stores it with the account list. The token never leaves the server. */
@@ -99,13 +107,25 @@ export async function connectMono(userId: string, token: string): Promise<MonoSt
   const stored: MonoStored = {
     token,
     name: info.name,
-    accounts: (info.accounts ?? []).map((a) => ({
-      id: a.id,
-      currency: CURRENCY_CODES[a.currencyCode] ?? null,
-      type: a.type ?? "black",
-      maskedPan: a.maskedPan?.[0] ?? "",
-      balance: a.balance / 100,
-    })),
+    accounts: [
+      ...(info.accounts ?? []).map((a) => ({
+        id: a.id,
+        kind: "card" as const,
+        currency: CURRENCY_CODES[a.currencyCode] ?? null,
+        type: a.type ?? "black",
+        maskedPan: a.maskedPan?.[0] ?? "",
+        balance: a.balance / 100,
+      })),
+      ...(info.jars ?? []).map((j) => ({
+        id: j.id,
+        kind: "jar" as const,
+        currency: CURRENCY_CODES[j.currencyCode] ?? null,
+        type: "jar",
+        maskedPan: "",
+        title: j.title?.slice(0, 80),
+        balance: j.balance / 100,
+      })),
+    ],
     fetchedAt: Date.now(),
   };
   await ensureSchema();
@@ -122,7 +142,16 @@ export async function monoStatement(
   to: number,
 ): Promise<MonoItem[]> {
   const items = await call<
-    Array<{ id: string; time: number; description?: string; comment?: string; mcc?: number; amount: number }>
+    Array<{
+      id: string;
+      time: number;
+      description?: string;
+      comment?: string;
+      mcc?: number;
+      amount: number;
+      operationAmount?: number;
+      currencyCode?: number;
+    }>
   >(userId, token, `/personal/statement/${encodeURIComponent(account)}/${from}/${to}`);
   return items.map((i) => ({
     id: i.id,
@@ -131,6 +160,8 @@ export async function monoStatement(
     comment: i.comment?.slice(0, 200),
     mcc: i.mcc ?? 0,
     amount: i.amount / 100,
+    opAmount: i.operationAmount !== undefined ? Math.abs(i.operationAmount) / 100 : undefined,
+    opCurrency: i.currencyCode !== undefined ? CURRENCY_CODES[i.currencyCode] : undefined,
   }));
 }
 

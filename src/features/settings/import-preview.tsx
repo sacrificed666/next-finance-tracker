@@ -35,6 +35,7 @@ export function ImportPreviewSheet({
   const expenseGroups = useCategoryGroups(state.categories, ["expense"]);
   const incomeGroups = useCategoryGroups(state.categories, ["income"]);
   const fresh = candidates.filter((c) => !c.duplicate);
+  const accountName = (id: string | undefined) => state.savings.find((a) => a.id === id)?.name ?? "?";
   const picked = candidates.filter((c) => selected.has(c.externalId));
   const allOn = fresh.length > 0 && fresh.every((c) => selected.has(c.externalId));
 
@@ -79,7 +80,7 @@ export function ImportPreviewSheet({
                   checked={on}
                   onChange={(e) => onToggle([c.externalId], e.target.checked)}
                   aria-label={c.description || formatDateShort(c.date)}
-                  className="size-4 accent-[var(--accent)]"
+                  className="size-4 accent-(--accent)"
                 />
                 <span className="min-w-0">
                   <span className="block truncate text-sm text-ink-1">{c.description || "—"}</span>
@@ -87,23 +88,40 @@ export function ImportPreviewSheet({
                     {formatDateShort(c.date)}
                     {c.mcc ? ` · MCC ${c.mcc}` : ""}
                     {c.duplicate && <Badge>{t("import.already")}</Badge>}
+                    {c.planned && <Badge tone="accent">{t("import.planned", { name: c.planned.label })}</Badge>}
                   </span>
                 </span>
                 <span className="col-start-2 sm:col-start-auto">
-                  <OptionPicker
-                    size="sm"
-                    label={t("common.category")}
-                    value={c.categoryId}
-                    onChange={(categoryId) => onChange(c.externalId, categoryId)}
-                    groups={c.type === "income" ? incomeGroups : expenseGroups}
-                  />
+                  {c.type === "transfer" ? (
+                    <span className="flex items-start gap-1.5 text-xs leading-snug text-ink-2">
+                      <span aria-hidden>⇄</span>
+                      <span className="min-w-0">
+                        {t("import.transfer", { from: accountName(c.accountId), to: accountName(c.toAccountId) })}
+                      </span>
+                    </span>
+                  ) : (
+                    <OptionPicker
+                      size="sm"
+                      label={t("common.category")}
+                      value={c.categoryId}
+                      onChange={(categoryId) => onChange(c.externalId, categoryId)}
+                      groups={c.type === "income" ? incomeGroups : expenseGroups}
+                    />
+                  )}
                 </span>
                 <span
                   className={`tnum col-start-2 text-right text-sm font-semibold sm:col-start-auto ${
-                    c.type === "income" ? "text-income" : "text-expense"
+                    c.type === "income" ? "text-income" : c.type === "transfer" ? "text-ink-2" : "text-expense"
                   }`}
                 >
-                  {formatMoney(c.type === "income" ? c.amount : -c.amount, c.currency, { sign: true })}
+                  {c.type === "transfer"
+                    ? formatMoney(c.amount, c.currency)
+                    : formatMoney(c.type === "income" ? c.amount : -c.amount, c.currency, { sign: true })}
+                  {c.type === "transfer" && c.toAmount !== undefined && (
+                    <span className="block text-[11px] font-medium text-ink-3">
+                      → {formatMoney(c.toAmount, state.savings.find((a) => a.id === c.toAccountId)?.currency ?? c.currency)}
+                    </span>
+                  )}
                 </span>
               </li>
             );
