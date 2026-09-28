@@ -106,6 +106,16 @@ export function changeSize(changes: StateChanges): number {
   return n;
 }
 
+/** What a change touches, without any content — "transactions +1 −0, settings" — for the server log. */
+export function describeChanges(changes: StateChanges): string {
+  const parts = COLLECTION_NAMES.flatMap((name) => {
+    const change = changes[name];
+    return change ? [`${name} +${change.upsert.length} −${change.remove.length}`] : [];
+  });
+  if (changes.settings) parts.push("settings");
+  return parts.join(", ") || "nothing";
+}
+
 /** The state with the changes laid over it: edits replace in place, new records go last. */
 export function applyChanges(state: AppState, changes: StateChanges): AppState {
   let next = state;

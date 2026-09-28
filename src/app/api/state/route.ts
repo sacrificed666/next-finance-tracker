@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { auth, OWNER_EMAIL } from "@/lib/server/auth";
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from "@/lib/i18n/locales";
 import { claimOrphanData, loadState, saveChanges, stateRevision } from "@/lib/server/repo";
-import { parseChanges } from "@/lib/state/changes";
+import { describeChanges, parseChanges } from "@/lib/state/changes";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +81,8 @@ export async function PATCH(request: Request) {
   try {
     const preferred = (await cookies()).get(LOCALE_COOKIE)?.value;
     const result = await saveChanges(userId, changes, base, isLocale(preferred) ? preferred : DEFAULT_LOCALE);
+    // What was saved, never what it says: collections and counts only, so a change can be traced.
+    console.info(`[api/state] sent ${describeChanges(changes)} → ${result.written} rows written${result.stale ? " (merged)" : ""}`);
     return NextResponse.json(result, { headers: { ETag: toEtag(result.revision) } });
   } catch (err) {
     return fail(err);
