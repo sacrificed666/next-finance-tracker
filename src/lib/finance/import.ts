@@ -1,3 +1,4 @@
+import { addMonths, monthDiff, monthOf } from "@/lib/date";
 import type { AppState, Currency, Transaction } from "@/lib/types";
 
 /** One entry found in a bank statement, before it becomes a transaction. */
@@ -285,4 +286,83 @@ export function fingerprint(text: string): string {
     h2 = Math.imul(h2 ^ c, 0x5bd1e995);
   }
   return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
+}
+
+export interface SubscriptionSuggestion {
+  /** The merchant, as the statement names it, reduced to a stable key. */
+  key: string;
+  name: string;
+  amount: number;
+  currency: Currency;
+  dayOfMonth: number;
+  accountId?: string;
+  /** Consecutive months it was charged, ending with the latest. */
+  months: number;
+  /** The month after the latest charge — a subscription added from here starts then, so the charge already booked is not planned twice. */
+  startMonth: string;
+}
+
+/** A merchant's name without card numbers, dates and punctuation: "NETFLIX.COM 12/09" → "netflix com". */
+function merchantKey(note: string): string {
+  return note
+    .toLocaleLowerCase()
+    .replace(/[\d*#№.,:;!?'"«»()[\]{}\-_/\\]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .slice(0, 3)
+    .join(" ");
+}
+
+/**
+ * Charges that look like a subscription nobody set up: the same merchant, one charge a
+ * month for at least two months in a row, about the same amount (within 10%) and day
+ * (within four days). A shop visited several times a month is not one. Merchants an
+ * existing subscription already names are left out.
+ */
+export function suggestSubscriptions(state: AppState, today: string): SubscriptionSuggestion[] {
+  const since = addMonths(monthOf(today), -6);
+  const known = state.subscriptions.map((s) => s.name.toLocaleLowerCase()).filter((n) => n.length >= 3);
+  const groups = new Map<string, Transaction[]>();
+  for (const tx of state.transactions) {
+    if (tx.type !== "expense" || tx.recurringId || tx.subscriptionId || tx.date > today || monthOf(tx.date) < since) continue;
+    const note = tx.note?.trim();
+    if (!note) continue;
+    const key = merchantKey(note);
+    if (key.length < 3) continue;
+    const lower = note.toLocaleLowerCase();
+    if (known.some((name) => lower.includes(name) || name.includes(key))) continue;
+    const list = groups.get(key);
+    if (list) list.push(tx);
+    else groups.set(key, [tx]);
+  }
+
+  const out: SubscriptionSuggestion[] = [];
+  for (const [key, txs] of groups) {
+    const byMonth = new Map<string, Transaction>();
+    for (const tx of [...txs].sort((a, b) => a.date.localeCompare(b.date))) byMonth.set(monthOf(tx.date), tx);
+    const months = [...byMonth.keys()].sort();
+    let run = 1;
+    for (let i = months.length - 1; i > 0 && monthDiff(months[i - 1], months[i]) === 1; i--) run++;
+    if (run < 2) continue;
+    const recent = months.slice(-run).map((m) => byMonth.get(m)!);
+    const last = recent[recent.length - 1];
+    // More charges than months: a place visited often, not a bill.
+    if (txs.filter((tx) => monthOf(tx.date) >= months[months.length - run]).length > run) continue;
+    if (recent.some((tx) => tx.currency !== last.currency)) continue;
+    if (recent.some((tx) => Math.abs(tx.amount - last.amount) > last.amount * 0.1)) continue;
+    const lastDay = Number(last.date.slice(8));
+    if (recent.some((tx) => Math.abs(Number(tx.date.slice(8)) - lastDay) > 4)) continue;
+    out.push({
+      key,
+      name: last.note!.trim().slice(0, 60),
+      amount: last.amount,
+      currency: last.currency,
+      dayOfMonth: lastDay,
+      accountId: last.accountId,
+      months: run,
+      startMonth: addMonths(monthOf(last.date), 1),
+    });
+  }
+  return out.sort((a, b) => b.months - a.months || b.amount - a.amount);
 }

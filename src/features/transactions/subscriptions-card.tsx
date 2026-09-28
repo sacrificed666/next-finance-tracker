@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { AddButton, Card, EmptyState, FilterPills, Icon, IconDisc, Money, SortSelect, SummaryPanel, Toolbar, Unit } from "@/components/ui";
+import { AddButton, Button, Card, EmptyState, FilterPills, Icon, IconDisc, Money, SortSelect, SummaryPanel, Toolbar, Unit } from "@/components/ui";
+import { suggestSubscriptions, type SubscriptionSuggestion } from "@/lib/finance/import";
 import { SUBSCRIPTION_SLOT } from "@/lib/constants";
-import { formatMonth } from "@/lib/date";
+import { formatMonth, todayISO } from "@/lib/date";
 import {
   subscriptionBillsIn,
   subscriptionMonthlyCost,
@@ -32,9 +33,19 @@ const VIEW_STATUS: Record<Exclude<SubView, "all">, SubscriptionStatus> = {
 /** Subscriptions with a real lifetime; the list follows the month being read. */
 export function SubscriptionsCard({ month }: { month: string }) {
   const { state } = useStore();
-  const { t } = useT();
+  const { t, tp } = useT();
   const { settings } = state;
   const base = settings.baseCurrency;
+  const [suggested, setSuggested] = useState<SubscriptionSuggestion | null>(null);
+  const [dismissed, setDismissed] = usePersistentState<string[]>(
+    "subs.dismissed",
+    [],
+    (v): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string"),
+  );
+  // Charges that repeat monthly but belong to no subscription yet — found in imported statements.
+  const suggestions = suggestSubscriptions(state, todayISO())
+    .filter((s) => !dismissed.includes(s.key))
+    .slice(0, 3);
 
   const [view, setView] = useState<SubView>("now");
   const [sort, setSort] = usePersistentState<SubSort>("subs.sort", "name", oneOf(["name", "price", "day"] as const));
@@ -72,6 +83,35 @@ export function SubscriptionsCard({ month }: { month: string }) {
       icon="device"
       action={<AddButton onClick={add} label={t("common.add")} />}
     >
+      {suggestions.length > 0 && (
+        <div className="mb-3 rounded-field border border-accent/25 bg-accent-soft p-2.5">
+          <p className="card-title mb-1.5">{t("tx.subs.suggest.title")}</p>
+          <ul className="space-y-1.5">
+            {suggestions.map((s) => (
+              <li key={s.key} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-ink-1">{s.name}</span>
+                  <span className="block text-xs text-ink-3">
+                    {formatMoney(s.amount, s.currency)} · {tp("tx.subs.suggest.seen", s.months)}
+                  </span>
+                </span>
+                <Button size="sm" onClick={() => setSuggested(s)}>
+                  {t("common.add")}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setDismissed([...dismissed, s.key])}
+                  aria-label={t("tx.subs.suggest.dismiss")}
+                  title={t("tx.subs.suggest.dismiss")}
+                  className="icon-btn size-8 shrink-0 text-ink-3"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {state.subscriptions.length === 0 ? (
         <EmptyState
           icon={<Icon name="device" />}
@@ -167,6 +207,9 @@ export function SubscriptionsCard({ month }: { month: string }) {
 
       {target && (
         <SubscriptionSheet key={target === "new" ? "new" : target.id} target={target} onClose={() => setTarget(null)} />
+      )}
+      {suggested && (
+        <SubscriptionSheet key={`suggested:${suggested.key}`} target="new" draft={{ ...suggested, price: suggested.amount }} onClose={() => setSuggested(null)} />
       )}
     </Card>
   );

@@ -9,6 +9,7 @@ import {
   matchPlanned,
   pairTransfers,
   prepareImport,
+  suggestSubscriptions,
   type ImportCandidate,
 } from "./import";
 
@@ -149,6 +150,51 @@ describe("applyImport", () => {
     ]);
     expect(prepared.map((c) => c.type)).toEqual(["transfer", "expense"]);
     expect(prepared[1].planned?.id).toBe("rec:rent:2026-09");
+  });
+});
+
+describe("suggestSubscriptions", () => {
+  const charge = (id: string, date: string, amount: number, note: string): Transaction => ({
+    id,
+    type: "expense",
+    amount,
+    currency: "UAH",
+    categoryId: "cat-subs",
+    date,
+    note,
+    accountId: "black",
+  });
+
+  it("finds a merchant charged monthly on about the same day and amount", () => {
+    const s = {
+      ...state,
+      transactions: [
+        charge("1", "2026-07-12", 349, "NETFLIX.COM 07/12"),
+        charge("2", "2026-08-12", 349, "NETFLIX.COM 08/12"),
+        charge("3", "2026-09-13", 379, "NETFLIX.COM 09/13"),
+      ],
+    };
+    const [found, ...rest] = suggestSubscriptions(s, "2026-09-28");
+    expect(rest).toHaveLength(0);
+    expect(found).toMatchObject({ key: "netflix com", amount: 379, months: 3, dayOfMonth: 13, startMonth: "2026-10" });
+  });
+
+  it("skips shops visited often, one-off charges, drifting amounts and known subscriptions", () => {
+    const s = {
+      ...state,
+      subscriptions: [{ id: "yt", name: "YouTube", icon: "", price: 179, currency: "UAH" as const, period: "monthly" as const, dayOfMonth: 5, startMonth: "2026-01", active: true }],
+      transactions: [
+        charge("a", "2026-08-02", 400, "Silpo"),
+        charge("b", "2026-08-15", 900, "Silpo"),
+        charge("c", "2026-09-03", 420, "Silpo"),
+        charge("d", "2026-09-20", 99, "Gym"),
+        charge("e", "2026-08-10", 200, "Taxi"),
+        charge("f", "2026-09-10", 900, "Taxi"),
+        charge("g", "2026-08-05", 179, "YouTube Premium"),
+        charge("h", "2026-09-05", 179, "YouTube Premium"),
+      ],
+    };
+    expect(suggestSubscriptions(s, "2026-09-28")).toEqual([]);
   });
 });
 

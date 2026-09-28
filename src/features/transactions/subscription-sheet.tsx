@@ -38,7 +38,16 @@ interface SubscriptionForm {
 }
 
 /** Add or edit a subscription; saving rewrites the entries it has already posted. */
-export function SubscriptionSheet({ target, onClose }: { target: Subscription | "new"; onClose: () => void }) {
+export function SubscriptionSheet({
+  target,
+  draft,
+  onClose,
+}: {
+  target: Subscription | "new";
+  /** Starting values for a new subscription, e.g. one suggested from bank charges. */
+  draft?: { name: string; price: number; currency: Subscription["currency"]; dayOfMonth: number; startMonth: string; accountId?: string };
+  onClose: () => void;
+}) {
   const { state, update } = useStore();
   const { t, tp } = useT();
   const nowMonth = currentMonth();
@@ -48,14 +57,14 @@ export function SubscriptionSheet({ target, onClose }: { target: Subscription | 
     target === "new"
       ? {
           id: null,
-          name: "",
+          name: draft?.name ?? "",
           icon: "📱",
-          price: "",
-          currency: "UAH",
+          price: draft ? String(draft.price) : "",
+          currency: draft?.currency ?? "UAH",
           period: "monthly",
-          accountId: state.savings[0]?.id ?? "",
-          day: "1",
-          startMonth: nowMonth,
+          accountId: draft?.accountId ?? state.savings[0]?.id ?? "",
+          day: draft ? String(draft.dayOfMonth) : "1",
+          startMonth: draft?.startMonth ?? nowMonth,
           endMonth: "",
         }
       : {
