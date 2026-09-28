@@ -3,6 +3,7 @@ import { DEFAULT_STATE } from "@/lib/constants";
 import { deleteSchedule, syncSchedule } from "@/lib/state/store";
 import type { AppState, SavingsAccount, Transaction } from "@/lib/types";
 import {
+  absorbOperation,
   applyImport,
   cashWithdrawals,
   markDuplicates,
@@ -195,6 +196,50 @@ describe("suggestSubscriptions", () => {
       ],
     };
     expect(suggestSubscriptions(s, "2026-09-28")).toEqual([]);
+  });
+});
+
+describe("absorbOperation (one operation at a time, as the webhook sends them)", () => {
+  let n = 0;
+  const makeId = () => `id-${++n}`;
+  const mono = (id: string, over: Partial<ImportCandidate>) => line({ externalId: `mono:${id}`, ...over });
+
+  it("adds a new operation once, keeping when it happened", () => {
+    const op = mono("a", { accountId: "black", amount: 80, time: 1_700_000_000, description: "Coffee" });
+    const once = absorbOperation(state, op, makeId);
+    expect(once.transactions).toHaveLength(1);
+    expect(once.transactions[0].bank).toEqual({ time: 1_700_000_000 });
+    expect(absorbOperation(once, op, makeId)).toBe(once);
+  });
+
+  it("turns the half of a transfer booked first into one transfer when the other half arrives", () => {
+    const out = mono("out", { accountId: "black", amount: 41_500, opAmount: 1000, opCurrency: "USD", time: 5_000 });
+    const into = mono("in", { accountId: "usd", type: "income", amount: 1000, currency: "USD", time: 5_020 });
+    const first = absorbOperation(state, out, makeId);
+    const both = absorbOperation(first, into, makeId);
+    expect(both.transactions).toHaveLength(1);
+    expect(both.transactions[0]).toMatchObject({
+      type: "transfer",
+      accountId: "black",
+      toAccountId: "usd",
+      amount: 41_500,
+      currency: "UAH",
+      toAmount: 1000,
+      externalId: "mono:out",
+    });
+    // In the other order the result is the same transfer.
+    const reversed = absorbOperation(absorbOperation(state, into, makeId), out, makeId);
+    expect(reversed.transactions).toHaveLength(1);
+    expect(reversed.transactions[0]).toMatchObject({ type: "transfer", accountId: "black", toAccountId: "usd", toAmount: 1000 });
+  });
+
+  it("books a withdrawal as cash and a planned payment in place of its plan", () => {
+    const cash = absorbOperation(state, mono("atm", { accountId: "black", mcc: 6011, amount: 2000 }), makeId);
+    expect(cash.transactions[0]).toMatchObject({ type: "transfer", toAccountId: "wallet" });
+    const withPlan = { ...state, transactions: [planned({})] };
+    const rent = absorbOperation(withPlan, mono("rent", { accountId: "black", amount: 14_000, date: "2026-09-02" }), makeId);
+    expect(rent.transactions).toHaveLength(1);
+    expect(rent.transactions[0]).toMatchObject({ id: "rec:rent:2026-09", externalId: "mono:rent", date: "2026-09-02" });
   });
 });
 

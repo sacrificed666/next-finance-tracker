@@ -244,7 +244,13 @@ export function toTransactions(candidates: ImportCandidate[], accountId: string 
     toAccountId: c.type === "transfer" ? c.toAccountId : undefined,
     toAmount: c.type === "transfer" ? c.toAmount : undefined,
     externalId: c.externalId,
+    bank: bankLine(c),
   }));
+}
+
+function bankLine(c: ImportCandidate): Transaction["bank"] {
+  if (c.time === undefined && c.opAmount === undefined) return undefined;
+  return c.opAmount !== undefined ? { time: c.time, opAmount: c.opAmount, opCurrency: c.opCurrency } : { time: c.time };
 }
 
 /**
@@ -262,6 +268,7 @@ export function applyImport(state: AppState, picked: ImportCandidate[], makeId: 
       amount: real.amount,
       date: real.date,
       externalId: real.externalId,
+      bank: bankLine(real),
       accountId: tx.accountId ?? real.accountId,
       note: tx.note ?? (real.description || undefined),
     };
@@ -365,4 +372,107 @@ export function suggestSubscriptions(state: AppState, today: string): Subscripti
     });
   }
   return out.sort((a, b) => b.months - a.months || b.amount - a.amount);
+}
+
+/** A Monobank operation as both importers see it — from a statement or from the webhook. */
+export interface MonoLine {
+  id: string;
+  time: number;
+  description: string;
+  comment?: string;
+  mcc: number;
+  /** In the account's currency, major units; negative is money out. */
+  amount: number;
+  opAmount?: number;
+  opCurrency?: Currency;
+}
+
+/** A Monobank operation as an import candidate, booked to the app account its card is linked to. */
+export function candidateFromMono(
+  state: AppState,
+  line: MonoLine,
+  currency: Currency,
+  accountId: string | undefined,
+  date: string,
+): ImportCandidate {
+  const type = line.amount < 0 ? "expense" : "income";
+  const description = [line.description, line.comment].filter(Boolean).join(" · ");
+  const foreign = line.opCurrency !== undefined && line.opCurrency !== currency;
+  return {
+    externalId: `mono:${line.id}`,
+    date,
+    time: line.time,
+    type,
+    amount: Math.abs(line.amount),
+    currency,
+    opAmount: foreign ? line.opAmount : undefined,
+    opCurrency: foreign ? line.opCurrency : undefined,
+    description,
+    mcc: line.mcc || undefined,
+    categoryId: suggestCategory(state, description, type, line.mcc || undefined),
+    duplicate: false,
+    accountId,
+  };
+}
+
+/** A booked entry seen as the statement line it came from, so it can pair with its other half. */
+function asCandidate(tx: Transaction): ImportCandidate {
+  return {
+    externalId: tx.externalId ?? tx.id,
+    date: tx.date,
+    time: tx.bank?.time,
+    type: tx.type,
+    amount: tx.amount,
+    currency: tx.currency,
+    opAmount: tx.bank?.opAmount,
+    opCurrency: tx.bank?.opCurrency,
+    description: tx.note ?? "",
+    categoryId: tx.categoryId,
+    duplicate: false,
+    accountId: tx.accountId,
+  };
+}
+
+/**
+ * One operation arriving on its own — the bank's webhook — folded in the way an
+ * import would: already booked, it changes nothing; the second half of a transfer
+ * turns the first half, booked earlier, into one transfer; a cash withdrawal becomes
+ * a transfer; the real version of a planned payment fills it in; anything else is added.
+ */
+export function absorbOperation(state: AppState, line: ImportCandidate, makeId: () => string): AppState {
+  if (state.transactions.some((tx) => tx.externalId === line.externalId)) return state;
+
+  if (line.type !== "transfer" && line.accountId) {
+    for (const tx of state.transactions) {
+      if (!tx.externalId?.startsWith("mono:") || tx.recurringId || tx.subscriptionId) continue;
+      if (tx.type === "transfer" || tx.type === line.type) continue;
+      const other = asCandidate(tx);
+      const pair = pairTransfers(line.type === "expense" ? [line, other] : [other, line]);
+      if (pair.length !== 1) continue;
+      const [transfer] = pair;
+      return {
+        ...state,
+        transactions: state.transactions.map((t) =>
+          t.id === tx.id
+            ? {
+                ...t,
+                type: "transfer" as const,
+                categoryId: "",
+                accountId: transfer.accountId,
+                toAccountId: transfer.toAccountId,
+                amount: transfer.amount,
+                currency: transfer.currency,
+                toAmount: transfer.toAmount,
+                note: t.note ?? (line.description || undefined),
+                tax: undefined,
+                breakdown: undefined,
+              }
+            : t,
+        ),
+      };
+    }
+  }
+
+  const [prepared] = matchPlanned(state, cashWithdrawals(state, [line]));
+  return applyImport(state, [prepared], makeId);
 }

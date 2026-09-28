@@ -25,6 +25,20 @@ user and, when asked too early, answers `429` with `wait:<seconds>`; the import 
 countdown and carries on by itself. One request covers at most 31 days and an hour
 (`MONO_MAX_RANGE_S` in `lib/server/monobank.ts`).
 
+### Automatic import
+
+With **Import new operations automatically** on, Monobank sends every new operation on a linked
+card or jar to `POST /api/monobank/webhook/<key>`, and it is booked as it happens — categorised,
+paired with the other half of a transfer, matched to a planned payment — through the same
+`absorbOperation` the preview uses. An open tab picks the new entries up the moment it gets focus.
+
+- It needs `AUTH_URL` set to the app's public **https** address; Monobank has to reach it.
+- Monobank does not sign these calls, so the address itself is the secret: `<key>` is 24 random
+  bytes, kept sealed with the token, and an unknown key gets `404`. Turning the switch off tells
+  Monobank to stop; disconnecting forgets the key.
+- Operations for one user are processed one after another, so the two halves of a transfer, which
+  arrive almost together, still find each other. Operations on cards that are not linked are ignored.
+
 ## 📄 CSV statements
 
 - **Reading the file.** UTF-8 first, Windows-1251 when the text comes out garbled (older Ukrainian

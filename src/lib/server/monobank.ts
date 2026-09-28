@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { ensureSchema, getPool } from "@/lib/server/db";
 import { openRecord, sealRecord } from "@/lib/server/secrets";
 import type { Currency } from "@/lib/types";
@@ -43,6 +44,19 @@ interface MonoStored {
   name?: string;
   accounts?: MonoAccount[];
   fetchedAt?: number;
+  /** The secret in the webhook address — Monobank does not sign its calls, so the address is the key. */
+  webhookKey?: string;
+  /** Set while Monobank is sending new operations to this app. */
+  webhookUrl?: string;
+}
+
+/** Operations are booked on the day they happened in Ukraine, whatever the server's clock says. */
+const BANK_TIME_ZONE = "Europe/Kyiv";
+
+export function monoDate(unix: number): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: BANK_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(
+    new Date(unix * 1000),
+  );
 }
 
 export class MonoError extends Error {
@@ -62,15 +76,21 @@ export function monoWait(userId: string): number {
   return Math.max(0, (lastCall.get(userId) ?? 0) + MONO_SPACING_MS - Date.now());
 }
 
-async function call<T>(userId: string, token: string, path: string): Promise<T> {
+async function call<T>(userId: string, token: string, path: string, body?: unknown): Promise<T> {
   const wait = monoWait(userId);
   if (wait > 0) throw new MonoError(429, `wait:${Math.ceil(wait / 1000)}`);
   lastCall.set(userId, Date.now());
-  const res = await fetch(`${API}${path}`, { headers: { "X-Token": token }, signal: AbortSignal.timeout(15_000) });
+  const res = await fetch(`${API}${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: body === undefined ? { "X-Token": token } : { "X-Token": token, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
+  });
   if (res.status === 403 || res.status === 401) throw new MonoError(403, "token");
   if (res.status === 429) throw new MonoError(429, "wait:60");
   if (!res.ok) throw new MonoError(502, `monobank:${res.status}`);
-  return (await res.json()) as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : {}) as T;
 }
 
 export async function loadMono(userId: string): Promise<MonoStored | null> {
@@ -133,6 +153,37 @@ export async function connectMono(userId: string, token: string): Promise<MonoSt
   return stored;
 }
 
+interface RawItem {
+  id: string;
+  time: number;
+  description?: string;
+  comment?: string;
+  mcc?: number;
+  amount: number;
+  operationAmount?: number;
+  currencyCode?: number;
+}
+
+/** A statement item as Monobank sends it (minor units), in the shape the importers use. */
+export function parseMonoItem(i: RawItem): MonoItem {
+  return {
+    id: String(i.id).slice(0, 80),
+    time: i.time,
+    description: (i.description ?? "").slice(0, 200),
+    comment: i.comment?.slice(0, 200),
+    mcc: i.mcc ?? 0,
+    amount: i.amount / 100,
+    opAmount: i.operationAmount !== undefined ? Math.abs(i.operationAmount) / 100 : undefined,
+    opCurrency: i.currencyCode !== undefined ? CURRENCY_CODES[i.currencyCode] : undefined,
+  };
+}
+
+export function isMonoItem(v: unknown): v is RawItem {
+  if (typeof v !== "object" || v === null) return false;
+  const i = v as Record<string, unknown>;
+  return (typeof i.id === "string" || typeof i.id === "number") && Number.isInteger(i.time) && Number.isFinite(i.amount);
+}
+
 /** One account's operations between two moments (unix seconds). */
 export async function monoStatement(
   userId: string,
@@ -141,33 +192,52 @@ export async function monoStatement(
   from: number,
   to: number,
 ): Promise<MonoItem[]> {
-  const items = await call<
-    Array<{
-      id: string;
-      time: number;
-      description?: string;
-      comment?: string;
-      mcc?: number;
-      amount: number;
-      operationAmount?: number;
-      currencyCode?: number;
-    }>
-  >(userId, token, `/personal/statement/${encodeURIComponent(account)}/${from}/${to}`);
-  return items.map((i) => ({
-    id: i.id,
-    time: i.time,
-    description: (i.description ?? "").slice(0, 200),
-    comment: i.comment?.slice(0, 200),
-    mcc: i.mcc ?? 0,
-    amount: i.amount / 100,
-    opAmount: i.operationAmount !== undefined ? Math.abs(i.operationAmount) / 100 : undefined,
-    opCurrency: i.currencyCode !== undefined ? CURRENCY_CODES[i.currencyCode] : undefined,
-  }));
+  const items = await call<RawItem[]>(userId, token, `/personal/statement/${encodeURIComponent(account)}/${from}/${to}`);
+  return items.map(parseMonoItem);
+}
+
+/**
+ * Asks Monobank to send every new operation to this app (`origin` is the public
+ * https address), or to stop when `origin` is null. The key in the address is kept
+ * across switches, so an address Monobank already knows stays valid.
+ */
+export async function setMonoWebhook(userId: string, origin: string | null): Promise<MonoStored> {
+  const stored = await loadMono(userId);
+  if (!stored) throw new MonoError(409, "not-connected");
+  const webhookKey = stored.webhookKey ?? randomBytes(24).toString("base64url");
+  const url = origin ? `${origin.replace(/\/$/, "")}/api/monobank/webhook/${webhookKey}` : "";
+  // Saved first: Monobank checks the address with a request before it accepts it.
+  await saveMono(userId, { ...stored, webhookKey });
+  await call(userId, stored.token, "/personal/webhook", { webHookUrl: url });
+  const next = { ...stored, webhookKey, webhookUrl: url || undefined };
+  await saveMono(userId, next);
+  return next;
+}
+
+/** Whose connection a webhook address belongs to. */
+export async function findMonoByWebhookKey(key: string): Promise<{ userId: string; stored: MonoStored } | null> {
+  if (!/^[\w-]{20,64}$/.test(key)) return null;
+  await ensureSchema();
+  const res = await getPool().query(`SELECT user_id, secret FROM integrations WHERE provider = 'monobank'`);
+  const wanted = Buffer.from(key);
+  for (const row of res.rows) {
+    const stored = openRecord<MonoStored>(row.secret);
+    if (!stored?.webhookKey || !stored.webhookUrl) continue;
+    const have = Buffer.from(stored.webhookKey);
+    if (have.length === wanted.length && timingSafeEqual(have, wanted)) return { userId: row.user_id as string, stored };
+  }
+  return null;
 }
 
 /** What the browser may see: everything except the token. */
 export function publicMono(stored: MonoStored | null) {
   return stored
-    ? { connected: true, name: stored.name ?? "", accounts: stored.accounts ?? [], fetchedAt: stored.fetchedAt ?? null }
-    : { connected: false, name: "", accounts: [], fetchedAt: null };
+    ? {
+        connected: true,
+        name: stored.name ?? "",
+        accounts: stored.accounts ?? [],
+        fetchedAt: stored.fetchedAt ?? null,
+        webhook: Boolean(stored.webhookUrl),
+      }
+    : { connected: false, name: "", accounts: [], fetchedAt: null, webhook: false };
 }

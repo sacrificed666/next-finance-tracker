@@ -69,6 +69,12 @@ export interface Transaction {
   tags?: string[];
   /** Where an imported entry came from ("mono:<id>", "csv:<hash>") — keeps a re-import from duplicating it. */
   externalId?: string;
+  /**
+   * What the bank said about an imported operation beyond the amount: the exact moment,
+   * and the amount in the operation's own currency when it differed. Lets the two
+   * halves of a transfer be paired even when they arrive separately.
+   */
+  bank?: { time?: number; opAmount?: number; opCurrency?: Currency };
   /** Pieces of one purchase split across categories share this id. */
   splitId?: string;
   /** Photos of the receipt, stored separately and fetched on demand. */

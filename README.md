@@ -115,7 +115,10 @@ explanation and a tip that links to the page where you would fix it.
 Language, base currency, theme, the full category tree with subcategories, and JSON export / import.
 **Bank import** reads Monobank directly (with your personal token, kept encrypted on the server) or any
 bank's CSV statement, suggests a category for every row from your own rules and the merchant code, and
-skips what is already in the ledger.
+skips what is already in the ledger. Transfers between your own cards and jars become one transfer,
+cash machine withdrawals move money to your wallet, and a payment you had planned (rent, a
+subscription) fills in the plan instead of doubling it. On a public https address, Monobank can also
+send each new operation as it happens.
 **Exchange rates and asset prices refresh automatically every hour** from Monobank (with the official
 NBU rate as a fallback) and CoinGecko — no buttons to press.
 

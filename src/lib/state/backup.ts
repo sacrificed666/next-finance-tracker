@@ -405,18 +405,34 @@ function isTransaction(v: unknown): v is Transaction {
   );
 }
 
+function normalizeBankLine(v: unknown): Transaction["bank"] {
+  if (!isRecord(v)) return undefined;
+  const time = isFiniteNumber(v.time) && v.time > 0 ? Math.round(v.time) : undefined;
+  const opCurrency = isCurrency(v.opCurrency) ? v.opCurrency : undefined;
+  const opAmount = opCurrency && isFiniteNumber(v.opAmount) && v.opAmount >= 0 ? v.opAmount : undefined;
+  if (time === undefined && opAmount === undefined) return undefined;
+  const line: NonNullable<Transaction["bank"]> = {};
+  if (time !== undefined) line.time = time;
+  if (opAmount !== undefined) {
+    line.opAmount = opAmount;
+    line.opCurrency = opCurrency;
+  }
+  return line;
+}
+
 function normalizeTransaction(raw: Transaction): Transaction {
   const t: Transaction = {
     ...raw,
     tags: normalizeTags(raw.tags),
     externalId: cleanText(raw.externalId, 120),
+    bank: normalizeBankLine((raw as { bank?: unknown }).bank),
     splitId: cleanText(raw.splitId, 60),
     attachmentIds: Array.isArray(raw.attachmentIds)
       ? raw.attachmentIds.filter((id): id is string => typeof id === "string" && /^[\w-]{1,60}$/.test(id)).slice(0, 10)
       : undefined,
   };
   if (!t.attachmentIds?.length) delete t.attachmentIds;
-  for (const key of ["tags", "externalId", "splitId"] as const) if (t[key] === undefined) delete t[key];
+  for (const key of ["tags", "externalId", "bank", "splitId"] as const) if (t[key] === undefined) delete t[key];
   if (t.type !== "transfer") {
     const { toAccountId: _to, toAmount: _amount, ...rest } = t;
     void _to;

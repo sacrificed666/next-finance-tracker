@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { OptionPicker } from "@/components/forms/option-picker";
 import { useAccountGroups } from "@/components/forms/picker-groups";
-import { Button, Card, IconDisc, SegmentedControl, TextInput } from "@/components/ui";
+import { Button, Card, IconDisc, SegmentedControl, Switch, TextInput } from "@/components/ui";
 import { CURRENCY_SYMBOL } from "@/lib/constants";
 import { pad } from "@/lib/date";
 import { guessMapping, parseCsv, type CsvMapping } from "@/lib/finance/csv";
-import { applyImport, prepareImport, suggestCategory, type ImportCandidate } from "@/lib/finance/import";
+import { applyImport, candidateFromMono, prepareImport, type ImportCandidate, type MonoLine } from "@/lib/finance/import";
 import { formatMoney } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { uid, useStore } from "@/lib/state/store";
@@ -29,6 +29,8 @@ interface MonoStatus {
   connected: boolean;
   name: string;
   accounts: MonoAccount[];
+  /** Monobank sends new operations here as they happen. */
+  webhook?: boolean;
 }
 
 export interface CsvDraft {
@@ -106,6 +108,26 @@ export function ImportCard() {
     setToken("");
   };
 
+  /** Automatic import: Monobank sends each new operation, and it is booked as it arrives. */
+  const setHook = async (on: boolean) => {
+    setError(null);
+    setStatus(t("import.mono.hook.saving"));
+    const res = await fetch("/api/monobank/webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on }),
+    });
+    setStatus(null);
+    if (!res.ok) {
+      const { error: code = "" } = (await res.json().catch(() => ({}))) as { error?: string };
+      if (code === "https") return setError(t("import.mono.hook.https"));
+      if (code === "token") return setError(t("import.mono.badToken"));
+      if (code.startsWith("wait:")) return setError(t("import.mono.wait", { s: code.slice(5) }));
+      return setError(t("import.mono.failed"));
+    }
+    setMono((await res.json()) as MonoStatus);
+  };
+
   const disconnect = async () => {
     await fetch("/api/monobank", { method: "DELETE" });
     setMono({ connected: false, name: "", accounts: [] });
@@ -151,38 +173,8 @@ export function ImportCard() {
           setStatus(null);
           return setError(await failure(res));
         }
-        const { items } = (await res.json()) as {
-          items: Array<{
-            id: string;
-            time: number;
-            description: string;
-            comment?: string;
-            mcc: number;
-            amount: number;
-            opAmount?: number;
-            opCurrency?: Currency;
-          }>;
-        };
-        for (const item of items) {
-          const type = item.amount < 0 ? "expense" : "income";
-          const description = [item.description, item.comment].filter(Boolean).join(" · ");
-          const foreign = item.opCurrency && item.opCurrency !== acc.currency;
-          found.push({
-            externalId: `mono:${item.id}`,
-            date: dateOf(item.time),
-            time: item.time,
-            opAmount: foreign ? item.opAmount : undefined,
-            opCurrency: foreign ? item.opCurrency : undefined,
-            type,
-            amount: Math.abs(item.amount),
-            currency: acc.currency!,
-            description,
-            mcc: item.mcc || undefined,
-            categoryId: suggestCategory(state, description, type, item.mcc || undefined),
-            duplicate: false,
-            accountId: links[acc.id],
-          });
-        }
+        const { items } = (await res.json()) as { items: MonoLine[] };
+        for (const item of items) found.push(candidateFromMono(state, item, acc.currency!, links[acc.id], dateOf(item.time)));
         break;
       }
     }
@@ -297,6 +289,17 @@ export function ImportCard() {
                 </Button>
               </div>
               {!trackable.some((a) => links[a.id]) && <p className="caption">{t("import.mono.linkFirst")}</p>}
+              <div className="flex items-start gap-3 border-t border-hairline pt-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-ink-1">{t("import.mono.hook")}</p>
+                  <p className="caption">{mono.webhook ? t("import.mono.hook.on") : t("import.mono.hook.off")}</p>
+                </div>
+                <Switch
+                  checked={mono.webhook ?? false}
+                  onChange={(on) => void setHook(on)}
+                  label={t("import.mono.hook")}
+                />
+              </div>
             </div>
           )}
         </div>

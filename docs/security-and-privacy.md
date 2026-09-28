@@ -61,7 +61,11 @@ database therefore shows which rows exist, but not a single amount, name or note
 ## 🛡️ Request authorisation
 
 Every API route calls `auth()` and answers `401` without a session, including `/api/inzhur`. The
-middleware additionally gates pages, so an unauthenticated browser never renders app HTML.
+one exception is `POST /api/monobank/webhook/<key>`, where Monobank delivers new operations: it has
+no session, so the 24-byte random key in the address is what identifies the user (compared in
+constant time, rate-limited, `404` for anything unknown). Treat that address like a password — it
+only ever travels between the server and Monobank. The middleware additionally gates pages, so an
+unauthenticated browser never renders app HTML.
 
 `PATCH /api/state` also:
 

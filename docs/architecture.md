@@ -122,11 +122,14 @@ sheet of its own.
 | `GET /api/inzhur` | Scrapes published Inzhur fund data, cached in memory for 10 minutes |
 | `GET/POST/DELETE /api/monobank` | Monobank connection: the card list (never the token), connect with a token, disconnect |
 | `GET /api/monobank/statement` | One card's statement for a period; `429 wait:<s>` while Monobank's one-a-minute limit applies |
+| `POST /api/monobank/webhook` | Turn automatic import on or off (`{ on }`); needs `AUTH_URL` to be https |
+| `GET/POST /api/monobank/webhook/[key]` | Where Monobank sends new operations; the secret key identifies the user, no session |
 | `POST /api/attachments` | Store a receipt photo (WebP, JPEG or PNG, up to 1.5 MB), sealed like every record |
 | `GET /api/attachments/[id]` | Read one back, privately cached |
 | `GET /api/nbu-rate` | The official NBU rate for a currency on a past date, cached in memory |
 
-Every handler calls `auth()` first and answers `401` without a session.
+Every handler calls `auth()` first and answers `401` without a session — except the Monobank webhook
+receiver, which Monobank calls without one and which is identified by the secret in its address.
 
 ## 🖥️ Rendering model
 
