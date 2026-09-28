@@ -5,19 +5,39 @@ contribution, and the mix depends on the group. The app models this per income e
 
 ## 🗂️ Supported regimes
 
-`src/lib/finance/tax.ts` defines every regime with the 2026 reference numbers
-(`MINIMUM_WAGE_UAH = 8 647`, `LIVING_MINIMUM_UAH = 3 328`, `ESV_MIN_UAH = 1 902.34`).
+`src/lib/finance/tax.ts` builds every regime from the year's minimum wage and subsistence minimum.
+The table shows 2026:
 
 | Regime | What is deducted | Annual income limit |
 | --- | --- | --- |
 | `none` | Nothing — the income is recorded as received | — |
 | `fop1` | Fixed single tax ₴332.80 + military levy ₴864.70 + social contribution ₴1 902.34 per month | ≈ ₴1.44M |
 | `fop2` | Fixed single tax ₴1 729.40 + levy ₴864.70 + contribution ₴1 902.34 per month | ≈ ₴7.21M |
-| `fop3` | 5% single tax + 1% military levy on income, plus ₴1 902.34 per month | ≈ ₴10.09M |
-| `fop3vat` | 20% VAT out of the gross first, then 3% + 1%, plus ₴1 902.34 per month | ≈ ₴10.09M |
+| `fop3` | 5% single tax + 1% military levy on income, plus ₴1 902.34 per month | ₴10 091 049 |
+| `fop3vat` | 20% VAT out of the gross first, then 3% + 1%, plus ₴1 902.34 per month | ₴10 091 049 |
 | `fop4` | Land-based single tax is paid separately; only levy + contribution here | — |
 | `general` | 18% personal income tax + 5% levy + 22% social contribution | — |
 | `custom` | Your own rate, fixed deduction, VAT and label | — |
+
+## 📆 Figures per year
+
+Every fixed amount and limit follows from two numbers the State Budget law sets each year, kept in
+`TAX_YEARS`:
+
+| Year | Minimum wage | Subsistence minimum | ЄСВ minimum | Group 1 | Group 2 | Group 3 limit |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2025 | ₴8 000 | ₴3 028 | ₴1 760 | ₴302.80 | ₴1 600 | ₴9 336 000 |
+| 2026 | ₴8 647 | ₴3 328 | ₴1 902.34 | ₴332.80 | ₴1 729.40 | ₴10 091 049 |
+
+- ЄСВ is 22% of the minimum wage; group 1 pays 10% of the subsistence minimum, group 2 20% of the
+  minimum wage; the military levy of groups 1, 2 and 4 is 10% of the minimum wage.
+- The limits are 167, 834 and 1 167 minimum wages for groups 1, 2 and 3.
+- `taxRegime(id, year)` and `esvMinimum(year)` read the year asked for, so the calendar, the limit
+  card and the quarterly summary each use their own year's figures.
+
+> [!IMPORTANT]
+> Add a row to `TAX_YEARS` every January. Until then the latest known year stands in, and the tax
+> cards say so in amber.
 
 > [!NOTE]
 > Group 1 and 2 pay fixed amounts *per month*, not per payment. The app deducts the fixed part from
@@ -77,12 +97,25 @@ the limit.
 | ЄСВ | Quarterly, by the 20th after the quarter (3 × the minimum) | The same |
 | VAT (3 + VAT only) | Monthly declaration by the 20th, payment ten days later | — |
 
-Marking an item paid stores it in `settings.taxPaid`; the side card shows what is unpaid, including
-anything overdue by up to 45 days.
+Marking an item paid stores the day in `settings.taxPaid` and books the payment as an expense in the
+taxes category, with the id `tax:<obligation>`; unmarking removes it again. When the bank payment is
+imported later, it takes that entry's place instead of doubling it. The side card shows what is
+unpaid, including anything overdue by up to 45 days.
+
+## 📒 The income book and the declaration
+
+The quarterly card carries what the paperwork asks for:
+
+| Piece | What it holds |
+| --- | --- |
+| **Income book (CSV)** | Every taxed receipt of the year, oldest first: the date, the income in hryvnias at the NBU rate of its day (without VAT for a VAT payer), the description, the original amount, currency and rate, and a total. `;`-separated with decimal commas and a byte-order mark, so Ukrainian Excel opens it as is; the columns are named in Ukrainian whatever the app's language |
+| **For the declaration** | For the last quarter that has ended, group 3: income since 1 January, single tax and military levy since 1 January, and what this quarter adds after the earlier quarters |
+
+`incomeBook`, `incomeBookCsv` and `declarationFigures` in `lib/finance/tax-calendar.ts` build them.
 
 ## ⚠️ What this is not
 
 > [!CAUTION]
-> These numbers are a planning aid, not tax advice or a declaration. Rates, minimum wage and the
-> social contribution change by law — check `src/lib/finance/tax.ts` at the start of every year and update
-> the constants in one place.
+> These numbers are a planning aid, not tax advice or a declaration. Rates, the minimum wage and the
+> social contribution change by law — check `TAX_YEARS` in `src/lib/finance/tax.ts` at the start of
+> every year.

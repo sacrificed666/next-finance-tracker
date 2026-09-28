@@ -167,15 +167,19 @@ Every list and table shares one look, defined once in `styles/_surfaces.scss`:
 | `.group-head` | A day or month heading inside a list | A rounded bar: label on the left, the group's total on the right |
 | `.total-row` | The sum under a list | A green-tinted rounded bar (debts use a red tint) |
 | `.data-table` | A real `<table>` | The same rounded rows via `border-spacing`, header bar in `thead`, tinted `tfoot`; figures never wrap |
+| `.table-scroll` | Around a `.data-table` that may be wider than a phone | Scrolls sideways only; any `overflow-x` makes the other axis scroll too, and the table's negative margins would otherwise show as a stray vertical scrollbar |
 
 - No hairline dividers between rows: the stripe and the gap separate them. A tappable row adds
   `.row-tap`, whose hover fill has the same radius.
 - A list card opens with a **`SummaryPanel`** (`components/ui/summary.tsx`) — a rounded `bg-ghost`
   block with the headline figure, what it is measured against, and a meter or caption underneath —
-  before its filters (Spending, Budgets, Subscriptions, Recurring, Savings goals, Coming up, Sources).
+  before its filters (Spending, Budgets, Subscriptions, Recurring, Savings goals, Cash ahead, Sources).
   A unit sits beside its figure through `Unit` ("/mo").
 - A record's key facts are `Facts` / `Fact` tiles (`components/ui/facts.tsx`), two per row, with the
   long one across the full row — not a bordered key/value table.
+- A list that acts on several rows at once has a **select mode** (the ledger's **Select**): rows
+  become checkboxes, and a `.glass-solid` bar pinned to the bottom of the card holds the count, select
+  all and the actions. The bar sits above the phone tab bar and stacks its controls on phones.
 
 ## 📐 Layout rules
 

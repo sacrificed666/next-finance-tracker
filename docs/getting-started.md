@@ -75,6 +75,7 @@ with `stage-` and `prod-` prefixes.
 npm install          # once, for the local toolchain
 npx tsc --noEmit     # types, including every translation key
 npx eslint src       # lint
+npm test             # unit tests
 npx next build       # production build
 ```
 

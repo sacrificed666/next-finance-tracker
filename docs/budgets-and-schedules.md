@@ -43,6 +43,15 @@ real entries you can edit or delete individually.
 | Ended | Its last month has passed |
 | All | Everything, including future rules |
 
+### Plans versus payments
+
+A rule that posts exactly its category's budget every month (Food 7 000 with a Food budget of 7 000)
+is a plan booked as spending: the budget always reads 100% and real spending never shows. The
+recurring card names such rules and opens a sheet to stop them from this month on
+(`plansBookedAsSpending`, `stopSchedules`). Earlier months keep their entries, and bills — rent,
+utilities, internet, insurance, loans, taxes and subscriptions, recognised by category id or name —
+start unticked, since posting those at their budget is usually the real payment.
+
 ## 📺 Subscriptions
 
 A subscription is a recurring service with a price, a billing day and a lifetime:
@@ -65,6 +74,14 @@ Status is derived, never stored twice:
 The list defaults to **This month**, so services that no longer bill do not clutter the view; pills
 switch to upcoming, ended or all.
 
+### Suggested subscriptions
+
+`suggestSubscriptions` looks for a merchant charged once a month for at least two months in a row, at
+about the same amount (within 10%) and day (within four days), that no subscription names yet. Up to
+three show at the top of the card; **Add** opens the sheet filled in and starting the month after the
+last charge, so the charge already booked is not planned twice. Dismissed suggestions are remembered
+in the browser.
+
 > [!IMPORTANT]
 > Stopping a subscription means setting the month it stopped, not flipping a switch. The sheet has an
 > **End with \<month\>** button that fills the "Until" field with the current month, which keeps
@@ -76,11 +93,16 @@ switch to upcoming, ended or all.
 
 ## 🧮 How they reach the ledger
 
-1. `syncSchedule` rewrites future postings when you edit a rule or subscription.
-2. `materializeRecurring` runs after every state load and inserts anything due up to today.
+1. `syncSchedule` rebuilds a schedule's postings when you edit it — every month it covers, except
+   entries an import already filled in with the real payment.
+2. `materializeRecurring` runs after every state load and posts every month up to twelve months
+   ahead, so the calendar and the cash forecast can see what is coming.
 3. Generated transactions carry `recurringId` or `subscriptionId`, which is why they do not count as
    "logged by hand" in the [gamification](./gamification.md) XP.
+4. An imported payment that is the real version of a posting takes its place — see
+   [Bank import](./bank-import.md#-planned-payments).
 
 > [!WARNING]
-> Deleting a rule or subscription also removes its future postings, but keeps everything already
-> posted — the past is history, not a projection.
+> Deleting a rule or subscription removes every entry it posted, past and future alike — the dialog
+> says how many. Payments imported from the bank stay as plain entries. To keep the history, set an
+> end month instead.

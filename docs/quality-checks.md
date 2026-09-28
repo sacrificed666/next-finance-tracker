@@ -5,11 +5,27 @@
 ```bash
 npx tsc --noEmit     # types — also proves every locale has every translation key
 npx eslint src       # lint
+npm test             # unit tests
 npx next build       # production build, catches server/client boundary mistakes
 ```
 
-Run all three before calling a change done. The type check is the cheapest way to catch a missing
+Run all four before calling a change done. The type check is the cheapest way to catch a missing
 translation, a renamed field or an enum that drifted away from the database constraint.
+
+## 🧪 Unit tests
+
+Vitest runs `src/**/*.test.ts` in Node (`vitest.config.mts`); each test file sits next to the module
+it covers and needs no database.
+
+| File | What it pins down |
+| --- | --- |
+| `lib/state/changes.test.ts` | Diffing and applying change sets, merging two devices' edits, and that `normalizeState` is idempotent — the server relies on it to write only what changed |
+| `lib/finance/import.test.ts` | Transfer pairing, cash withdrawals, planned-payment matching, duplicates, subscription suggestions and one-operation-at-a-time webhook booking |
+| `lib/finance/plans.test.ts` | Rules that book a budget as spent, the fixed-bill heuristic and stopping schedules |
+| `lib/finance/tax.test.ts` | Each year's published figures and limits, weekend deadlines, paid taxes as expenses, the income book and declaration totals |
+
+> [!TIP]
+> Pure logic in `lib/` gets a test next to it; components are covered by the browser pass below.
 
 ## 🗣️ Dictionary validation
 

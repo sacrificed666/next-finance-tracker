@@ -29,7 +29,7 @@ interface AppState {
 
 | Entity | Key fields | Notes |
 | --- | --- | --- |
-| `Transaction` | `type`, `amount`, `currency`, `categoryId`, `date`, `accountId`, `toAccountId`, `tax`, `breakdown`, `tags?`, `splitId?`, `attachmentIds?`, `externalId?` | Transfers carry `toAmount` for cross-currency moves; `amount` on a taxed income is the **net** amount, with the gross kept in `tax.gross`. The pieces of a split purchase share a `splitId`; imported entries keep the bank's id in `externalId` |
+| `Transaction` | `type`, `amount`, `currency`, `categoryId`, `date`, `accountId`, `toAccountId`, `tax`, `breakdown`, `tags?`, `splitId?`, `attachmentIds?`, `externalId?`, `bank?` | Transfers carry `toAmount` for cross-currency moves; `amount` on a taxed income is the **net** amount, with the gross kept in `tax.gross`. The pieces of a split purchase share a `splitId`; imported entries keep the bank's id in `externalId` and the operation's exact time and original amount in `bank`. A tax marked paid is an expense with the id `tax:<obligation>` |
 | `Category` | `kind`, `parentId?`, `icon`, `colorSlot` | One level of nesting; charts roll children into parents |
 | `SavingsAccount` | `kind`, `currency`, `openingBalance`, `holdings?`, `goal?`, `bank?`, `game?` | Balance = opening balance + ledger + coin holdings |
 | `Investment` | `kind`, `principal`, `annualRatePct`, `marketValue?`, `quantity?`, `fund?`, `compounding` | Valuation depends on the kind — see [Investments](./investments.md) |

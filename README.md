@@ -29,8 +29,10 @@ A month-by-month ledger with search, type, category and account filters, the mon
 day, and a pace chart of the running total against the month before, plus:
 
 - **Recurring rules** that post a transaction each month between a start and an optional end month.
+  Rules that book a whole budget as spent every month are pointed out, with an offer to stop them.
 - **Subscriptions** with a real lifetime — monthly or yearly, billed from one month until another,
-  so services that no longer bill drop out of the list instead of lingering.
+  so services that no longer bill drop out of the list instead of lingering. Charges that repeat
+  monthly in an imported statement are offered as new subscriptions.
 - **Budgets** per category, including everything spent in its subcategories. A budget can **carry
   over** last month's unspent money, and warns on the day this month's pace would run it out.
 - **Tags** across categories (`#trip`, `#work`), with a tag filter and search.
@@ -48,9 +50,12 @@ Salary, freelance, interest, dividends, sales or gifts, each landing in a real a
 - A **limit card** that tracks this year's taxed income against the group's annual ceiling.
 - **Income by month** with the tax withheld stacked on top, so each column's height is the gross.
 - A **tax calendar** for FOP groups 1–3: declarations, single tax, military levy, ЄСВ and VAT with
-  their deadlines, each ticked off once paid.
+  their deadlines. Ticking one off books the payment as an expense under taxes.
 - A **quarterly summary** — income, tax and ЄСВ per quarter, with foreign-currency income converted at
-  the **NBU rate of the day it arrived**, as the declaration needs it.
+  the **NBU rate of the day it arrived**, the running totals a group 3 declaration asks for, and the
+  **income book** as a CSV for a spreadsheet.
+- **Figures per year** — the minimum wage and subsistence minimum behind every fixed amount and
+  limit are kept for each year, so last year's income is taxed by last year's rules.
 
 ### 🏦 Accounts
 

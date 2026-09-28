@@ -149,9 +149,11 @@ receiver, which Monobank calls without one and which is identified by the secret
 | `lib/finance/tax.ts` | Tax regimes, gross → net breakdowns, annual limits |
 | `lib/finance/returns.ts` | Which return type each investment kind supports |
 | `lib/finance/categories.ts` | Category tree, subcategories, spending against a budget, rollover limits |
-| `lib/finance/tax-calendar.ts` | FOP deadlines per regime and year, what is still unpaid |
+| `lib/finance/tax.ts` | Regimes and their figures for any year (`TAX_YEARS`), tax breakdowns, annual headroom |
+| `lib/finance/tax-calendar.ts` | FOP deadlines per regime and year, paid taxes as expenses, the income book, declaration totals |
 | `lib/finance/history.ts` | Net worth by month: stored snapshots where they exist, recomputed otherwise |
-| `lib/finance/import.ts`, `csv.ts` | Statement parsing, category suggestions, duplicate detection |
+| `lib/finance/import.ts`, `csv.ts` | Statement parsing, category suggestions, duplicates, transfer pairing, planned-payment matching, subscription suggestions |
+| `lib/state/changes.ts` | Change sets between two states: diff, apply, parse, the stable comparison the server writes by |
 | `lib/finance/achievements.ts` | Facts, achievements, XP, levels, financial health |
 | `lib/state/listing.ts` | Sorting, searching and persisted view preferences |
 
