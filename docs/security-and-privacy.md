@@ -105,13 +105,24 @@ Pages and API responses are never stored on the device.
 
 ## 🧱 Response headers
 
-Every response carries a strict set of headers from `next.config.ts`:
+Every response carries a strict set of headers from `next.config.ts`: `X-Frame-Options: DENY`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Permissions-Policy` (camera,
+microphone, geolocation and payments disabled), `X-Robots-Tag: noindex`, and
+`Strict-Transport-Security` in production. API routes are additionally `Cache-Control: no-store`.
 
-`Content-Security-Policy` (self-hosted scripts and styles, with only Monobank, NBU and CoinGecko as
-allowed `connect-src` targets), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
-`Referrer-Policy: same-origin`, `Permissions-Policy` (camera, microphone, geolocation and payments
-disabled), `X-Robots-Tag: noindex`, and `Strict-Transport-Security` in production. API routes are
-additionally `Cache-Control: no-store`.
+Pages also get a `Content-Security-Policy` of their own, built in `lib/csp.ts` and set by `proxy.ts`
+with a fresh nonce for every request:
+
+| Directive | Allows |
+| --- | --- |
+| `script-src` | `'nonce-…' 'strict-dynamic'` — only scripts carrying that request's nonce, and what they load; no inline scripts otherwise (`'unsafe-eval'` in development only, for React's error overlay) |
+| `style-src` | The app's own styles and Google Fonts, inline styles included: React writes `style` attributes, which nonces cannot cover |
+| `connect-src` | The app itself, Monobank, NBU and CoinGecko |
+| `worker-src`, `manifest-src` | The app's own service worker and manifest |
+| `frame-ancestors`, `object-src` | Nothing |
+
+Next.js adds the nonce to its own scripts; the theme script in the root layout reads it from the
+`x-nonce` request header.
 
 ## 📦 Deployment notes
 

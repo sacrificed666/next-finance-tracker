@@ -66,7 +66,9 @@ e2e/                      Playwright browser tests (playwright.config.ts); unit 
 groups `(auth)` and `(app)` do not appear in URLs — they only decide which layout wraps a page:
 
 - not signed in and not on `/login` or `/register` → redirect to `/login?next=<path>`;
-- signed in and on `/login` or `/register` → redirect to `/`.
+- signed in and on `/login` or `/register` → redirect to `/`;
+- anything else passes with a fresh nonce in its `Content-Security-Policy` — see
+  [Security and privacy](./security-and-privacy.md#-response-headers).
 
 Its matcher deliberately skips `api`, Next.js internals, the self-hosted logo folders and what an
 install needs before sign-in (the manifest is fetched without cookies):

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Montserrat } from "next/font/google";
 import "./globals.scss";
 import { StoreProvider } from "@/lib/state/store";
@@ -40,6 +41,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await requestLocale();
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html
       lang={locale}
@@ -48,7 +50,7 @@ export default async function RootLayout({
       className={`${montserrat.variable} h-full antialiased`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="flex min-h-svh flex-col font-sans">
         <div className="app-backdrop" aria-hidden />
