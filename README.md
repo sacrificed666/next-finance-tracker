@@ -17,7 +17,8 @@ Net worth over the last year — from **daily snapshots** the app records by its
 income, spending and savings rate against last month, a quick-add form, a cash-flow chart, spending
 by category with every budget's meter, **cash ahead** (what your liquid accounts will hold each day
 of the next 30 or 60 days, and the day they would dip below zero), subscriptions, your largest
-holdings and the currencies you hold them in.
+holdings and the currencies you hold them in. The cards below the headline can be **hidden and
+reordered**; the arrangement is saved with the account, so every device shows the same overview.
 
 Every page follows the same skeleton: a full-width main block with the page's headline figure, its
 trend or make-up and the figures that explain it, then a wide main column with charts and lists and a

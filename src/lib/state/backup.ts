@@ -6,6 +6,7 @@ import { INZHUR_FUNDS } from "@/lib/market/inzhur";
 import { returnPolicy } from "@/lib/finance/returns";
 import { LOCALES } from "@/lib/i18n/locales";
 import { DEFAULT_TAX_PROFILE, taxRegime, TAX_REGIMES } from "@/lib/finance/tax";
+import { normalizeDashboard } from "./dashboard";
 import type {
   AppState,
   Budget,
@@ -110,6 +111,7 @@ export function normalizeState(raw: unknown): AppState {
         s.ratesSource === "nbu" || s.ratesSource === "monobank" ? s.ratesSource : "manual",
       taxPaid: normalizeTaxPaid(s.taxPaid),
       bankLinks: normalizeBankLinks(s.bankLinks),
+      dashboard: normalizeDashboard(s.dashboard),
     },
   };
 }

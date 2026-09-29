@@ -258,6 +258,22 @@ export interface Debt {
   note?: string;
 }
 
+export type DashboardCardId =
+  | "quickAdd"
+  | "cashFlow"
+  | "spending"
+  | "cashAhead"
+  | "holdings"
+  | "subscriptions"
+  | "currency"
+  | "progress";
+
+export interface DashboardLayout {
+  main: DashboardCardId[];
+  side: DashboardCardId[];
+  hidden: DashboardCardId[];
+}
+
 export type ThemePref = "system" | "light" | "dark";
 
 export type RatesSource = "manual" | "nbu" | "monobank";
@@ -278,6 +294,7 @@ export interface Settings {
   taxPaid?: Record<string, string>;
   /** Monobank account id → the app account its operations are booked to. */
   bankLinks?: Record<string, string>;
+  dashboard?: DashboardLayout;
 }
 
 export interface AppState {

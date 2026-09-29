@@ -37,7 +37,7 @@ interface AppState {
 | `Budget` | `categoryId`, `limit`, `currency`, `rollover?` | With `rollover`, last month's unspent amount is added to this month's limit — one month's worth, never more |
 | `Receivable` | `name`, `amount`, `currency`, `date`, `dueDate?`, `repaid` | Counts towards net worth until repaid in full |
 | `NetWorthSnapshot` | `date`, `total`, `savings`, `investments`, `debts`, `receivables`, `rates` | Written quietly once a day (and again when the total moves), so the history shows what you really had, not a recomputation |
-| `Settings` | `baseCurrency`, `locale`, `theme`, `rates`, `ratesMeta`, `tax`, `taxPaid?`, `bankLinks?` | `tax` remembers the regime last used when adding income; `taxPaid` marks tax-calendar items as paid; `bankLinks` maps Monobank cards to accounts |
+| `Settings` | `baseCurrency`, `locale`, `theme`, `rates`, `ratesMeta`, `tax`, `taxPaid?`, `bankLinks?`, `dashboard?` | `tax` remembers the regime last used when adding income; `taxPaid` marks tax-calendar items as paid; `bankLinks` maps Monobank cards to accounts; `dashboard` holds the overview's card order per column and the hidden cards, and is left out while it matches the default (`lib/state/dashboard.ts`) |
 
 ## 🧱 Database schema
 
