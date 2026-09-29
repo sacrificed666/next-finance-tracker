@@ -107,7 +107,6 @@ export function projectedSnapshot(
   return { value: grown + contribFV, paidOut: 0 };
 }
 
-
 export function investmentValueInBase(
   inv: Investment,
   atISO: string,
@@ -120,14 +119,12 @@ export function investmentValueInBase(
 export interface NetWorth {
   savings: number;
   investments: number;
-  /** What others still owe you. */
   receivables: number;
   debts: number;
   assets: number;
   total: number;
 }
 
-/** What others still owe you, in the base currency. */
 export function receivablesTotal(state: AppState): number {
   const { settings } = state;
   return state.receivables.reduce(
@@ -557,7 +554,6 @@ export function taxPaid(
   }
   return { tax, vat, gross, entries };
 }
-
 
 export function netWorthByKind(
   state: AppState,

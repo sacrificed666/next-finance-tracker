@@ -6,7 +6,6 @@ import { useT } from "@/lib/i18n";
 import { lastPricedAt, pricedPositions } from "@/lib/market/refresh";
 import { useStore } from "@/lib/state/store";
 
-/** When live prices were last pulled and when they refresh next. Hidden when nothing on the page is priced. */
 export function PricesFootnote({ scope }: { scope: "accounts" | "investments" }) {
   const { state } = useStore();
   const { t } = useT();

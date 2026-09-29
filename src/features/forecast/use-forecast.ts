@@ -20,11 +20,6 @@ export interface ForecastInputs {
   events: PlannedEvent[];
 }
 
-/**
- * Base, cautious and optimistic projections plus everything the page derives
- * from them. `show(value, i)` converts a base-currency value at month `i` into
- * the viewing currency, deflated when "real terms" is on.
- */
 export function useForecast(inputs: ForecastInputs) {
   const { state } = useStore();
   const { settings } = state;
@@ -38,7 +33,6 @@ export function useForecast(inputs: ForecastInputs) {
     amount: convert(e.amount, e.currency, base, settings.rates),
   }));
 
-  // Inflation weighted by the currencies you actually hold.
   const inflationMix = (() => {
     const weight = Object.fromEntries(CURRENCIES.map((c) => [c, 0])) as Record<Currency, number>;
     for (const h of holdings(state, today)) weight[h.currency] += Math.max(0, h.base);

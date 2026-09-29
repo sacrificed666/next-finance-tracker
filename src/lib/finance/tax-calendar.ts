@@ -3,34 +3,14 @@ import { convert } from "@/lib/finance/money";
 import { esvMinimum, taxRegime } from "@/lib/finance/tax";
 import type { AppState, TaxRegimeId, Transaction } from "@/lib/types";
 
-/**
- * What a sole proprietor (ФОП) has to file and pay, and when, derived from the
- * regime in the tax profile and the income recorded:
- *
- * - groups 3 and 3 + VAT: a quarterly declaration within 40 days of the
- *   quarter's end; single tax and military levy within the 10 days after
- *   that (50 days); ЄСВ by the 20th of the month after the quarter; VAT
- *   monthly — declaration by the 20th, payment within 10 days after;
- * - groups 1 and 2: single tax and military levy as monthly advances by the
- *   20th, ЄСВ quarterly, and a yearly declaration within 60 days of the year's
- *   end.
- *
- * A deadline that falls on a weekend moves to the next Monday. The figures are
- * a guide, not tax advice: the tax office's own cabinet has the final word.
- */
-
 export type ObligationKind = "declaration" | "single" | "levy" | "esv" | "vatDeclaration" | "vat";
 
 export interface TaxObligation {
-  /** Stable across renders: "<period>:<kind>", the key `settings.taxPaid` uses. */
   id: string;
   kind: ObligationKind;
-  /** "2026-Q3", "2026-09" or "2026". */
   period: string;
   due: string;
-  /** In hryvnias; absent for filings. */
   amount?: number;
-  /** The income a percentage applies to, in hryvnias. */
   base?: number;
 }
 
@@ -40,7 +20,6 @@ export function hasTaxCalendar(regime: TaxRegimeId): boolean {
   return CALENDAR_REGIMES.has(regime);
 }
 
-/** Saturday and Sunday deadlines move to Monday. */
 function workday(date: string): string {
   const day = new Date(`${date}T12:00:00Z`).getUTCDay();
   return day === 6 ? addDays(date, 2) : day === 0 ? addDays(date, 1) : date;
@@ -52,7 +31,6 @@ const quarterEnd = (year: number, q: number) => {
   return `${year}-${pad(month)}-${pad(last)}`;
 };
 
-/** Income with tax recorded, in hryvnias, over a date range (inclusive). */
 export function taxedIncome(state: AppState, from: string, to: string): { gross: number; vat: number; entries: Transaction[] } {
   const { settings } = state;
   let gross = 0;
@@ -72,7 +50,6 @@ export function taxedIncome(state: AppState, from: string, to: string): { gross:
 const ratePart = (regime: TaxRegimeId, id: string, year: number) =>
   taxRegime(regime, year).components.find((c) => c.id === id);
 
-/** Every obligation for the regime whose due date falls in the given year or the first months of the next. */
 export function taxObligations(state: AppState, year: number): TaxObligation[] {
   const regime = state.settings.tax.regime;
   if (!hasTaxCalendar(regime)) return [];
@@ -118,7 +95,6 @@ export function taxObligations(state: AppState, year: number): TaxObligation[] {
   return out.sort((a, b) => a.due.localeCompare(b.due) || a.kind.localeCompare(b.kind));
 }
 
-/** Obligations still to settle around today: the overdue unpaid ones, then the next ones due. */
 export function upcomingObligations(state: AppState, today: string, limit = 5): TaxObligation[] {
   const year = Number(today.slice(0, 4));
   const paid = state.settings.taxPaid ?? {};
@@ -129,10 +105,8 @@ export function upcomingObligations(state: AppState, today: string, limit = 5): 
     .slice(0, limit);
 }
 
-/** The id of the expense that records an obligation as paid. */
 export const taxPaymentId = (obligationId: string) => `tax:${obligationId}`;
 
-/** The category tax payments are booked to: the default "Taxes & Fees", else one named like it, else "Other". */
 export function taxCategoryId(state: AppState): string {
   const byId = state.categories.find((c) => c.id === "cat-taxes");
   if (byId) return byId.id;
@@ -140,12 +114,6 @@ export function taxCategoryId(state: AppState): string {
   return byName?.id ?? state.categories.find((c) => c.id === "cat-other-exp")?.id ?? "";
 }
 
-/**
- * Marks obligations paid, or not: `settings.taxPaid` remembers the day, and each
- * payment with an amount becomes an expense in the taxes category (id `tax:<id>`),
- * so it shows in spending and balances. Unmarking removes that expense again.
- * A bank import of the real payment later takes the expense's place.
- */
 export function recordTaxPayments(
   state: AppState,
   obligations: TaxObligation[],
@@ -179,23 +147,17 @@ export function recordTaxPayments(
   return { ...state, transactions, settings: { ...state.settings, taxPaid } };
 }
 
-/** How many hryvnias one unit was worth on a day: the NBU rate when known, else today's. */
 export type RateOf = (currency: Transaction["currency"], date: string) => number;
 
 export interface IncomeBookRow {
   date: string;
   description: string;
-  /** In the currency it arrived in, before tax (and without VAT for a VAT payer). */
   amount: number;
   currency: Transaction["currency"];
   rate: number;
   uah: number;
 }
 
-/**
- * The year's taxed income as the книга обліку доходів lists it: one row per receipt,
- * in hryvnias at the rate of the day it arrived, VAT left out for a VAT payer.
- */
 export function incomeBook(state: AppState, year: number, rateOf: RateOf): IncomeBookRow[] {
   return state.transactions
     .filter((tx) => tx.type === "income" && tx.tax && tx.date.startsWith(String(year)))
@@ -211,11 +173,6 @@ export function incomeBook(state: AppState, year: number, rateOf: RateOf): Incom
 const csvCell = (v: string) => (/[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 const csvNumber = (n: number, digits = 2) => n.toFixed(digits).replace(".", ",");
 
-/**
- * The income book as a CSV for a spreadsheet: `;`-separated with decimal commas, as
- * Ukrainian Excel expects, and a byte-order mark so Cyrillic opens correctly. The
- * column names are Ukrainian — it is a Ukrainian tax record, whatever the app's language.
- */
 export function incomeBookCsv(rows: IncomeBookRow[]): string {
   const head = ["Дата", "Сума доходу, грн", "Опис", "Сума у валюті", "Валюта", "Курс НБУ"];
   const lines = rows.map((r) =>
@@ -234,16 +191,13 @@ export function incomeBookCsv(rows: IncomeBookRow[]): string {
 
 export interface DeclarationFigures {
   quarter: number;
-  /** Income since 1 January up to the quarter's end, in hryvnias — declarations count cumulatively. */
   incomeToDate: number;
   singleToDate: number;
   levyToDate: number;
-  /** What this quarter adds to the tax, after what earlier quarters already declared. */
   singleThisQuarter: number;
   levyThisQuarter: number;
 }
 
-/** A group 3 declaration's figures for one quarter: running totals from 1 January, and this quarter's share. */
 export function declarationFigures(state: AppState, year: number, quarter: number, rateOf: RateOf): DeclarationFigures | null {
   const regime = state.settings.tax.regime;
   if (regime !== "fop3" && regime !== "fop3vat") return null;

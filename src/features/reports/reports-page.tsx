@@ -16,7 +16,6 @@ import { PERIOD_MONTHS, periodStart, useReport, type ReportPeriod } from "./use-
 const rate = (income: number, net: number) => (income > 0 ? (net / income) * 100 : 0);
 const signed = (v: number) => `${v >= 0 ? "+" : "−"}${formatNumber(Math.abs(v), 1)}`;
 
-/** Where the money went over a month, a quarter or a year, against the period before. */
 export function ReportsPage() {
   const { state } = useStore();
   const i18n = useT();
@@ -24,7 +23,6 @@ export function ReportsPage() {
   const base = state.settings.baseCurrency;
   const [period, setPeriod] = useState<ReportPeriod>("month");
   const [anchor, setAnchor] = useState(currentMonth());
-  // The period controls answer at once; the cards below catch up in the background.
   const shownPeriod = useDeferredValue(period);
   const shownAnchor = useDeferredValue(anchor);
   const r = useReport(shownPeriod, shownAnchor);

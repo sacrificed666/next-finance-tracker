@@ -28,8 +28,6 @@ export function ForecastPage() {
   const [spreadPct, setSpreadPct] = useState(3);
   const [inflationOn, setInflationOn] = useState(false);
   const [withDebts, setWithDebts] = useState(state.debts.length > 0);
-  // The sliders and switches answer at once; the projection and every card built on it
-  // follow in the background, so dragging a slider never waits for the yearly table.
   const shownYears = useDeferredValue(years);
   const shownReturn = useDeferredValue(returnPct);
   const shownSpread = useDeferredValue(spreadPct);
@@ -39,7 +37,6 @@ export function ForecastPage() {
   const setEvents = (next: PlannedEvent[]) => update((s) => ({ ...s, plannedEvents: next }));
   useLegacyEvents();
 
-  // Wishlist items with a month join the forecast as planned purchases.
   const wishes: PlannedEvent[] = state.wishlist
     .filter((w) => w.month)
     .map((w) => ({ id: `wish:${w.id}`, month: w.month!, amount: -w.price, currency: w.currency, note: `${w.icon} ${w.name}` }));

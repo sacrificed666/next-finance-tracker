@@ -96,6 +96,10 @@ It drops unknown fields, clamps numbers, validates enums and URLs, and performs 
 (legacy balance → opening balance, old category names, yearly subscriptions, tax profiles, return
 types per investment kind).
 
+Rows from before sign-in existed belong to the placeholder user `00000000-0000-0000-0000-000000000000`.
+The first account to load its state takes them over, table by table, where it has no rows of its own
+(`claimOrphanData`); the check runs once per account per server start, not on every request.
+
 > [!TIP]
 > Anything that must survive a round trip has to be handled in `normalizeState`. If a new field is
 > not listed there, it will silently disappear on the next save.

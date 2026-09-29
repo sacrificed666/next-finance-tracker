@@ -47,7 +47,6 @@ function DataRow({
   );
 }
 
-/** Export, import (with confirmation) and a full reset — each undoable. */
 export function DataCard() {
   const { state, replace } = useStore();
   const { t } = useT();

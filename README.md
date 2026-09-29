@@ -183,6 +183,7 @@ Everything else lives in [`docs/`](./docs/README.md):
 | [Investments](./docs/investments.md) | Valuation, return types, Inzhur, live prices |
 | [Budgets and schedules](./docs/budgets-and-schedules.md) | Categories, budgets, recurring, subscriptions |
 | [Bank import](./docs/bank-import.md) | Monobank, CSV statements, categorisation rules, duplicates |
+| [Forecast](./docs/forecast.md) | Projection, scenarios, goals, wishlist |
 | [Notifications](./docs/notifications.md) | The morning note of what is due |
 | [Gamification](./docs/gamification.md) | XP, levels, achievements, health score |
 | [Internationalisation](./docs/internationalisation.md) | Locales, dictionaries, plurals |

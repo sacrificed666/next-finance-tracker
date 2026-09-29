@@ -6,10 +6,8 @@ import { ensureSchema, getPool } from "@/lib/server/db";
 import { open, seal } from "@/lib/server/secrets";
 
 export const ATTACHMENT_TYPES = new Set(["image/webp", "image/jpeg", "image/png"]);
-/** Photos are shrunk in the browser first; this is a hard ceiling on what gets stored. */
 export const ATTACHMENT_MAX_BYTES = 1_500_000;
 
-/** Stores one receipt photo, sealed like every other record, and returns its id. */
 export async function saveAttachment(userId: string, mime: string, data: Buffer): Promise<string> {
   await ensureSchema();
   const id = randomUUID();
@@ -31,10 +29,6 @@ export async function loadAttachment(userId: string, id: string): Promise<{ mime
   return text ? { mime: row.mime, data: Buffer.from(text, "base64") } : null;
 }
 
-/**
- * Drops photos no transaction points to any more. A day's grace keeps a photo
- * uploaded into a form that has not been saved yet.
- */
 export async function pruneAttachments(client: PoolClient, userId: string, referenced: string[]): Promise<void> {
   await client.query(
     `DELETE FROM attachments

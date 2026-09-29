@@ -1,41 +1,26 @@
 import { addMonths, monthDiff, monthOf } from "@/lib/date";
 import type { AppState, Currency, Transaction } from "@/lib/types";
 
-/** One entry found in a bank statement, before it becomes a transaction. */
 export interface ImportCandidate {
-  /** Stored as the transaction's `externalId`, so importing the same statement twice adds nothing. */
   externalId: string;
   date: string;
-  /** Unix seconds, when the bank gives the exact moment — used to pair the two halves of a transfer. */
   time?: number;
   type: "income" | "expense" | "transfer";
-  /** Always positive; `type` carries the direction. */
   amount: number;
   currency: Currency;
-  /** What the operation was in its own currency (buying dollars with a hryvnia card), when it differs. */
   opAmount?: number;
   opCurrency?: Currency;
   description: string;
   mcc?: number;
   categoryId: string;
-  /** Already in the ledger — by id, or by the same day, amount and description. */
   duplicate: boolean;
-  /** The app account the entry is booked to, when the statement came from a linked bank account. */
   accountId?: string;
-  /** For a transfer: where the money went, and what arrived when the currency changed. */
   toAccountId?: string;
   toAmount?: number;
-  /** For a transfer found as two statement lines: the other line's id. */
   pairedId?: string;
-  /** A planned entry (a recurring payment, a subscription) this operation is the real version of. */
   planned?: { id: string; label: string };
 }
 
-/**
- * Merchant category codes (the MCC a card payment carries) mapped to the
- * default categories, most specific first; the first one that exists in the
- * user's list wins.
- */
 const MCC_CATEGORIES: Array<[ranges: Array<number | [number, number]>, ids: string[]]> = [
   [[5411, 5412, 5422, 5441, 5451, 5462, 5499], ["cat-groceries", "cat-food"]],
   [[5812, 5813], ["cat-restaurants", "cat-food"]],
@@ -70,10 +55,6 @@ function mccMatches(mcc: number, ranges: Array<number | [number, number]>): bool
   return ranges.some((r) => (Array.isArray(r) ? mcc >= r[0] && mcc <= r[1] : mcc === r));
 }
 
-/**
- * The category an imported entry most likely belongs to: the user's own rules
- * first, then the card's merchant code, then "Other".
- */
 export function suggestCategory(state: AppState, description: string, type: "income" | "expense", mcc?: number): string {
   const text = description.toLocaleLowerCase();
   const exists = (id: string) => state.categories.some((c) => c.id === id && c.kind === type);
@@ -92,19 +73,12 @@ export function suggestCategory(state: AppState, description: string, type: "inc
   return state.categories.find((c) => c.kind === type && !c.parentId)?.id ?? "";
 }
 
-/**
- * An entry that stands in for a payment the bank will report: a recurring payment or
- * subscription posting, or a tax marked paid in the tax calendar (id "tax:…"). The
- * real operation takes its place instead of being counted next to it.
- */
 export function isPlaceholder(tx: Transaction): boolean {
   return Boolean(tx.recurringId || tx.subscriptionId || tx.id.startsWith("tax:"));
 }
 
-/** Flags candidates already in the ledger, so they start unticked in the preview. */
 export function markDuplicates(state: AppState, candidates: ImportCandidate[]): ImportCandidate[] {
   const ids = new Set(state.transactions.map((tx) => tx.externalId).filter(Boolean));
-  // Planned postings are not duplicates of the real payment: matchPlanned pairs them up instead.
   const typed = state.transactions.filter((tx) => tx.externalId || !isPlaceholder(tx));
   const loose = new Set(
     typed.map((tx) => `${tx.date}|${tx.type}|${tx.amount.toFixed(2)}|${(tx.note ?? "").toLocaleLowerCase()}`),
@@ -118,7 +92,6 @@ export function markDuplicates(state: AppState, candidates: ImportCandidate[]): 
   }));
 }
 
-/** How far apart the two halves of one transfer may be booked. */
 const TRANSFER_WINDOW_S = 15 * 60;
 const CENT = 0.005;
 
@@ -133,11 +106,6 @@ function sameMoment(a: ImportCandidate, b: ImportCandidate): boolean {
   return a.date === b.date;
 }
 
-/**
- * Money moved between two of your own linked accounts shows up as two statement
- * lines — out of one, into the other. Left alone they would count as spending and
- * income both; paired, they become one transfer that changes neither.
- */
 export function pairTransfers(candidates: ImportCandidate[]): ImportCandidate[] {
   const partnerOf = new Map<string, ImportCandidate>();
   const taken = new Set<string>();
@@ -175,7 +143,6 @@ export function pairTransfers(candidates: ImportCandidate[]): ImportCandidate[] 
 
 const CASH_MCC = new Set([6010, 6011]);
 
-/** A cash machine withdrawal is money moving to your wallet, not spending — when you track cash. */
 export function cashWithdrawals(state: AppState, candidates: ImportCandidate[]): ImportCandidate[] {
   const cash = state.savings.filter((a) => a.kind === "cash");
   if (cash.length === 0) return candidates;
@@ -196,17 +163,10 @@ export function cashWithdrawals(state: AppState, candidates: ImportCandidate[]):
 }
 
 const DAY_MS = 86_400_000;
-/** How far a real payment may land from the day it was planned, and how far its amount may drift. */
 const PLAN_WINDOW_DAYS = 5;
 const PLAN_TOLERANCE = 0.05;
 const NAMED_TOLERANCE = 0.2;
 
-/**
- * Finds the planned entry — a recurring payment or a subscription posting — that an
- * imported operation is the real version of: same direction and currency, a few days
- * from the planned date, about the same amount. A description that names the
- * subscription ("YouTube") allows a price that has since changed.
- */
 export function matchPlanned(state: AppState, candidates: ImportCandidate[]): ImportCandidate[] {
   const planned = state.transactions.filter((t) => isPlaceholder(t) && !t.externalId && t.type !== "transfer");
   if (planned.length === 0) return candidates;
@@ -237,7 +197,6 @@ export function matchPlanned(state: AppState, candidates: ImportCandidate[]): Im
   });
 }
 
-/** The transactions an accepted set of candidates becomes, booked to one account (or none). */
 export function toTransactions(candidates: ImportCandidate[], accountId: string | undefined, makeId: () => string): Transaction[] {
   return candidates.map((c) => ({
     id: makeId(),
@@ -260,11 +219,6 @@ function bankLine(c: ImportCandidate): Transaction["bank"] {
   return c.opAmount !== undefined ? { time: c.time, opAmount: c.opAmount, opCurrency: c.opCurrency } : { time: c.time };
 }
 
-/**
- * The state after an import: operations that are the real version of a planned
- * entry take its place — same entry, now with the real amount and day — and the
- * rest are added. Nothing is counted twice.
- */
 export function applyImport(state: AppState, picked: ImportCandidate[], makeId: () => string): AppState {
   const realOf = new Map(picked.filter((c) => c.planned).map((c) => [c.planned!.id, c]));
   const transactions = state.transactions.map((tx) => {
@@ -284,13 +238,11 @@ export function applyImport(state: AppState, picked: ImportCandidate[], makeId: 
   return { ...state, transactions: [...transactions, ...added] };
 }
 
-/** Everything the importers do between reading a statement and showing the preview. */
 export function prepareImport(state: AppState, found: ImportCandidate[]): ImportCandidate[] {
   const shaped = cashWithdrawals(state, pairTransfers(found));
   return matchPlanned(state, markDuplicates(state, shaped)).sort((a, b) => b.date.localeCompare(a.date));
 }
 
-/** A short, stable fingerprint for statement rows that carry no id of their own. */
 export function fingerprint(text: string): string {
   let h1 = 0x811c9dc5;
   let h2 = 0x01000193;
@@ -303,20 +255,16 @@ export function fingerprint(text: string): string {
 }
 
 export interface SubscriptionSuggestion {
-  /** The merchant, as the statement names it, reduced to a stable key. */
   key: string;
   name: string;
   amount: number;
   currency: Currency;
   dayOfMonth: number;
   accountId?: string;
-  /** Consecutive months it was charged, ending with the latest. */
   months: number;
-  /** The month after the latest charge — a subscription added from here starts then, so the charge already booked is not planned twice. */
   startMonth: string;
 }
 
-/** A merchant's name without card numbers, dates and punctuation: "NETFLIX.COM 12/09" → "netflix com". */
 function merchantKey(note: string): string {
   return note
     .toLocaleLowerCase()
@@ -328,12 +276,6 @@ function merchantKey(note: string): string {
     .join(" ");
 }
 
-/**
- * Charges that look like a subscription nobody set up: the same merchant, one charge a
- * month for at least two months in a row, about the same amount (within 10%) and day
- * (within four days). A shop visited several times a month is not one. Merchants an
- * existing subscription already names are left out.
- */
 export function suggestSubscriptions(state: AppState, today: string): SubscriptionSuggestion[] {
   const since = addMonths(monthOf(today), -6);
   const known = state.subscriptions.map((s) => s.name.toLocaleLowerCase()).filter((n) => n.length >= 3);
@@ -361,7 +303,6 @@ export function suggestSubscriptions(state: AppState, today: string): Subscripti
     if (run < 2) continue;
     const recent = months.slice(-run).map((m) => byMonth.get(m)!);
     const last = recent[recent.length - 1];
-    // More charges than months: a place visited often, not a bill.
     if (txs.filter((tx) => monthOf(tx.date) >= months[months.length - run]).length > run) continue;
     if (recent.some((tx) => tx.currency !== last.currency)) continue;
     if (recent.some((tx) => Math.abs(tx.amount - last.amount) > last.amount * 0.1)) continue;
@@ -381,20 +322,17 @@ export function suggestSubscriptions(state: AppState, today: string): Subscripti
   return out.sort((a, b) => b.months - a.months || b.amount - a.amount);
 }
 
-/** A Monobank operation as both importers see it — from a statement or from the webhook. */
 export interface MonoLine {
   id: string;
   time: number;
   description: string;
   comment?: string;
   mcc: number;
-  /** In the account's currency, major units; negative is money out. */
   amount: number;
   opAmount?: number;
   opCurrency?: Currency;
 }
 
-/** A Monobank operation as an import candidate, booked to the app account its card is linked to. */
 export function candidateFromMono(
   state: AppState,
   line: MonoLine,
@@ -422,7 +360,6 @@ export function candidateFromMono(
   };
 }
 
-/** A booked entry seen as the statement line it came from, so it can pair with its other half. */
 function asCandidate(tx: Transaction): ImportCandidate {
   return {
     externalId: tx.externalId ?? tx.id,
@@ -440,12 +377,6 @@ function asCandidate(tx: Transaction): ImportCandidate {
   };
 }
 
-/**
- * One operation arriving on its own — the bank's webhook — folded in the way an
- * import would: already booked, it changes nothing; the second half of a transfer
- * turns the first half, booked earlier, into one transfer; a cash withdrawal becomes
- * a transfer; the real version of a planned payment fills it in; anything else is added.
- */
 export function absorbOperation(state: AppState, line: ImportCandidate, makeId: () => string): AppState {
   if (state.transactions.some((tx) => tx.externalId === line.externalId)) return state;
 

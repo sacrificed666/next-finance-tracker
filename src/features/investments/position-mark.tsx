@@ -4,7 +4,6 @@ import { investmentKind } from "@/lib/constants";
 import { inzhurFund } from "@/lib/market/inzhur";
 import type { Investment } from "@/lib/types";
 
-/** A position's logo: the Inzhur fund's, the coin's, or the emoji for its type. */
 export function PositionMark({ inv, size = 22, coinSize = size }: { inv: Investment; size?: number; coinSize?: number }) {
   const fund = inzhurFund(inv.fund);
   const icon = investmentKind(inv.kind).icon;

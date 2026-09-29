@@ -1,6 +1,3 @@
-// The two glows used to drift. They hold still now: a full-screen layer moving every
-// frame kept the GPU busy even on an idle page and made every blurred bar or panel
-// above it re-render with it, which is what made scrolling on phones stutter.
 .app-backdrop {
   position: fixed;
   inset: 0;

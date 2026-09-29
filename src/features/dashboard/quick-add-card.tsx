@@ -12,7 +12,6 @@ import { uid, useStore } from "@/lib/state/store";
 import { useT } from "@/lib/i18n";
 import type { Currency, TxType } from "@/lib/types";
 
-/** Log an expense or income for today without leaving the dashboard. */
 export function QuickAddCard({ className = "" }: { className?: string }) {
   const { state, update } = useStore();
   const { t } = useT();
@@ -95,7 +94,6 @@ export function QuickAddCard({ className = "" }: { className?: string }) {
     />
   );
 
-  // A wide, two-row form: it sits at the top of the dashboard's main column.
   return (
     <Card title={t("dash.quick")} icon="bolt" action={typeSwitch} className={className}>
       <div className="grid gap-3 md:grid-cols-6">

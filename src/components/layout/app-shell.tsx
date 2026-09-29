@@ -18,8 +18,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useT();
   const pathname = usePathname();
 
-  // Entrance animations (cards rising, charts growing) play on the first screen only;
-  // this marks the moment they have finished, a little after the longest of them.
   useEffect(() => {
     if (!hydrated) return;
     const id = setTimeout(

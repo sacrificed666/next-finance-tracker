@@ -9,7 +9,6 @@ import { useT } from "@/lib/i18n";
 import { oneOf, usePersistentState } from "@/lib/state/listing";
 import { useStore } from "@/lib/state/store";
 
-/** Where the month's money went, next to how fast it went against the month before. */
 export function SpendingOverview({ month }: { month: string }) {
   const { state } = useStore();
   const { t, tp, category } = useT();
@@ -32,7 +31,6 @@ export function SpendingOverview({ month }: { month: string }) {
   });
   const hasSubcategorySpend = [...raw.keys()].some((id) => catById.get(id)?.parentId);
 
-  // Running totals through this month (up to today) and through the month before, day by day.
   const prevMonth = addMonths(month, -1);
   const dailyTotals = (m: string, upTo: number) =>
     Array.from({ length: upTo }, (_, i) => {

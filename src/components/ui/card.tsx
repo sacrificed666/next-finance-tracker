@@ -41,7 +41,6 @@ export function Card({
   action?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  /** Accent glow for the one card per page that carries the headline number. */
   glow?: boolean;
   className?: string;
 }) {

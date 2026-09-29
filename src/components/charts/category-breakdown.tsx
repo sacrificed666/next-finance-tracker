@@ -19,7 +19,6 @@ export function CategoryBreakdown({
   currency: Currency;
   maxSegments?: number;
   rowExtra?: (id: string) => ReactNode;
-  /** Lay the rows out in two columns from `sm` — for a breakdown in a wide card. */
   twoColumn?: boolean;
 }) {
   const { t } = useT();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { Button, Fact, Facts, Field, FieldSet, Icon, SegmentedControl, Select, Sheet, TextInput } from "@/components/ui";
 import { CURRENCIES, CURRENCY_SYMBOL, INVESTMENT_KINDS, valuationOf } from "@/lib/constants";
 import { addDays, addMonths, dateInMonth, monthOf, todayISO, wholeMonthsBetween } from "@/lib/date";
@@ -83,7 +83,6 @@ function initialForm(target: Investment | "new"): InvestmentForm {
   };
 }
 
-/** The same term again, starting the day the old one ended. */
 function nextTerm(start: string, end: string): string {
   const months = wholeMonthsBetween(start, end);
   if (months > 0 && start.slice(8) === end.slice(8)) {
@@ -93,10 +92,6 @@ function nextTerm(start: string, end: string): string {
   return addDays(end, Math.max(1, days));
 }
 
-/**
- * A matured position put back to work: what it was worth at maturity becomes the
- * new principal, and the new term runs as long as the old one did.
- */
 function renewForm(inv: Investment & { endDate: string }): InvestmentForm {
   const form = initialForm(inv);
   const value = Math.round(investmentAt(inv, inv.endDate).value * 100) / 100;
@@ -110,7 +105,6 @@ function renewForm(inv: Investment & { endDate: string }): InvestmentForm {
   };
 }
 
-/** Snap compounding and frequency to what this kind of investment actually supports. */
 function withPolicy(f: InvestmentForm): InvestmentForm {
   const policy = returnPolicy({
     kind: f.kind,
@@ -128,7 +122,6 @@ async function fetchNav(fundId: string, noQuote: string) {
   return { quote, fetchedAt: res.fetchedAt };
 }
 
-/** Add or edit an investment; the fields adapt to how that kind of asset earns. */
 export function InvestmentSheet({
   target,
   renew = false,
@@ -136,7 +129,6 @@ export function InvestmentSheet({
   onDelete,
 }: {
   target: Investment | "new";
-  /** Open a matured position for another term instead of editing it as it is. */
   renew?: boolean;
   onClose: () => void;
   onDelete: (id: string) => void;
@@ -172,19 +164,20 @@ export function InvestmentSheet({
     }
   };
 
-  // An Inzhur position opens with a fresh NAV.
-  useEffect(() => {
-    if (!initialFund) return;
+  const openNav = useEffectEvent((fund: string) => {
     let live = true;
-    fetchNav(initialFund, t("balance.inv.inzhur.noQuote"))
-      .then(({ quote, fetchedAt }) => live && applyQuote(initialFund, quote, fetchedAt))
+    fetchNav(fund, t("balance.inv.inzhur.noQuote"))
+      .then(({ quote, fetchedAt }) => live && applyQuote(fund, quote, fetchedAt))
       .catch((err) => live && setNavError(err instanceof Error ? err.message : t("balance.prices.inzhurFailed")))
       .finally(() => live && setNavLoading(false));
     return () => {
       live = false;
     };
-    // Runs once per opened sheet; `t` changing mid-edit must not refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
+  useEffect(() => {
+    if (!initialFund) return;
+    return openNav(initialFund);
   }, [initialFund]);
 
   const setKind = (kind: InvestmentKind) => {

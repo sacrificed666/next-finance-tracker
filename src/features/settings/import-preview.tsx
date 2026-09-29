@@ -9,10 +9,6 @@ import type { ImportCandidate } from "@/lib/finance/import";
 import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 
-/**
- * Everything a statement would add, before it is added: tick what to keep,
- * fix a category, then import. Entries already in the ledger start unticked.
- */
 export function ImportPreviewSheet({
   title,
   candidates,

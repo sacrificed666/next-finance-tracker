@@ -15,7 +15,6 @@ import type { Investment } from "@/lib/types";
 import { returnLabel, sparkValues, yieldRange } from "./helpers";
 import { PositionMark } from "./position-mark";
 
-/** One position: value, how it earns, what the next year should bring. */
 export function InvestmentCard({
   inv,
   today,
@@ -53,7 +52,6 @@ export function InvestmentCard({
       )
     : t("balance.perYear", { pct: formatPercent(inv.annualRatePct) });
 
-  // Pairs first, the one-year outlook across the full row last; an odd one out also takes a full row.
   const pairs: Array<{ label: string; value: ReactNode } | false> = [
     (!market || inv.annualRatePct > 0) && {
       label: market ? t("balance.inv.row.expected") : t("balance.inv.row.rate"),

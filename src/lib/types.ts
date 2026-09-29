@@ -65,19 +65,10 @@ export interface Transaction {
   subscriptionId?: string;
   breakdown?: IncomeBreakdown;
   tax?: IncomeTax;
-  /** Free labels across categories: a trip, a project, a gift. */
   tags?: string[];
-  /** Where an imported entry came from ("mono:<id>", "csv:<hash>") — keeps a re-import from duplicating it. */
   externalId?: string;
-  /**
-   * What the bank said about an imported operation beyond the amount: the exact moment,
-   * and the amount in the operation's own currency when it differed. Lets the two
-   * halves of a transfer be paired even when they arrive separately.
-   */
   bank?: { time?: number; opAmount?: number; opCurrency?: Currency };
-  /** Pieces of one purchase split across categories share this id. */
   splitId?: string;
-  /** Photos of the receipt, stored separately and fetched on demand. */
   attachmentIds?: string[];
 }
 
@@ -179,11 +170,9 @@ export interface Budget {
   categoryId: string;
   limit: number;
   currency: Currency;
-  /** Unspent money from last month is added to this month's limit. */
   rollover?: boolean;
 }
 
-/** "Description contains … → category", applied to imported entries. */
 export interface CategoryRule {
   id: string;
   match: string;
@@ -191,24 +180,20 @@ export interface CategoryRule {
   type: "income" | "expense";
 }
 
-/** Money someone owes you. Counts towards net worth until it is repaid. */
 export interface Receivable {
   id: string;
   name: string;
   icon: string;
   amount: number;
   currency: Currency;
-  /** When the money was lent. */
   date: string;
   dueDate?: string;
-  /** How much has come back so far. */
   repaid: number;
   note?: string;
 }
 
 export type WishPriority = "high" | "normal" | "low";
 
-/** Something you want to buy. */
 export interface WishItem {
   id: string;
   name: string;
@@ -218,12 +203,10 @@ export interface WishItem {
   priority: WishPriority;
   url?: string;
   note?: string;
-  /** The month you plan to buy it; it then shows up in the forecast. */
   month?: string;
   createdAt: string;
 }
 
-/** A one-off amount the forecast adds in a given month: a purchase (negative) or a windfall. */
 export interface PlannedEvent {
   id: string;
   month: string;
@@ -232,7 +215,6 @@ export interface PlannedEvent {
   note: string;
 }
 
-/** Net worth on one day, in hryvnias, with the rates of that day so it converts faithfully later. */
 export interface NetWorthSnapshot {
   date: string;
   total: number;
@@ -290,9 +272,7 @@ export interface Settings {
   };
   ratesUpdatedAt?: string;
   ratesSource: RatesSource;
-  /** Tax obligations marked as paid: obligation id → the day it was paid. */
   taxPaid?: Record<string, string>;
-  /** Monobank account id → the app account its operations are booked to. */
   bankLinks?: Record<string, string>;
   dashboard?: DashboardLayout;
 }

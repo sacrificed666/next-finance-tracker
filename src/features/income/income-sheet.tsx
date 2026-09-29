@@ -112,7 +112,6 @@ function profileOf(f: IncomeForm): TaxProfile | null {
   };
 }
 
-/** Add or edit one income entry, with the tax breakdown shown while typing. */
 export function IncomeSheet({ target, onClose }: { target: Transaction | "new"; onClose: () => void }) {
   const { state, update } = useStore();
   const { t } = useT();
@@ -204,7 +203,6 @@ export function IncomeSheet({ target, onClose }: { target: Transaction | "new"; 
 
     update((s) => ({
       ...s,
-      // A new entry remembers its tax setup as the default for the next one.
       settings: form.id ? s.settings : { ...s.settings, tax: p ?? profileFromRegime("none", s.settings.tax) },
       transactions: form.id
         ? s.transactions.map((tx) => (tx.id === form.id ? { ...tx, ...patch } : tx))

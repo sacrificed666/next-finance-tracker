@@ -6,7 +6,6 @@ export interface NavItem {
   label: MessageKey;
   short: MessageKey;
   icon: IconName;
-  /** Left out of the phone tab bar, which has room for six; the top bar links to it instead. */
   compact?: boolean;
 }
 
@@ -36,13 +35,10 @@ export const NAV_GROUPS: Array<{ title: MessageKey; items: NavItem[] }> = [
   },
 ];
 
-/** Every main destination. */
 export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
-/** The six destinations the phone tab bar has room for. */
 export const TAB_BAR: NavItem[] = NAV.filter((item) => !item.compact);
 
-/** Pages the phone reaches from its top bar instead. */
 export const TOP_BAR: NavItem[] = NAV.filter((item) => item.compact);
 
 export const PROFILE: NavItem = {

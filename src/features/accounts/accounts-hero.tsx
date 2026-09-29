@@ -12,7 +12,6 @@ import { useStore } from "@/lib/state/store";
 import type { AccountKind } from "@/lib/types";
 import { goalsSummary } from "./helpers";
 
-/** What sits in accounts, split by type, with net worth, the emergency fund, goals and debts underneath. */
 export function AccountsHero() {
   const { state } = useStore();
   const { t, tp } = useT();
@@ -30,7 +29,6 @@ export function AccountsHero() {
     if (value > 0) byKind.set(acc.kind, (byKind.get(acc.kind) ?? 0) + value);
   }
 
-  // The same cushion the health score measures: cash in full, crypto and liquid investments at half.
   const { facts } = gamification(state);
   const months = facts.emergencyMonths;
   const cushionNote =

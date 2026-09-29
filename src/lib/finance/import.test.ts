@@ -227,7 +227,6 @@ describe("absorbOperation (one operation at a time, as the webhook sends them)",
       toAmount: 1000,
       externalId: "mono:out",
     });
-    // In the other order the result is the same transfer.
     const reversed = absorbOperation(absorbOperation(state, into, makeId), out, makeId);
     expect(reversed.transactions).toHaveLength(1);
     expect(reversed.transactions[0]).toMatchObject({ type: "transfer", accountId: "black", toAccountId: "usd", toAmount: 1000 });

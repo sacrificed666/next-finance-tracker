@@ -1,13 +1,5 @@
 import type { AppState, Settings } from "@/lib/types";
 
-/**
- * A save described as changes rather than as the whole state: per collection, the
- * records that were added or edited and the keys that were removed, plus the
- * settings when they moved. The browser sends only this, and the server applies it
- * to what it holds — so an edit costs one record, not the whole database, and two
- * devices editing different records never overwrite each other.
- */
-
 type Collections = Omit<AppState, "version" | "settings">;
 export type CollectionName = keyof Collections;
 export type ItemOf<K extends CollectionName> = Collections[K][number];
@@ -44,7 +36,6 @@ const KEYS: { [K in CollectionName]: (item: ItemOf<K>) => string } = {
   snapshots: (s) => s.date,
 };
 
-/** The key a record is stored under in its collection. */
 export function keyOf<K extends CollectionName>(name: K, item: ItemOf<K>): string {
   return (KEYS[name] as (item: ItemOf<K>) => string)(item);
 }
@@ -58,12 +49,6 @@ export type StateChanges = { [K in CollectionName]?: CollectionChange<ItemOf<K>>
   settings?: Settings;
 };
 
-/**
- * What changed between two states. Records are compared by identity: every update
- * in the store builds new objects for what it touches and keeps the rest, so an
- * untouched record is the very same object. A needless copy only costs an extra
- * write — the server skips records whose content did not change.
- */
 export function diffState(before: AppState, after: AppState): StateChanges {
   const changes: StateChanges = {};
   for (const name of COLLECTION_NAMES) {
@@ -96,7 +81,6 @@ export function isEmptyChange(changes: StateChanges): boolean {
   return Object.keys(changes).length === 0;
 }
 
-/** How many records a change touches, for logs and tests. */
 export function changeSize(changes: StateChanges): number {
   let n = changes.settings ? 1 : 0;
   for (const name of COLLECTION_NAMES) {
@@ -106,7 +90,6 @@ export function changeSize(changes: StateChanges): number {
   return n;
 }
 
-/** What a change touches, without any content — "transactions +1 −0, settings" — for the server log. */
 export function describeChanges(changes: StateChanges): string {
   const parts = COLLECTION_NAMES.flatMap((name) => {
     const change = changes[name];
@@ -116,7 +99,6 @@ export function describeChanges(changes: StateChanges): string {
   return parts.join(", ") || "nothing";
 }
 
-/** The state with the changes laid over it: edits replace in place, new records go last. */
 export function applyChanges(state: AppState, changes: StateChanges): AppState {
   let next = state;
   for (const name of COLLECTION_NAMES) {
@@ -151,11 +133,6 @@ function applyCollection<K extends CollectionName>(
   return out;
 }
 
-/**
- * A change set as it arrives over the network, checked for shape only: known
- * collections, arrays of objects, string keys. The records themselves are
- * validated afterwards, when the merged state goes through normalizeState.
- */
 export function parseChanges(raw: unknown): StateChanges | null {
   if (!isRecord(raw)) return null;
   const changes: StateChanges = {};
@@ -173,7 +150,6 @@ export function parseChanges(raw: unknown): StateChanges | null {
   return changes;
 }
 
-/** JSON with object keys sorted, so two records with the same content always compare equal. */
 export function stableJson(value: unknown): string {
   return JSON.stringify(value, (_key, v: unknown) =>
     isRecord(v) && !Array.isArray(v)

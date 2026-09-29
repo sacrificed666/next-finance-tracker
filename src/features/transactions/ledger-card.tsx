@@ -37,7 +37,6 @@ type LedgerTiming = "all" | "posted" | "planned";
 
 const digits = (v: string) => v.replace(/[^\d]/g, "");
 
-/** Every entry in a period, grouped by day, with search, filters and sorting. */
 export function LedgerCard({
   month,
   onAdd,
@@ -54,7 +53,6 @@ export function LedgerCard({
   const base = settings.baseCurrency;
   const today = todayISO();
 
-  // Selecting: rows tick instead of opening, and a bar acts on everything ticked at once.
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tagDraft, setTagDraft] = useState("");
@@ -98,7 +96,6 @@ export function LedgerCard({
   const catById = new Map(state.categories.map((c) => [c.id, c]));
   const accountById = new Map(state.savings.map((a) => [a.id, a]));
 
-  // The field keeps up with every keystroke; the filtered list follows in the background.
   const q = useDeferredValue(query).trim().toLowerCase();
   const qDigits = digits(q);
   const inCategory = categoryFilter ? descendantsOf(state.categories, categoryFilter) : null;
@@ -200,7 +197,6 @@ export function LedgerCard({
           {isTransfer ? "⇄" : (cat?.icon ?? "❓")}
         </IconDisc>
         <span className="min-w-0 flex-1">
-          {/* A note names the entry (the service, the shop); the category then moves to the second line. */}
           <span className="flex items-center gap-1.5 text-sm font-medium text-ink-1">
             <span className="truncate">{isTransfer ? `${from?.name ?? "?"} → ${to?.name ?? "?"}` : note || category(cat)}</span>
             {tx.attachmentIds?.length ? (
@@ -239,8 +235,6 @@ export function LedgerCard({
     <AddButton variant={variant} onClick={onAdd} label={t("common.add")} />
   );
 
-  // Bulk actions over the ticked entries. A category only fits entries of its own kind;
-  // transfers and the other kind are left as they were.
   const picked = state.transactions.filter((tx) => selected.has(tx.id));
   const setCategory = (categoryId: string) => {
     const kind = catById.get(categoryId)?.kind;

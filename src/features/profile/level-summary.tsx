@@ -5,7 +5,6 @@ import { formatNumber } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import type { Game } from "./shared";
 
-/** Level, rank, progress to the next level and where the XP came from — the right side of the profile hero. */
 export function LevelSummary({ g }: { g: Game }) {
   const { t, tk } = useT();
   const sources: Array<{ id: "tracking" | "consistency" | "results" | "achievements"; icon: IconName }> = [

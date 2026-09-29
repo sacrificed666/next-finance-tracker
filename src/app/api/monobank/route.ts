@@ -14,14 +14,12 @@ function monoFailure(err: unknown) {
   return NextResponse.json({ error: "unreachable" }, { status: 502 });
 }
 
-/** Whether Monobank is connected, as whom, and which accounts it has. */
 export async function GET() {
   const id = await userId();
   if (!id) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   return NextResponse.json(publicMono(await loadMono(id)));
 }
 
-/** Connect with a personal token (`{ token }`), or refresh the account list with an empty body. */
 export async function POST(request: Request) {
   const id = await userId();
   if (!id) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
@@ -36,7 +34,6 @@ export async function POST(request: Request) {
   }
 }
 
-/** Forget the token. */
 export async function DELETE() {
   const id = await userId();
   if (!id) return NextResponse.json({ error: "Not signed in." }, { status: 401 });

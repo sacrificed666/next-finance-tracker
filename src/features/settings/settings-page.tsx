@@ -28,7 +28,6 @@ export function SettingsPage() {
       <PageHeader title={t("settings.title")} subtitle={t("settings.subtitle")} />
       <PageBody>
         <SettingsHero />
-        {/* Preferences come first on phones; the long category list follows. */}
         <Split
           sideFirst
           main={

@@ -102,7 +102,6 @@ export function Sheet({
   footer?: ReactNode;
   onSubmit?: () => void;
   problem?: string | null;
-  /** A wider panel on larger screens, for tables and previews. */
   wide?: boolean;
 }) {
   const titleId = useId();

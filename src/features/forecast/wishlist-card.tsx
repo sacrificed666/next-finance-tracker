@@ -12,11 +12,6 @@ import { WishSheet } from "./wish-sheet";
 
 const ORDER: Record<WishPriority, number> = { high: 0, normal: 1, low: 2 };
 
-/**
- * Things you want to buy, in the order you would buy them, and when each
- * becomes affordable if what you keep each month goes towards the list.
- * Items given a month are also subtracted in the forecast.
- */
 export function WishlistCard() {
   const { state } = useStore();
   const { t, tp } = useT();
@@ -24,7 +19,6 @@ export function WishlistCard() {
   const base = settings.baseCurrency;
   const [sheet, setSheet] = useState<WishItem | "new" | null>(null);
 
-  // What is kept on average over the last six active months: the pace the list is paid off at.
   const series = monthlySeries(state.transactions, currentMonth(), 6, settings).filter((m) => m.income > 0 || m.expense > 0);
   const pace = Math.max(0, series.reduce((sum, m) => sum + m.net, 0) / Math.max(1, series.length));
   const items = [...state.wishlist].sort((a, b) => ORDER[a.priority] - ORDER[b.priority] || a.price - b.price);

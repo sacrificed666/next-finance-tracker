@@ -9,10 +9,6 @@ import { convert, formatMoney } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { useMonthSummary } from "./use-month-summary";
 
-/**
- * This month's spending per top-level category, each with its budget underneath,
- * and all budgets rolled into one meter at the top.
- */
 export function SpendingCard({ className = "" }: { className?: string }) {
   const { state, settings, base, month, current, previous, hasPrevious, vsLast } = useMonthSummary();
   const { t, tp, category } = useT();

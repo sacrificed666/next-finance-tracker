@@ -30,7 +30,6 @@ import { holdingsSummary } from "./helpers";
 
 type AccountSort = "name" | "balance" | "kind";
 
-/** Every account with its derived balance in each displayed currency, plus savings goals. */
 export function AccountsCard({
   onAdd,
   onEdit,
@@ -77,7 +76,6 @@ export function AccountsCard({
   const filtered = query.trim() !== "" || kindFilter !== "all";
   const visibleTotal = visible.reduce((s, acc) => s + inBase(acc), 0);
 
-  // Accounts with nothing in them fold into one row at the end, unless a search or filter is on.
   const [showEmpty, setShowEmpty] = useState(false);
   const isEmpty = (acc: SavingsAccount) => Math.abs(balances.get(acc.id) ?? 0) < 0.005;
   const emptyCount = filtered ? 0 : visible.filter(isEmpty).length;

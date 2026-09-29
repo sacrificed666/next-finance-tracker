@@ -6,7 +6,6 @@ import { useT } from "@/lib/i18n";
 import type { Currency } from "@/lib/types";
 import type { Forecast } from "./use-forecast";
 
-/** The projection sampled once a year, with a bar behind each total. */
 export function YearlyTableCard({ f, view, withDebts }: { f: Forecast; view: Currency; withDebts: boolean }) {
   const { t } = useT();
   const showDebts = withDebts && f.state.debts.length > 0;
@@ -20,7 +19,6 @@ export function YearlyTableCard({ f, view, withDebts }: { f: Forecast; view: Cur
           <thead>
             <tr>
               <th className="text-left">{t("forecast.col.year")}</th>
-              {/* On a phone the parts step aside so the table fits without scrolling sideways. */}
               <th className="hidden text-right sm:table-cell">{t("forecast.savings")}</th>
               <th className="hidden text-right sm:table-cell">{t("balance.investments")}</th>
               {showDebts && <th className="hidden text-right sm:table-cell">{t("balance.debts")}</th>}
@@ -49,7 +47,6 @@ export function YearlyTableCard({ f, view, withDebts }: { f: Forecast; view: Cur
                     </td>
                   )}
                   <td className="text-right">
-                    {/* The total, with a bar that grows towards the horizon. */}
                     <span className="flex items-center justify-end gap-2.5">
                       <span aria-hidden className="hidden h-1.5 flex-1 overflow-hidden rounded-full bg-ghost-2 sm:block">
                         <span

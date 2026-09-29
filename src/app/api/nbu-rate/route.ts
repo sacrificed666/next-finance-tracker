@@ -3,13 +3,8 @@ import { auth } from "@/lib/server/auth";
 
 export const dynamic = "force-dynamic";
 
-/** Past official rates never change, so every one fetched is kept for the life of the server. */
 const cache = new Map<string, number>();
 
-/**
- * The official NBU rate of a currency on a day — what foreign-currency income
- * is converted at for a tax declaration. `?currency=USD&date=2026-09-15`.
- */
 export async function GET(request: Request) {
   if (!(await auth())?.user?.id) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   const url = new URL(request.url);

@@ -292,7 +292,6 @@ ALTER TABLE settings DROP CONSTRAINT IF EXISTS settings_base_currency_check;
 ALTER TABLE settings ADD CONSTRAINT settings_base_currency_check
     CHECK (base_currency IN ('UAH', 'USD', 'EUR'));
 
--- encrypted record payloads
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS secret text;
 ALTER TABLE recurring_rules ADD COLUMN IF NOT EXISTS secret text;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS secret text;
@@ -354,7 +353,6 @@ ALTER TABLE settings ALTER COLUMN rate_eur DROP NOT NULL;
 ALTER TABLE settings ALTER COLUMN rates_source DROP NOT NULL;
 ALTER TABLE settings ALTER COLUMN tax_vat_pct DROP NOT NULL;
 
--- Records added after encryption: nothing but the key and the sealed payload.
 DO $$
 DECLARE
     t text;
@@ -372,7 +370,6 @@ BEGIN
     END LOOP;
 END $$;
 
--- Server-only credentials for bank connections; never sent to the browser.
 CREATE TABLE IF NOT EXISTS integrations (
     user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     provider   text NOT NULL CHECK (provider IN ('monobank')),
@@ -381,7 +378,6 @@ CREATE TABLE IF NOT EXISTS integrations (
     PRIMARY KEY (user_id, provider)
 );
 
--- Receipt photos, sealed like every other record.
 CREATE TABLE IF NOT EXISTS attachments (
     user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     id         text NOT NULL,

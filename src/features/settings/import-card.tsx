@@ -29,7 +29,6 @@ interface MonoStatus {
   connected: boolean;
   name: string;
   accounts: MonoAccount[];
-  /** Monobank sends new operations here as they happen. */
   webhook?: boolean;
 }
 
@@ -45,7 +44,6 @@ const dateOf = (unix: number) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-/** Reads a statement file as UTF-8, falling back to Windows-1251 — what older Ukrainian bank exports use. */
 async function readText(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   try {
@@ -55,11 +53,6 @@ async function readText(file: File): Promise<string> {
   }
 }
 
-/**
- * Brings bank operations in instead of typing them: from Monobank through its
- * personal API, or from any bank's CSV statement. Both end in the same preview,
- * with categories suggested and duplicates left out.
- */
 export function ImportCard() {
   const { state, update } = useStore();
   const { t, tp } = useT();
@@ -108,7 +101,6 @@ export function ImportCard() {
     setToken("");
   };
 
-  /** Automatic import: Monobank sends each new operation, and it is booked as it arrives. */
   const setHook = async (on: boolean) => {
     setError(null);
     setStatus(t("import.mono.hook.saving"));
@@ -147,7 +139,6 @@ export function ImportCard() {
     setPreview({ title, candidates });
   };
 
-  /** One linked account after another; Monobank answers once a minute, so the wait is shown and sat out. */
   const loadMono = async () => {
     if (!mono) return;
     setError(null);
@@ -206,7 +197,6 @@ export function ImportCard() {
   return (
     <Card title={t("import.title")} subtitle={t("import.subtitle")} icon="card">
       <div className="space-y-2">
-        {/* Monobank */}
         <div className="rounded-field bg-ghost p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-ink-1">
@@ -304,7 +294,6 @@ export function ImportCard() {
           )}
         </div>
 
-        {/* Any bank's CSV statement */}
         <div className="flex flex-wrap items-center gap-3 rounded-field bg-ghost p-3">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-1">{t("import.csv.title")}</p>

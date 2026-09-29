@@ -18,7 +18,6 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   serverExternalPackages: ["pg"],
-  // Balance was split into Accounts and Investments; old bookmarks land on Accounts.
   async redirects() {
     return [{ source: "/balance", destination: "/accounts", permanent: true }];
   },
@@ -29,7 +28,6 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
       },
-      // Always check for a new service worker, so a deploy reaches installed copies.
       {
         source: "/sw.js",
         headers: [

@@ -20,7 +20,6 @@ interface ReceivableForm {
   note: string;
 }
 
-/** Add or edit money lent to someone, and how much of it has come back. */
 export function ReceivableSheet({
   target,
   onClose,

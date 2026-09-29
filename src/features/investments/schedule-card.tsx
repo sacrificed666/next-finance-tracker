@@ -13,11 +13,6 @@ import { PositionMark } from "./position-mark";
 
 const SHOWN = 4;
 
-/**
- * The money that moves on its own: monthly top-ups going in, interest and
- * dividends coming out, and the positions that mature next. Renders nothing
- * when no position has any of them.
- */
 export function ScheduleCard({
   onOpen,
   onRenew,
@@ -37,7 +32,6 @@ export function ScheduleCard({
 
   const active = state.investments.filter((inv) => !inv.endDate || inv.endDate > today);
   const topUps = active.reduce((sum, inv) => sum + toBase(inv.monthlyContribution ?? 0, inv), 0);
-  // Interest, coupons and dividends paid out over the next year; reinvested returns stay in the position.
   const payoutsYear = active.reduce((sum, inv) => {
     const paid =
       valuationOf(inv.kind) === "market"
@@ -49,7 +43,6 @@ export function ScheduleCard({
     .filter((inv): inv is Investment & { endDate: string } => inv.endDate !== undefined)
     .sort((a, b) => a.endDate.localeCompare(b.endDate));
 
-  // Positions whose term is over: their value is frozen until they are reinvested or closed.
   const matured = state.investments
     .filter((inv): inv is Investment & { endDate: string } => inv.endDate !== undefined && inv.endDate <= today)
     .sort((a, b) => a.endDate.localeCompare(b.endDate));

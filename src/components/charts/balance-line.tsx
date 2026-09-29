@@ -9,14 +9,9 @@ import { axisFormatter, ChartTable, niceTicks, Tooltip, TooltipRow, useMeasure }
 export interface BalancePoint {
   date: string;
   value: number;
-  /** What the day itself adds or takes away. */
   change: number;
 }
 
-/**
- * A balance projected day by day. One series, so no legend; the zero line is
- * drawn whenever the balance reaches it, and the lowest day is marked.
- */
 export function BalanceLine({
   points,
   currency,

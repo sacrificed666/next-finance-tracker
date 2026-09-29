@@ -39,6 +39,8 @@ The dev container mounts the repository and runs `next dev`. A few details are w
 - Stylesheets are **Sass**, so the `sass` package has to exist inside the container. After any
   dependency change run `make dev-build` (or `docker compose exec app npm install`), otherwise the
   dev server cannot compile `globals.scss`.
+- The service worker registers in production builds only, so a stored script never hides a change
+  being worked on; notifications and the offline note need `make stage-up` or a production build.
 - The dev server watches `src/app/globals.scss` but not the partials it pulls in from `src/styles/`.
   After editing a partial, save `globals.scss` as well (any save, even unchanged) and the change shows
   in a few seconds — no restart needed.
@@ -72,6 +74,10 @@ Production backs itself up. The `backup` service in `docker/production.yml` runs
   and dropped instead of silently replacing a good one;
 - it deletes dumps older than `BACKUP_KEEP_DAYS` (14 by default);
 - on start it takes one straight away when today has none, so a fresh deploy is covered at once.
+- with `BACKUP_ONCE=1` it takes a single dump and exits — what `make prod-db-backup-now` runs.
+
+The script runs inside a Linux container, so `.gitattributes` keeps every `*.sh` file with LF line
+endings even in a Windows checkout — a CRLF copy would not run.
 
 ```bash
 make prod-backups                          # list the nightly dumps

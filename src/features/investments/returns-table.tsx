@@ -9,7 +9,6 @@ import type { Investment } from "@/lib/types";
 import { oneYearFrom, positionReturns } from "./helpers";
 import { PositionMark } from "./position-mark";
 
-/** One line per position, in the order given: what it is worth, what it has earned, and what the next year should add. */
 export function ReturnsTable({ positions, onOpen }: { positions: Investment[]; onOpen: (inv: Investment) => void }) {
   const { t } = useT();
   const today = todayISO();

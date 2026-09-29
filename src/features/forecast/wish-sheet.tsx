@@ -11,7 +11,6 @@ import type { Currency, WishItem, WishPriority } from "@/lib/types";
 
 const ICONS = ["🎁", "💻", "📱", "🎮", "🚗", "✈️", "🏠", "🛋️", "📷", "⌚", "🎧", "🚲"];
 
-/** Add or edit one wishlist item. */
 export function WishSheet({ target, onClose }: { target: WishItem | "new"; onClose: () => void }) {
   const { update } = useStore();
   const { t } = useT();

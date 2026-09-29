@@ -5,7 +5,6 @@ import { rateLimit } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 
-/** Upload one receipt photo: `{ mime, data }` with the image as base64. */
 export async function POST(request: Request) {
   const session = await auth();
   const userId = session?.user?.id;

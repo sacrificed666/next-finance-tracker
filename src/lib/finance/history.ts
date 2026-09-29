@@ -2,17 +2,10 @@ import { addMonths, dateInMonth, monthOf } from "@/lib/date";
 import { netWorth } from "@/lib/finance/finmath";
 import type { AppState, Currency, NetWorthSnapshot } from "@/lib/types";
 
-/** A snapshot's hryvnia figure in another currency, at the rates of the snapshot's own day. */
 export function fromSnapshot(value: number, snap: NetWorthSnapshot, currency: Currency): number {
   return currency === "UAH" ? value : value / snap.rates[currency];
 }
 
-/**
- * Net worth at the end of each of the last `months` months, the last point
- * being today. A month with a stored snapshot uses its latest one — that
- * carries the market prices of the time; other months are rebuilt from the
- * transactions, which knows balances but only today's prices.
- */
 export function worthHistory(state: AppState, today: string, months = 12): number[] {
   const base = state.settings.baseCurrency;
   const month = monthOf(today);
@@ -27,7 +20,6 @@ export function worthHistory(state: AppState, today: string, months = 12): numbe
   });
 }
 
-/** The highest net worth ever recorded, if there is a history to speak of. */
 export function worthPeak(state: AppState): { date: string; total: number } | null {
   if (state.snapshots.length < 2) return null;
   const base = state.settings.baseCurrency;

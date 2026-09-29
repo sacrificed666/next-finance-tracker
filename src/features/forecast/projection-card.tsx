@@ -8,7 +8,6 @@ import { useT } from "@/lib/i18n";
 import type { Currency } from "@/lib/types";
 import type { Forecast } from "./use-forecast";
 
-/** The projection chart: savings and investments stacked, year by year. */
 export function ProjectionCard({
   f,
   view,

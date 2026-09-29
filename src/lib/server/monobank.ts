@@ -7,22 +7,16 @@ import type { Currency } from "@/lib/types";
 
 const API = "https://api.monobank.ua";
 const CURRENCY_CODES: Record<number, Currency> = { 980: "UAH", 840: "USD", 978: "EUR" };
-/** Monobank allows one personal-API request per minute. */
 export const MONO_SPACING_MS = 61_000;
-/** A statement request may span at most 31 days and an hour. */
 export const MONO_MAX_RANGE_S = 31 * 86_400 + 3_600;
 
 export interface MonoAccount {
   id: string;
-  /** A card account, or a jar ("банка") — Monobank's savings pots, with their own statement. */
   kind: "card" | "jar";
-  /** Null for a currency the app does not track. */
   currency: Currency | null;
   type: string;
   maskedPan: string;
-  /** A jar's name. */
   title?: string;
-  /** In the account's currency, major units. */
   balance: number;
 }
 
@@ -32,9 +26,7 @@ export interface MonoItem {
   description: string;
   comment?: string;
   mcc: number;
-  /** In the account's currency, major units; negative is money out. */
   amount: number;
-  /** The operation in its own currency when that differs (a dollar purchase on a hryvnia card). */
   opAmount?: number;
   opCurrency?: Currency;
 }
@@ -44,13 +36,10 @@ interface MonoStored {
   name?: string;
   accounts?: MonoAccount[];
   fetchedAt?: number;
-  /** The secret in the webhook address — Monobank does not sign its calls, so the address is the key. */
   webhookKey?: string;
-  /** Set while Monobank is sending new operations to this app. */
   webhookUrl?: string;
 }
 
-/** Operations are booked on the day they happened in Ukraine, whatever the server's clock says. */
 const BANK_TIME_ZONE = "Europe/Kyiv";
 
 export function monoDate(unix: number): string {
@@ -71,7 +60,6 @@ export class MonoError extends Error {
 
 const lastCall = new Map<string, number>();
 
-/** How long until this user may call Monobank again, in ms; zero when free. */
 export function monoWait(userId: string): number {
   return Math.max(0, (lastCall.get(userId) ?? 0) + MONO_SPACING_MS - Date.now());
 }
@@ -121,7 +109,6 @@ interface ClientInfo {
   jars?: Array<{ id: string; title?: string; balance: number; currencyCode: number }>;
 }
 
-/** Checks the token against Monobank, then stores it with the account list. The token never leaves the server. */
 export async function connectMono(userId: string, token: string): Promise<MonoStored> {
   const info = await call<ClientInfo>(userId, token, "/personal/client-info");
   const stored: MonoStored = {
@@ -164,7 +151,6 @@ interface RawItem {
   currencyCode?: number;
 }
 
-/** A statement item as Monobank sends it (minor units), in the shape the importers use. */
 export function parseMonoItem(i: RawItem): MonoItem {
   return {
     id: String(i.id).slice(0, 80),
@@ -184,7 +170,6 @@ export function isMonoItem(v: unknown): v is RawItem {
   return (typeof i.id === "string" || typeof i.id === "number") && Number.isInteger(i.time) && Number.isFinite(i.amount);
 }
 
-/** One account's operations between two moments (unix seconds). */
 export async function monoStatement(
   userId: string,
   token: string,
@@ -196,17 +181,11 @@ export async function monoStatement(
   return items.map(parseMonoItem);
 }
 
-/**
- * Asks Monobank to send every new operation to this app (`origin` is the public
- * https address), or to stop when `origin` is null. The key in the address is kept
- * across switches, so an address Monobank already knows stays valid.
- */
 export async function setMonoWebhook(userId: string, origin: string | null): Promise<MonoStored> {
   const stored = await loadMono(userId);
   if (!stored) throw new MonoError(409, "not-connected");
   const webhookKey = stored.webhookKey ?? randomBytes(24).toString("base64url");
   const url = origin ? `${origin.replace(/\/$/, "")}/api/monobank/webhook/${webhookKey}` : "";
-  // Saved first: Monobank checks the address with a request before it accepts it.
   await saveMono(userId, { ...stored, webhookKey });
   await call(userId, stored.token, "/personal/webhook", { webHookUrl: url });
   const next = { ...stored, webhookKey, webhookUrl: url || undefined };
@@ -214,7 +193,6 @@ export async function setMonoWebhook(userId: string, origin: string | null): Pro
   return next;
 }
 
-/** Whose connection a webhook address belongs to. */
 export async function findMonoByWebhookKey(key: string): Promise<{ userId: string; stored: MonoStored } | null> {
   if (!/^[\w-]{20,64}$/.test(key)) return null;
   await ensureSchema();
@@ -229,7 +207,6 @@ export async function findMonoByWebhookKey(key: string): Promise<{ userId: strin
   return null;
 }
 
-/** What the browser may see: everything except the token. */
 export function publicMono(stored: MonoStored | null) {
   return stored
     ? {

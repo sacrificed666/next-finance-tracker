@@ -26,7 +26,6 @@ interface CategoryForm {
   parentId: string;
 }
 
-/** The chart slot this kind of category uses least, so a new one stands apart. */
 function leastUsedSlot(state: AppState, kind: CategoryKind): number {
   const counts = new Array(9).fill(0);
   for (const c of state.categories) if (c.kind === kind) counts[c.colorSlot] = (counts[c.colorSlot] ?? 0) + 1;
@@ -79,7 +78,6 @@ export function CategorySheet({
         ...s,
         categories: s.categories.map((c) => {
           if (c.id !== editing.id) return c;
-          // Keep the stored default name while it still reads the same, so it keeps translating.
           const unchangedName = name === category(c) ? c.name : name;
           const next: Category = { id: c.id, name: unchangedName, icon: form.icon, colorSlot: form.colorSlot, kind: c.kind };
           return nextParent ? { ...next, parentId: nextParent } : next;

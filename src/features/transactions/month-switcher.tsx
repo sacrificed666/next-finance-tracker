@@ -5,7 +5,6 @@ import { addMonths, currentMonth, formatMonth, monthDiff } from "@/lib/date";
 import { useT } from "@/lib/i18n";
 import { PLANNING_HORIZON_MONTHS } from "@/lib/state/store";
 
-/** Steps through months, up to the planning horizon ahead. Sits in the hero's header. */
 export function MonthSwitcher({ month, onChange }: { month: string; onChange: (month: string) => void }) {
   const { t } = useT();
   const nowMonth = currentMonth();

@@ -11,14 +11,8 @@ import type { AccountKind, Transaction } from "@/lib/types";
 import { useMonthSummary } from "./use-month-summary";
 
 const SHOWN = 6;
-/** Money you can spend today; coins and game items are not. */
 const LIQUID = new Set<AccountKind>(["card", "cash", "savings", "wallet", "other"]);
 
-/**
- * Cash and cards over the next month or two: today's balance plus everything
- * already scheduled — recurring rules, subscriptions, planned income — so a
- * shortfall shows up before it happens. The first payments are listed by day.
- */
 export function CashAheadCard({ className = "" }: { className?: string }) {
   const { state, settings, base, today } = useMonthSummary();
   const { t, tp, category } = useT();

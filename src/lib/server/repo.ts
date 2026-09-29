@@ -33,10 +33,8 @@ export interface StateEnvelope {
   revision: string;
 }
 
-/** A pool or a client inside a transaction: anything that can run a query. */
 type Queryable = { query: PoolClient["query"] };
 
-/** The revision a save is based on; FOR UPDATE queues concurrent saves of one user behind each other. */
 async function currentRevision(client: PoolClient, userId: string): Promise<string> {
   const res = await client.query(
     `SELECT to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS revision
@@ -46,7 +44,6 @@ async function currentRevision(client: PoolClient, userId: string): Promise<stri
   return res.rows[0]?.revision ?? "";
 }
 
-/** The revision alone, for a cheap "has anything changed since?" check. */
 export async function stateRevision(userId: string): Promise<string> {
   await ensureSchema();
   const res = await getPool().query(
@@ -58,7 +55,6 @@ export async function stateRevision(userId: string): Promise<string> {
 
 export const UNCLAIMED_USER_ID = "00000000-0000-0000-0000-000000000000";
 
-// Data from before accounts existed is claimed once per server start, not on every request.
 const claimed = new Set<string>();
 
 export async function claimOrphanData(userId: string): Promise<number> {
@@ -322,7 +318,6 @@ async function upsert(
   );
 }
 
-/** Tables that hold nothing but a key and a sealed record. */
 const SEALED_TABLES = ["category_rules", "receivables", "wishlist_items", "planned_events", "net_worth_snapshots"] as const;
 
 const LEGACY_COLUMNS: Record<string, string[]> = {
@@ -373,7 +368,6 @@ async function upsertSealed<T>(
   );
 }
 
-/** Where each collection is stored, and the column its key lives in. */
 const TABLES: { [K in CollectionName]: { table: string; key: string } } = {
   transactions: { table: "transactions", key: "id" },
   categories: { table: "categories", key: "id" },
@@ -390,7 +384,6 @@ const TABLES: { [K in CollectionName]: { table: string; key: string } } = {
   snapshots: { table: "net_worth_snapshots", key: "id" },
 };
 
-/** Rows written before records were sealed; the first save after that re-seals everything. */
 async function hasUnsealedRows(client: PoolClient, userId: string): Promise<boolean> {
   const tables = [...new Set(Object.values(TABLES).map((t) => t.table))];
   const res = await client.query(
@@ -400,7 +393,6 @@ async function hasUnsealedRows(client: PoolClient, userId: string): Promise<bool
   return res.rows[0]?.unsealed === true;
 }
 
-/** Writes the records whose content differs between two states; returns how many rows it touched. */
 async function writeDifferences(
   client: PoolClient,
   userId: string,
@@ -428,20 +420,10 @@ async function writeDifferences(
 
 export interface SaveResult {
   revision: string;
-  /** Someone else saved after this client last loaded: it should pull their changes. */
   stale: boolean;
-  /** Rows actually written. */
   written: number;
 }
 
-/**
- * Applies a client's changes to the stored state. The merged state goes through
- * normalizeState like any other input, and only records whose content differs from
- * what is stored are written — an edit touches one row, not the whole database.
- *
- * Saves no longer fail on an out-of-date base: changes from two devices merge record
- * by record, and `stale` tells the client to pull what the other device wrote.
- */
 export async function saveChanges(
   userId: string,
   changes: StateChanges,

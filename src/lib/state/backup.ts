@@ -125,7 +125,6 @@ function cleanText(v: unknown, max: number): string | undefined {
   return text.length > 0 ? text : undefined;
 }
 
-/** Up to eight distinct labels, compared without case. */
 export function normalizeTags(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
   const seen = new Set<string>();

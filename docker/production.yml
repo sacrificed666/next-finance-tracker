@@ -43,8 +43,6 @@ services:
         max-size: "20m"
         max-file: "5"
 
-  # Nightly pg_dump into ./backups/auto, read back before it is kept, with
-  # BACKUP_KEEP_DAYS of history — see docker/backup.sh.
   backup:
     image: postgres:18-alpine
     entrypoint: ["/bin/sh", "/usr/local/bin/backup.sh"]

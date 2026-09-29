@@ -37,14 +37,12 @@ interface SubscriptionForm {
   endMonth: string;
 }
 
-/** Add or edit a subscription; saving rewrites the entries it has already posted. */
 export function SubscriptionSheet({
   target,
   draft,
   onClose,
 }: {
   target: Subscription | "new";
-  /** Starting values for a new subscription, e.g. one suggested from bank charges. */
   draft?: { name: string; price: number; currency: Subscription["currency"]; dayOfMonth: number; startMonth: string; accountId?: string };
   onClose: () => void;
 }) {

@@ -8,7 +8,6 @@ import { useT } from "@/lib/i18n";
 import { LevelSummary } from "./level-summary";
 import { ageFrom, Avatar, type Game, type Profile } from "./shared";
 
-/** Who you are and your level, with health, achievements and both streaks underneath. */
 export function ProfileHero({ profile, g }: { profile: Profile; g: Game }) {
   const { t, tp, tk } = useT();
   const unlocked = g.achievements.filter((a) => a.unlocked).length;

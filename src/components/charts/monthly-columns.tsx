@@ -11,15 +11,9 @@ export interface MonthPoint {
   month: string;
   income: number;
   expense: number;
-  /** Tax withheld from the month's income; stacked on top of it in the income view. */
   tax?: number;
 }
 
-/**
- * Monthly columns. By default income and expenses side by side; with
- * `incomeOnly`, one column of income per month with any tax stacked on top,
- * so the column's full height is the gross.
- */
 export function MonthlyColumns({
   data,
   currency,
@@ -104,7 +98,6 @@ export function MonthlyColumns({
                 <g key={d.month} opacity={dim ? 0.45 : 1} style={{ transition: "opacity 120ms" }}>
                   {incomeOnly ? (
                     <>
-                      {/* The tax segment sits on the income with a 2 px gap; only the top of the stack is rounded. */}
                       <Column
                         x={cx - barW / 2}
                         w={barW}

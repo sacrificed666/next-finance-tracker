@@ -13,7 +13,6 @@ import { InvestmentsCard } from "./investments-card";
 import { InvestmentsHero } from "./investments-hero";
 import { ScheduleCard } from "./schedule-card";
 
-/** What the money earns: totals, allocation, per-position returns and the positions themselves. */
 export function InvestmentsPage() {
   const { state, update } = useStore();
   const { t } = useT();

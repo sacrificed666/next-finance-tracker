@@ -8,7 +8,6 @@ import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import { ratesOrigin } from "./rates-card";
 
-/** How much lives in the database, the rates everything converts at, and what the records are made of. */
 export function SettingsHero() {
   const { state } = useStore();
   const { settings } = state;

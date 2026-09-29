@@ -12,7 +12,6 @@ import { useStore } from "@/lib/state/store";
 import type { Currency } from "@/lib/types";
 import type { CsvDraft } from "./import-card";
 
-/** Tells the importer which statement column is which, and where the money went. */
 export function CsvSheet({
   draft,
   onChange,

@@ -210,6 +210,12 @@ game logos are self-hosted first, remote favicon providers second.
 - Segmented controls and pill groups are radio groups with arrow-key navigation.
 - Focus rings use `focus-visible` and the accent colour.
 - Colour is never the only signal: badges carry text, progress bars carry numbers.
+- Every chart carries its figures as a visually hidden table. `sr-only` sits on a wrapper, not on the
+  table: tables ignore `overflow: hidden`, and a hidden table with many rows would stretch the page
+  with empty scroll.
+- The theme is set by an inline script in `app/layout.tsx` before the first paint, from the choice
+  kept in the browser, so a reload never flashes the other theme; the installed app's launch colour is
+  the dark page colour for the same reason.
 
 > [!TIP]
 > When adding a screen, copy the structure of an existing feature folder: a `<page>-page.tsx` with

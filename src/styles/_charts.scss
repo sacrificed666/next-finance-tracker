@@ -78,9 +78,6 @@
   animation: ring-sweep 700ms $ease both;
 }
 
-// Charts grow in once, on the first screen after a load. After that (other pages,
-// another month) they are drawn at once: SVG animations repaint on the main thread
-// for about a second, and replaying them on every visit read as lag.
 :root[data-entered] {
   .chart-bar,
   .bar-slice,

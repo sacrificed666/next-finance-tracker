@@ -6,10 +6,6 @@ import { useT } from "@/lib/i18n";
 import type { Currency } from "@/lib/types";
 import { axisFormatter, ChartLegend, ChartTable, niceTicks, Tooltip, TooltipRow, useMeasure } from "./internals";
 
-/**
- * Running totals through a month, day by day: this month against the one
- * before, so the gap between the lines is how far ahead or behind the pace is.
- */
 export function PaceLines({
   current,
   previous,
@@ -22,11 +18,8 @@ export function PaceLines({
   color = "var(--expense)",
   height = 180,
 }: {
-  /** Running total for each day so far (index 0 is day 1). */
   current: number[];
-  /** Running total for every day of the month before. */
   previous: number[];
-  /** Days on the x axis. */
   days: number;
   currency: Currency;
   currentLabel: string;
@@ -87,7 +80,6 @@ export function PaceLines({
                 </text>
               </g>
             ))}
-            {/* Day 1, every fifth day, and the last one unless it would crowd the fifth before it. */}
             {Array.from({ length: days }, (_, i) =>
               i === 0 || (i + 1) % 5 === 0 || (i === days - 1 && days % 5 >= 3) ? (
                 <text key={i} x={x(i)} y={height - 6} textAnchor="middle" fontSize={11} className="tnum" fill="var(--ink-3)">

@@ -4,7 +4,6 @@ import { loadMono, MONO_MAX_RANGE_S, monoStatement, MonoError } from "@/lib/serv
 
 export const dynamic = "force-dynamic";
 
-/** One account's operations: `?account=…&from=…&to=…`, unix seconds, at most 31 days apart. */
 export async function GET(request: Request) {
   const userId = (await auth())?.user?.id;
   if (!userId) return NextResponse.json({ error: "Not signed in." }, { status: 401 });

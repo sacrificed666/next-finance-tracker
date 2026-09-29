@@ -49,7 +49,6 @@ function IconAction({
 
 type SheetTarget = { editing: Category | null; parentId: string };
 
-/** The category tree: search, collapse, add subcategories, and delete only what nothing uses. */
 export function CategoriesCard() {
   const { state, update } = useStore();
   const { t, tp, category } = useT();

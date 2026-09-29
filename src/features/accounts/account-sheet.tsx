@@ -91,7 +91,6 @@ function initialForm(target: SavingsAccount | "new"): AccountForm {
   };
 }
 
-/** Add or edit an account: bank, game or coin holdings, opening balance and an optional goal. */
 export function AccountSheet({
   target,
   onClose,

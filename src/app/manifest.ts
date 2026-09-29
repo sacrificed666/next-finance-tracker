@@ -1,7 +1,6 @@
 import type { MetadataRoute } from "next";
 import { requestLocale, serverT } from "@/lib/i18n/server";
 
-/** What an installed copy of the app is called, looks like and offers from its icon. */
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const locale = await requestLocale();
   const t = serverT(locale);
@@ -14,7 +13,6 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     start_url: "/",
     scope: "/",
     display: "standalone",
-    // The dark page colour, which is the default theme: no white flash on launch.
     background_color: "#0f1112",
     theme_color: "#0f1112",
     icons: [

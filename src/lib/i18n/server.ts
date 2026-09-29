@@ -13,12 +13,10 @@ import { uk } from "./dict/uk";
 
 const DICTS: Record<Locale, Record<string, string>> = { en, uk, de, fr, es, pl, it, nl };
 
-/** The whole dictionary for one language, handed to the page so it renders without loading any. */
 export function serverMessages(locale: Locale): Record<string, string> {
   return DICTS[locale];
 }
 
-/** The visitor's language: the one they picked, else the best match for their browser's. */
 export async function requestLocale(): Promise<Locale> {
   const stored = (await cookies()).get(LOCALE_COOKIE)?.value;
   if (isLocale(stored)) return stored;
@@ -26,7 +24,6 @@ export async function requestLocale(): Promise<Locale> {
   return matchLocale(accept.split(",").map((part) => part.split(";")[0].trim()));
 }
 
-/** Plain lookups for server-rendered text, such as the web app manifest. */
 export function serverT(locale: Locale): (key: MessageKey) => string {
   return (key) => DICTS[locale][key] ?? en[key];
 }

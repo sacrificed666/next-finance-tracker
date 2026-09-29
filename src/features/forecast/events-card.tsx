@@ -16,7 +16,6 @@ const positive = (s: string) => {
   return Number.isFinite(v) && v > 0 ? v : 0;
 };
 
-/** One-off inflows and outflows the projection should account for. */
 export function EventsCard({
   f,
   view,

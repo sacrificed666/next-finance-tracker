@@ -2,7 +2,6 @@ import { formatMoney, parseAmount } from "@/lib/finance/money";
 import { taxRegime } from "@/lib/finance/tax";
 import type { Currency, IncomeBreakdown, IncomeTax, TaxRegimeId } from "@/lib/types";
 
-/** Empty means zero; anything else must parse. */
 export function parseOptional(input: string): number {
   if (input.trim() === "") return 0;
   return parseAmount(input);
@@ -16,7 +15,6 @@ export function breakdownSummary(b: IncomeBreakdown, currency: Currency, dayUnit
   return parts.join("  ");
 }
 
-/** A stored tax only counts as a named regime while its numbers still match that regime. */
 export function regimeOfStoredTax(tax: IncomeTax): TaxRegimeId {
   if (tax.regime && tax.regime !== "custom") {
     const r = taxRegime(tax.regime);

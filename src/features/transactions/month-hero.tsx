@@ -10,14 +10,12 @@ import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import { MonthSwitcher } from "./month-switcher";
 
-/** What the month being read cost, how it compares, and the income, net, daily pace and budgets around it. */
 export function MonthHero({
   month,
   switcherMonth = month,
   onMonthChange,
 }: {
   month: string;
-  /** The month the switcher shows, which may run ahead of the figures while they redraw. */
   switcherMonth?: string;
   onMonthChange: (month: string) => void;
 }) {
@@ -53,7 +51,6 @@ export function MonthHero({
         })
       : undefined;
 
-  // Spending per day: so far this month when reading the current one, over the whole month otherwise.
   const isCurrent = month === currentMonth();
   const elapsed = isCurrent ? Number(today.slice(8)) : daysInMonth(month);
   const spentSoFar = totals.expense - (isCurrent ? plannedIn("expense") : 0);

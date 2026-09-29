@@ -37,9 +37,6 @@
   }
 }
 
-// A floating surface that changes while it is open (a dialog someone types into, a
-// tooltip that follows the pointer): the look of .glass-strong without its backdrop
-// blur, which the browser would otherwise redo on every keystroke or mouse move.
 .glass-solid {
   background:
     radial-gradient(120% 90% at 8% -10%, var(--sheen), transparent 46%),
@@ -223,10 +220,6 @@
   }
 }
 
-// ── Lists and tables ─────────────────────────────────────────────────────────
-// One look for every list and table: rounded rows with a faint stripe on every
-// other one, a rounded header bar, rounded group headings and a tinted total.
-// Layered as components so a utility on a row can still override them.
 @layer components {
   .rows {
     display: flex;
@@ -272,9 +265,6 @@
     color: var(--ink-1);
   }
 
-  // A wide table's own sideways scroll, for phones. Sideways only: any `overflow-x`
-  // makes the other axis scrollable too, and the table's negative block margin then
-  // counts as 4 px of vertical overflow — a stray scrollbar beside every table.
   .table-scroll {
     margin-inline: -0.25rem;
     padding-inline: 0.25rem;
@@ -317,7 +307,6 @@
       border-end-end-radius: var(--radius-field);
     }
 
-    // Figures never break across lines; names truncate instead.
     .tnum {
       white-space: nowrap;
     }

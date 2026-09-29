@@ -21,7 +21,6 @@ export const metadata: Metadata = {
   description:
     "Personal finance dashboard: income, expenses, subscriptions, investments and a wealth forecast across ₴ / $ / €.",
   applicationName: "Finances",
-  // Installed on an iPhone: its own window, named like the app, with the normal status bar.
   appleWebApp: { capable: true, title: "Finances", statusBarStyle: "default" },
 };
 
@@ -32,7 +31,6 @@ export const viewport: Viewport = {
   ],
 };
 
-// Applied before first paint so a reload never flashes the wrong theme.
 const themeScript = `(function(){try{var p=localStorage.getItem("finance-tracker:theme")||"dark";var d=p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-theme",d?"dark":"light")}catch(e){}})()`;
 
 export default async function RootLayout({

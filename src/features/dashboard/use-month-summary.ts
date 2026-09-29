@@ -6,7 +6,6 @@ import { formatMoney } from "@/lib/finance/money";
 import { useStore } from "@/lib/state/store";
 import { useT } from "@/lib/i18n";
 
-/** This month against the last one, over a trailing 12-month series in the base currency. */
 export function useMonthSummary() {
   const { state } = useStore();
   const { t } = useT();

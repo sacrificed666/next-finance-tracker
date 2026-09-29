@@ -12,7 +12,6 @@ import type { Debt } from "@/lib/types";
 
 type DebtSort = "balance" | "rate" | "payoff" | "name";
 
-/** Debts with what is paid off, when each clears and the interest still ahead. Hidden without debts. */
 export function DebtsCard({
   onAdd,
   onEdit,

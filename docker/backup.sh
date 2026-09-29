@@ -1,15 +1,4 @@
 #!/bin/sh
-# Nightly database backups for the production stack (the `backup` service).
-#
-# Once a day at BACKUP_HOUR (container time, UTC unless TZ is set) it writes a
-# compressed pg_dump to /backups/auto, checks that pg_restore can read it back, and
-# deletes dumps older than BACKUP_KEEP_DAYS. It also takes one right away when today
-# has none yet, so a fresh deploy is covered from the first minute.
-#
-# The dump is the database as stored: every financial record is still sealed with
-# DATA_ENCRYPTION_KEY, so a copy is useless without that key — keep both, apart.
-#
-# BACKUP_ONCE=1 takes a single dump and exits (make prod-db-backup-now, tests).
 
 set -eu
 
@@ -33,7 +22,6 @@ dump() {
     log "FAILED: pg_dump exited with an error"
     return 1
   fi
-  # A dump that cannot be listed cannot be restored; never keep one.
   if ! pg_restore --list "$tmp" > /dev/null; then
     rm -f "$tmp"
     log "FAILED: the dump could not be read back"
@@ -80,6 +68,5 @@ while :; do
   wait_s=$(seconds_until_next_run)
   log "next backup in $(( wait_s / 3600 ))h $(( wait_s % 3600 / 60 ))m"
   sleep "$wait_s"
-  # A failed night is logged and retried the next night; the service keeps running.
   dump || true
 done

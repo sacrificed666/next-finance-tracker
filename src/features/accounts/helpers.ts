@@ -13,7 +13,6 @@ export const DEBT_KIND_ICON: Record<DebtKind, string> = {
   card: "💳",
 };
 
-/** One coin line in the account form; `key` keeps rows stable while coins change. */
 export interface HoldingDraft {
   key: string;
   coin: string;
@@ -32,11 +31,6 @@ export function holdingsSummary(holdings: CoinHolding[] | undefined): string {
     .join(" · ");
 }
 
-/**
- * Every account goal, in the account's currency and in the base currency, plus
- * the totals: how much of all goals is saved and what it takes each month to
- * meet every deadline.
- */
 export function goalsSummary(state: AppState, today: string) {
   const { settings } = state;
   const base = settings.baseCurrency;

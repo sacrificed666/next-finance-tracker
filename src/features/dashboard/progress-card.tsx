@@ -6,7 +6,6 @@ import { formatNumber, formatPercent } from "@/lib/finance/money";
 import { useStore } from "@/lib/state/store";
 import { useT } from "@/lib/i18n";
 
-/** Level, health score and the achievement closest to unlocking. */
 export function ProgressCard({ className = "" }: { className?: string }) {
   const { state } = useStore();
   const { t, tk } = useT();

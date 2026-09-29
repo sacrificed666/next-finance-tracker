@@ -10,7 +10,6 @@ import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import type { Currency } from "@/lib/types";
 
-/** How the money in accounts splits by currency. Renders nothing while it is all in one. */
 export function CurrenciesCard() {
   const { state } = useStore();
   const { t } = useT();
@@ -40,7 +39,6 @@ export function CurrenciesCard() {
     }))
     .sort((a, b) => b.value - a.value);
 
-  // Foreign buckets also show what they hold in their own money.
   const native = (id: string) => {
     const row = byCurrency.get(id as Currency);
     if (!row || id === base) return null;

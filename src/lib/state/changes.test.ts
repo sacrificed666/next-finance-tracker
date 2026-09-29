@@ -98,8 +98,6 @@ describe("stableJson", () => {
 });
 
 describe("normalizeState", () => {
-  // The server compares records before and after a save to write only what changed;
-  // that only works if normalising twice gives the same result as normalising once.
   it("is idempotent, so an unchanged record never looks changed", () => {
     const raw = {
       ...DEFAULT_STATE,

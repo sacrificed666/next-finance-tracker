@@ -10,7 +10,6 @@ import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import { investmentsByKind } from "./helpers";
 
-/** Current value split by type of asset, with the currency mix underneath. */
 export function AllocationCard({ className = "" }: { className?: string }) {
   const { state } = useStore();
   const { t } = useT();

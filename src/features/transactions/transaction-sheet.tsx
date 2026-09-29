@@ -28,7 +28,6 @@ interface TxForm {
   toAmount: string;
   tags: string[];
   attachmentIds: string[];
-  /** Extra pieces of the same purchase, each with its own category. */
   splits: Array<{ key: string; categoryId: string; amount: string }>;
 }
 
@@ -43,7 +42,6 @@ function initialForm(
   asked: TxType = "expense",
 ): TxForm {
   if (target === "new") {
-    // A transfer needs two accounts to move money between.
     const type = asked === "transfer" && state.savings.length < 2 ? "expense" : asked;
     return {
       id: null,
@@ -78,14 +76,12 @@ function initialForm(
   };
 }
 
-/** Tags used so far, most frequent first — offered as one-tap suggestions. */
 function knownTags(state: AppState): string[] {
   const counts = new Map<string, number>();
   for (const tx of state.transactions) for (const tag of tx.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([tag]) => tag);
 }
 
-/** Add or edit one expense, income or transfer between accounts. */
 export function TransactionSheet({
   target,
   month,
@@ -95,9 +91,7 @@ export function TransactionSheet({
 }: {
   target: Transaction | "new";
   month: string;
-  /** A new entry's day, when it is added from a particular day (the calendar). */
   date?: string;
-  /** A new entry's type, when the way in already says it (an install shortcut, the command palette). */
   type?: TxType;
   onClose: () => void;
 }) {
@@ -147,7 +141,6 @@ export function TransactionSheet({
       : null;
 
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(form.date);
-  // A split keeps the main entry and carves pieces off it; the rest stays in the main category.
   const scheduled = target !== "new" && (target.recurringId !== undefined || target.subscriptionId !== undefined);
   const canSplit = form.type !== "transfer" && !scheduled;
   const splitAmounts = form.splits.map((sp) => parseAmount(sp.amount));

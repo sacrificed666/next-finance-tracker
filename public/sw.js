@@ -1,8 +1,3 @@
-// The installed app's service worker. It keeps the build's static files (scripts,
-// styles, fonts, icons) so launches are quick, and shows a short offline note when
-// the network is gone. It never stores pages or API responses: those carry
-// personal data, and the app only works against the live database anyway.
-
 const CACHE = "finances-static-v1";
 const MAX_ENTRIES = 250;
 
@@ -58,7 +53,6 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Build files carry a content hash in their name, so a stored copy is never stale.
   if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
     event.respondWith(fromCacheFirst(request));
     return;

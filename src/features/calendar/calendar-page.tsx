@@ -13,7 +13,6 @@ import { MonthSwitcher } from "@/features/transactions/month-switcher";
 import { TransactionSheet } from "@/features/transactions/transaction-sheet";
 import { KIND_COLOR, useMonthEvents, type DayEvent } from "./use-month-events";
 
-/** A Monday, for the weekday row: 2024-01-01 was one. */
 const WEEK = Array.from({ length: 7 }, (_, i) => `2024-01-0${i + 1}`);
 
 function EventRow({ event, onOpen }: { event: DayEvent; onOpen?: () => void }) {
@@ -51,14 +50,12 @@ function EventRow({ event, onOpen }: { event: DayEvent; onOpen?: () => void }) {
   );
 }
 
-/** The month as a calendar: what happens on each day, and the dates worth knowing about. */
 export function CalendarPage() {
   const { state } = useStore();
   const { t, tp } = useT();
   const base = state.settings.baseCurrency;
   const today = todayISO();
   const [chosen, setMonth] = useState(currentMonth());
-  // The switcher answers at once; the grid redraws in the background.
   const month = useDeferredValue(chosen);
   const [picked, setPicked] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Transaction | "new" | null>(null);
@@ -79,8 +76,6 @@ export function CalendarPage() {
   const busiest = days.reduce((best, d) => (d.spent > best.spent ? d : best), days[0]);
   const entries = days.reduce((sum, d) => sum + d.events.filter((e) => e.tx).length, 0);
 
-  // What is still planned when the month has any; otherwise what the month came to.
-  // A figure with nothing in it is left out rather than shown as a dash.
   const stats: HeroStat[] = [];
   if (aheadOut > 0 || aheadIn > 0) {
     if (aheadOut > 0) {
@@ -172,7 +167,6 @@ export function CalendarPage() {
                         isPicked ? "bg-accent-soft ring-1 ring-accent/50" : d.date < today ? "bg-ghost/60 hover:bg-fill-hover" : "bg-ghost hover:bg-fill-hover"
                       }`}
                     >
-                      {/* How much went out that day, as a wash rising from the bottom. */}
                       {d.spent > 0 && (
                         <span
                           aria-hidden

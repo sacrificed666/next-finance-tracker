@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-/** A record's key facts as small label-over-value tiles, two per row. */
 export function Facts({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <dl className={`grid grid-cols-2 gap-1.5 ${className}`}>{children}</dl>;
 }

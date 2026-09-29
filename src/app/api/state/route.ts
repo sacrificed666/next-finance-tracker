@@ -46,7 +46,6 @@ export async function GET() {
   }
 }
 
-/** Only the revision: lets an open tab ask "did another device save?" without loading everything. */
 export async function HEAD() {
   const userId = await currentUserId();
   if (!userId) return new NextResponse(null, { status: 401 });
@@ -58,11 +57,6 @@ export async function HEAD() {
   }
 }
 
-/**
- * Saves a set of changes: `{ base, changes }`, where `base` is the revision the
- * client last saw. Changes merge into whatever is stored; `stale` in the answer
- * tells the client that another device saved in between and it should pull.
- */
 export async function PATCH(request: Request) {
   const userId = await currentUserId();
   if (!userId) return unauthorized();
@@ -81,7 +75,6 @@ export async function PATCH(request: Request) {
   try {
     const preferred = (await cookies()).get(LOCALE_COOKIE)?.value;
     const result = await saveChanges(userId, changes, base, isLocale(preferred) ? preferred : DEFAULT_LOCALE);
-    // What was saved, never what it says: collections and counts only, so a change can be traced.
     console.info(`[api/state] sent ${describeChanges(changes)} → ${result.written} rows written${result.stale ? " (merged)" : ""}`);
     return NextResponse.json(result, { headers: { ETag: toEtag(result.revision) } });
   } catch (err) {

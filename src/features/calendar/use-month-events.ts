@@ -18,19 +18,16 @@ export interface DayEvent {
   icon: string;
   amount?: number;
   currency?: Currency;
-  /** Set for entries, so a tap opens them. */
   tx?: Transaction;
 }
 
 export interface DaySummary {
   date: string;
   events: DayEvent[];
-  /** What the day's entries add or take away, in the base currency. */
   net: number;
   spent: number;
 }
 
-/** A dot's colour for each kind of event, shared by the grid and the lists. */
 export const KIND_COLOR: Record<EventKind, string> = {
   expense: "var(--expense)",
   income: "var(--income)",
@@ -41,11 +38,6 @@ export const KIND_COLOR: Record<EventKind, string> = {
   wish: "var(--series-9)",
 };
 
-/**
- * Everything that happens in a month, day by day: entries (posted and planned),
- * tax deadlines, investments maturing, loans due back, and the wishlist items
- * planned for the month (shown on its first day).
- */
 export function useMonthEvents(month: string): { days: DaySummary[]; keyDates: DayEvent[]; obligations: TaxObligation[] } {
   const { state } = useStore();
   const { t, category } = useT();

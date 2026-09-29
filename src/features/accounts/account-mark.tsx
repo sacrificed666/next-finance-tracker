@@ -5,7 +5,6 @@ import { brandInfo, brandLogoSources } from "@/lib/catalog/brands";
 import { gameLabel, gameLogoSources } from "@/lib/catalog/games";
 import type { SavingsAccount } from "@/lib/types";
 
-/** Game logo, bank logo, coin icon or the account's emoji — whichever is known. */
 export function AccountMark({ acc }: { acc: SavingsAccount }) {
   if (acc.kind === "skins") {
     return (

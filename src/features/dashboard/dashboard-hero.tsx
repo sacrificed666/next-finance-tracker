@@ -13,13 +13,11 @@ import { useMonthSummary } from "./use-month-summary";
 
 const savingsRate = (m: { income: number; net: number }) => (m.income > 0 ? (m.net / m.income) * 100 : 0);
 
-/** Net worth in every currency and how it moved, with this month's money flow underneath. */
 export function DashboardHero() {
   const { state, settings, base, month, today, series, current, previous, hasPrevious, vsLast } = useMonthSummary();
   const { t } = useT();
 
   const worth = netWorth(state, today);
-  // Month-end net worth over the last year, from stored snapshots where there are any; the last point is today.
   const trend = worthHistory(state, today);
   const monthAgo = trend[10];
   const monthDelta = worth.total - monthAgo;

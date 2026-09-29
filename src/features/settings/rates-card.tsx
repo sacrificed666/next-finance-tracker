@@ -9,7 +9,6 @@ import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import type { AppState } from "@/lib/types";
 
-/** A number that only commits on blur or Enter, so half-typed values never reach the state. */
 function NumericSetting({
   label,
   hint,
@@ -59,7 +58,6 @@ export function ratesOrigin(settings: AppState["settings"], t: ReturnType<typeof
   return t("settings.rates.updated", { when: formatDateTime(settings.ratesUpdatedAt), source });
 }
 
-/** Exchange rates: refreshed hourly, editable by hand. */
 export function RatesCard() {
   const { state, update } = useStore();
   const { settings } = state;

@@ -46,7 +46,6 @@ export function addDays(dateISO: string, n: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-
 export function yearsBetween(fromISO: string, toISO: string): number {
   const from = new Date(`${fromISO}T00:00:00`);
   const to = new Date(`${toISO}T00:00:00`);
@@ -158,7 +157,6 @@ export function formatWeekday(dateISO: string): string {
   return capitalize(dtf({ weekday: "short" }).format(utc(y, m, d)));
 }
 
-/** Clock time of the next full hour, when rates and prices refresh again. */
 export function nextHourLabel(): string {
   const next = new Date();
   next.setMinutes(0, 0, 0);

@@ -10,7 +10,6 @@ import { useMonthSummary } from "./use-month-summary";
 
 const TOP = 5;
 
-/** The priciest subscriptions billing this month and when each charges next. */
 export function SubscriptionsCard({ className = "" }: { className?: string }) {
   const { state, settings, base, month, today, series } = useMonthSummary();
   const { t } = useT();

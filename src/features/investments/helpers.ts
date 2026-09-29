@@ -8,12 +8,10 @@ import type { CompoundingFreq, Investment, InvestmentKind, Settings } from "@/li
 
 export type Translate = ReturnType<typeof useT>["t"];
 
-/** The same calendar day one year from `today`. */
 export function oneYearFrom(today: string): string {
   return dateInMonth(addMonths(monthOf(today), 12), Number(today.slice(8, 10)));
 }
 
-/** Month-end values over the last year (or since purchase), for an investment's sparkline. */
 export function sparkValues(inv: Investment, today: string): number[] {
   const nowMonth = monthOf(today);
   const yearAgo = addMonths(nowMonth, -12);
@@ -28,11 +26,6 @@ export function sparkValues(inv: Investment, today: string): number[] {
   return values;
 }
 
-/**
- * What one position has earned so far and is expected to earn over the next
- * year, in its own currency. Market-valued assets count projected growth; the
- * rest count interest, coupons and dividends.
- */
 export function positionReturns(inv: Investment, today: string, yearOut: string) {
   const snap = investmentAt(inv, today);
   const ahead = investmentAt(inv, yearOut);
@@ -42,7 +35,6 @@ export function positionReturns(inv: Investment, today: string, yearOut: string)
     valuationOf(inv.kind) === "market"
       ? proj.value - snap.value - (inv.monthlyContribution ?? 0) * 12 + proj.paidOut
       : ahead.accrued + ahead.paidOut - earned;
-  // Top-ups arrive through the year, so on average half of them are at work.
   const averageCapital = snap.value + (inv.monthlyContribution ?? 0) * 6;
   return {
     snap,

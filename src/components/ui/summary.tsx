@@ -2,10 +2,6 @@ import type { ReactNode } from "react";
 
 const TONE = { income: "text-income", expense: "text-expense" } as const;
 
-/**
- * The rounded block a list card opens with: its headline figure, what that
- * figure is measured against, and optionally a meter or a caption underneath.
- */
 export function SummaryPanel({
   value,
   tone,
@@ -30,7 +26,6 @@ export function SummaryPanel({
   );
 }
 
-/** A figure's unit or period, set smaller beside it ("/mo"). */
 export function Unit({ children }: { children: ReactNode }) {
   return <span className="text-xs font-medium text-ink-3">{children}</span>;
 }

@@ -1,17 +1,14 @@
 import type { AppState, Currency } from "@/lib/types";
 import { fingerprint, suggestCategory, type ImportCandidate } from "./import";
 
-/** Which column holds what. Amounts come either signed in one column or split into debit and credit. */
 export interface CsvMapping {
   date: number;
   description: number;
   amount: number;
-  /** A separate "money out" column, when the bank splits them; -1 when unused. */
   debit: number;
   mcc: number;
 }
 
-/** Splits CSV text into rows, handling quotes, BOM and whichever of `;`, `,` or tab the bank used. */
 export function parseCsv(text: string): string[][] {
   const clean = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
   const firstLine = clean.slice(0, clean.indexOf("\n") >= 0 ? clean.indexOf("\n") : clean.length);
@@ -52,7 +49,6 @@ const find = (header: string[], patterns: RegExp[]) => {
   return -1;
 };
 
-/** A first guess at the mapping from the header row; the user can correct it. */
 export function guessMapping(header: string[]): CsvMapping {
   const h = header.map((x) => x.toLocaleLowerCase());
   return {
@@ -64,7 +60,6 @@ export function guessMapping(header: string[]): CsvMapping {
   };
 }
 
-/** A number as banks print it: "1 234,56", "-1234.56", "1,234.56", with a real minus sign or a hyphen. */
 export function parseNumber(raw: string): number {
   let s = raw.replace(/[\s  ]/g, "").replace(/[−–]/g, "-").replace(/[^\d.,-]/g, "");
   if (!s) return NaN;
@@ -75,7 +70,6 @@ export function parseNumber(raw: string): number {
   return Number(s);
 }
 
-/** A statement date as YYYY-MM-DD: "31.12.2026", "31.12.2026 18:05", "2026-12-31", "31/12/2026". */
 export function parseDate(raw: string): string | null {
   const s = raw.trim();
   let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
@@ -88,7 +82,6 @@ export function parseDate(raw: string): string | null {
   return null;
 }
 
-/** Statement rows turned into import candidates, skipping lines that are not operations (totals, blanks). */
 export function candidatesFromCsv(
   state: AppState,
   rows: string[][],

@@ -6,7 +6,6 @@ import { Icon } from "@/components/ui";
 const MAX_SIDE = 1600;
 const MAX_PHOTOS = 4;
 
-/** Shrinks a photo to at most 1600 px on its long side and re-encodes it as WebP. */
 async function shrink(file: File): Promise<{ mime: string; data: string }> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
@@ -24,11 +23,6 @@ async function shrink(file: File): Promise<{ mime: string; data: string }> {
   return { mime: blob.type || "image/webp", data: btoa(binary) };
 }
 
-/**
- * Receipt photos for one entry: thumbnails that open full size, a button to
- * add more, and a cross to take one off. Photos upload as soon as they are
- * picked; the entry keeps only their ids.
- */
 export function ReceiptPhotos({
   value,
   onChange,
@@ -80,7 +74,6 @@ export function ReceiptPhotos({
               aria-label={labels.open}
               className="block size-16 overflow-hidden rounded-field border border-hairline bg-ghost"
             >
-              {/* A private, per-user image: a plain <img> so it is never optimised through a shared cache. */}
               <img src={`/api/attachments/${id}`} alt="" className="size-full object-cover" />
             </a>
             <button

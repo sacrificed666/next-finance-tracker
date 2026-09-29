@@ -28,7 +28,6 @@ import { breakdownSummary } from "./helpers";
 type SortKey = "date" | "amount";
 type Scope = "received" | "planned" | "all";
 
-/** Every income entry, grouped by month, with search, a category filter and received/planned scopes. */
 export function IncomeListCard({
   onAdd,
   onEdit,

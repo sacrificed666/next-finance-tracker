@@ -8,7 +8,6 @@ import { useT } from "@/lib/i18n";
 import type { Currency } from "@/lib/types";
 import type { Forecast } from "./use-forecast";
 
-/** Where the base scenario ends, what the end figure is made of, and the scenarios around it. */
 export function ForecastHero({
   f,
   view,
@@ -29,7 +28,6 @@ export function ForecastHero({
   const split = f.contributionSplit;
   const now = f.projection[0];
   const nowShare = now.savings + now.investments > 0 ? (now.investments / (now.savings + now.investments)) * 100 : 0;
-  // The scenarios only differ where a return rate applies; when they collapse, a range says nothing.
   const compact = (v: number) => formatMoney(v, view, { compact: true });
   const hasRange = compact(f.endLow) !== compact(f.endHigh);
   const vsBase = (v: number) => t("forecast.hero.vsBase", { delta: formatMoney(v - f.endTotal, view, { compact: true, sign: true }) });

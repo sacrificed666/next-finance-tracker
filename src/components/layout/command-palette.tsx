@@ -15,7 +15,6 @@ const OPEN_EVENT = "finance:command-palette";
 const ENTRIES_SHOWN = 8;
 const MATCHES_SHOWN = 5;
 
-/** Open the palette from anywhere, such as a search button in the navigation. */
 export function openCommandPalette() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
@@ -28,7 +27,6 @@ interface Command {
   group: Group;
   label: string;
   hint?: string;
-  /** Extra text the query matches besides the label and the hint. */
   keywords?: string;
   mark: ReactNode;
   trailing?: ReactNode;
@@ -41,10 +39,6 @@ const glyph = (name: IconName) => (
   </span>
 );
 
-/**
- * Ctrl+K (⌘K on a Mac): jump to any page, account or position, start a new
- * entry, or find an entry by its note, category, tag or amount and open it.
- */
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -121,7 +115,6 @@ function Palette({
     onClose();
     router.push(href);
   };
-  // Sheets opened through the address bar stay on the page you are on.
   const here = (param: string) => go(`${pathname}?${param}`);
 
   const dark =
@@ -183,13 +176,11 @@ function Palette({
   }
 
   const visible = commands.filter((c) => matchesQuery(q, c.label, c.hint, c.keywords));
-  // Accounts and positions are many and alike; the closest few are enough.
   for (const group of ["accounts", "investments"] as const) {
     const extra = visible.filter((c) => c.group === group).slice(MATCHES_SHOWN);
     for (const c of extra) visible.splice(visible.indexOf(c), 1);
   }
 
-  // Entries only once the query says something: a single letter matches half the ledger.
   if (q.length >= 2) {
     const catById = new Map(state.categories.map((c) => [c.id, c]));
     const today = todayISO();
@@ -198,7 +189,6 @@ function Palette({
         const cat = tx.categoryId ? catById.get(tx.categoryId) : undefined;
         return matchesQuery(q, tx.note, cat ? category(cat) : undefined, String(tx.amount), ...(tx.tags ?? []).map((tag) => `#${tag}`));
       })
-      // What already happened, newest first; planned entries after it, soonest first.
       .sort((a, b) =>
         a.date > today !== b.date > today
           ? a.date > today
@@ -351,12 +341,10 @@ function Palette({
   );
 }
 
-/** The search field look-alike that opens the palette, for the sidebar. */
 export function PaletteButton({ className = "" }: { className?: string }) {
   const { t } = useT();
   const [mac, setMac] = useState(false);
   useEffect(() => {
-    // Read on the client only; the server cannot know the visitor's platform.
     const id = setTimeout(() => setMac(/Mac|iPhone|iPad/.test(navigator.platform)), 0);
     return () => clearTimeout(id);
   }, []);

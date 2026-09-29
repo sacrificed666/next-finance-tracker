@@ -104,8 +104,6 @@ export function ChartTable({
   columns: string[];
   rows: Array<{ key: string; cells: string[] }>;
 }) {
-  // `sr-only` sits on a wrapper: tables ignore `overflow: hidden`, so a hidden
-  // table with many rows would otherwise stretch the page with empty scroll.
   return (
     <div className="sr-only">
       <table>
@@ -160,7 +158,6 @@ export function ChartLegend({
   );
 }
 
-/** A column growing from the baseline, with a 4 px rounded data end and a square foot. */
 export function Column({
   x,
   w,
@@ -176,7 +173,6 @@ export function Column({
   y1: number;
   color: string;
   index?: number;
-  /** False for a lower segment of a stack: only the top of a stack is rounded. */
   rounded?: boolean;
 }) {
   const h = Math.max(0, y0 - y1);

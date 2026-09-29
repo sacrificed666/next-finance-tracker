@@ -35,7 +35,6 @@ interface RecurringForm {
   endMonth: string;
 }
 
-/** Add or edit a recurring rule; saving rewrites the entries it has already posted. */
 export function RecurringSheet({ target, onClose }: { target: RecurringRule | "new"; onClose: () => void }) {
   const { state, update } = useStore();
   const { t, tp } = useT();

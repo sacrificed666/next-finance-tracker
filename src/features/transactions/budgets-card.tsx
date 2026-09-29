@@ -12,7 +12,6 @@ import { useStore } from "@/lib/state/store";
 import type { Budget } from "@/lib/types";
 import { BudgetSheet } from "./budget-sheet";
 
-/** Per-category limits for the month being read, most used first. */
 export function BudgetsCard({ month }: { month: string }) {
   const { state } = useStore();
   const { t, tp, category } = useT();
@@ -23,7 +22,6 @@ export function BudgetsCard({ month }: { month: string }) {
 
   const spentOf = (b: Budget) => spentInBudget(state, b.categoryId, b.currency, month);
   const limitOf = (b: Budget) => budgetLimit(state, b, month);
-  // Spending so far, run to the month's end: when a budget will run out at this pace.
   const today = todayISO();
   const elapsed = month === currentMonth() ? Number(today.slice(8)) : 0;
   const runsOutOn = (b: Budget) => {

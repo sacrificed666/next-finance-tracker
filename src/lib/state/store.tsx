@@ -36,7 +36,6 @@ interface StoreApi {
   hydrated: boolean;
   loadError: string | null;
   update: (fn: (s: AppState) => AppState, undoLabel?: string) => void;
-  /** A background change (a snapshot, an import of prices) that saves but leaves any pending undo alone. */
   quietUpdate: (fn: (s: AppState) => AppState) => void;
   replace: (next: AppState, undoLabel?: string) => void;
   reload: () => Promise<void>;
@@ -44,11 +43,6 @@ interface StoreApi {
   dismissUndo: () => void;
 }
 
-/**
- * How saving is going and what can be undone. Kept apart from the data: both change
- * on every save and every toast, and only the sync dot and the toast read them, so
- * they must not re-render every card on the page.
- */
 interface SyncApi {
   sync: SyncStatus;
   undoLabel: string | null;
@@ -58,7 +52,6 @@ const StoreContext = createContext<StoreApi | null>(null);
 const SyncContext = createContext<SyncApi>({ sync: "idle", undoLabel: null });
 
 const STATE_ENDPOINT = "/api/state";
-/** How long a failed save waits before it tries again. */
 const RETRY_MS = 5_000;
 
 function unquote(etag: string | null): string {
@@ -93,8 +86,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const loadedFromServer = useRef(false);
   const revision = useRef("");
   const stateRef = useRef(state);
-  // The state as the server holds it, as far as this tab knows: a save sends only the
-  // difference between this and what is on screen.
   const savedRef = useRef<AppState | null>(null);
   const savingRef = useRef(false);
   const resaveRef = useRef(false);
@@ -111,7 +102,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadedFromServer.current = true;
       revision.current = loaded.revision;
       savedRef.current = loaded.state;
-      // Postings the schedules add on load are new records; the first save sends them.
       setState(materializeRecurring(loaded.state));
       setLoadError(null);
       setSync("idle");
@@ -122,7 +112,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /** Pulls what another device saved and lays this tab's unsent edits over it. */
   const catchUp = useCallback(async () => {
     const fresh = await fetchState();
     const pending = savedRef.current ? diffState(savedRef.current, stateRef.current) : {};
@@ -159,7 +148,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const result = (await res.json()) as { revision: string; stale: boolean };
       revision.current = result.revision;
       savedRef.current = target;
-      // Another device saved in between: its records merged on the server, so fetch them.
       if (result.stale) await catchUp();
     } catch {
       failed = true;
@@ -190,7 +178,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void load();
   }, [load, onAuthRoute]);
 
-  // Every change is saved half a second after the last one; an unchanged state sends nothing.
   useEffect(() => {
     if (!hydrated || !loadedFromServer.current) return;
     if (persistTimer.current) clearTimeout(persistTimer.current);
@@ -200,7 +187,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [state, hydrated]);
 
-  // Coming back to the tab: if another device saved meanwhile, pull its changes.
   useEffect(() => {
     if (!hydrated) return;
     const check = async () => {
@@ -210,7 +196,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const latest = res.ok ? unquote(res.headers.get("etag")) : "";
         if (latest && latest !== revision.current) await catchUp();
       } catch {
-        // Offline: the next save or focus tries again.
       }
     };
     document.addEventListener("visibilitychange", check);
@@ -305,7 +290,6 @@ export function useStore(): StoreApi {
   return api;
 }
 
-/** The save status and the pending undo, for the few places that show them. */
 export function useSyncStatus(): SyncApi {
   return useContext(SyncContext);
 }
@@ -377,7 +361,6 @@ export function deleteSchedule(
       kind === "subscription"
         ? state.subscriptions.filter((s) => s.id !== id)
         : state.subscriptions,
-    // Planned postings go with the schedule; real payments matched to them stay as plain entries.
     transactions: state.transactions.flatMap((t) =>
       !isPostingOf(t, kind, id) ? [t] : t.externalId ? [{ ...t, recurringId: undefined, subscriptionId: undefined }] : [],
     ),
@@ -533,7 +516,6 @@ export function syncSchedule(state: AppState, kind: ScheduleKind, id: string): A
 
   const transactions = state.transactions.flatMap((t) => {
     if (!isPostingOf(t, kind, id)) return [t];
-    // A posting an import replaced with the real payment keeps what the bank said.
     if (t.externalId) return [t];
     const month = postingMonth(t, kind, id);
     if (!covered.has(month)) return [];
@@ -562,11 +544,6 @@ export function syncSchedule(state: AppState, kind: ScheduleKind, id: string): A
   });
 }
 
-/**
- * Stops recurring rules from `month` on: the entries they planned for this month and
- * later go, past months keep theirs, and real payments matched to them stay. A rule
- * that only began this month is removed altogether.
- */
 export function stopSchedules(state: AppState, ids: string[], month: string): AppState {
   const lastMonth = addMonths(month, -1);
   let next = state;

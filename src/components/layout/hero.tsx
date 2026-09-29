@@ -9,7 +9,6 @@ export interface HeroStat {
   icon?: IconName;
   value: string;
   tone?: "income" | "expense";
-  /** A comparison — vs last month, vs the average, against a target. */
   delta?: { text: string; good: boolean };
   hint?: string;
   href?: string;
@@ -53,11 +52,6 @@ function StatCell({ stat, className }: { stat: HeroStat; className: string }) {
   );
 }
 
-/**
- * The block every page opens with, across the full width: the page's headline
- * figure with how it moved, a picture of it on the right (a trend or a split),
- * and the three or four figures that explain it underneath.
- */
 export function PageHero({
   label,
   icon,
@@ -72,14 +66,11 @@ export function PageHero({
 }: {
   label?: string;
   icon?: IconName;
-  /** Controls that change what the hero shows, such as a month switcher. */
   action?: ReactNode;
   value?: string;
-  /** The same figure another way — other currencies, a range. */
   sub?: string;
   delta?: { text: string; good: boolean };
   note?: string;
-  /** Replaces the headline figure when the page leads with something else (the profile). */
   lead?: ReactNode;
   aside?: ReactNode;
   stats?: HeroStat[];
@@ -127,7 +118,6 @@ export function PageHero({
             <StatCell
               key={stat.label}
               stat={stat}
-              // Three figures: the last one takes the whole second row on phones.
               className={threeUp && i === 2 ? "col-span-2 md:col-span-1" : ""}
             />
           ))}

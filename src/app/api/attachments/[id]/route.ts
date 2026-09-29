@@ -4,7 +4,6 @@ import { loadAttachment } from "@/lib/server/attachments";
 
 export const dynamic = "force-dynamic";
 
-/** One receipt photo, only to the user who uploaded it. */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   const userId = session?.user?.id;

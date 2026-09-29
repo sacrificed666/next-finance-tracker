@@ -9,11 +9,6 @@ import { currentMonth } from "@/lib/date";
 import { stopSchedules, useStore } from "@/lib/state/store";
 import type { RecurringRule } from "@/lib/types";
 
-/**
- * Picks which of the rules that book their budget as spent are really plans. Bills
- * (rent, utilities, a loan) start unticked: posting them at their budget is usually
- * the real payment.
- */
 export function StopPlansSheet({ rules, onClose }: { rules: RecurringRule[]; onClose: () => void }) {
   const { state, update } = useStore();
   const { t, tp, category } = useT();

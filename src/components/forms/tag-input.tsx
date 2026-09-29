@@ -5,11 +5,6 @@ import { Icon } from "@/components/ui";
 
 const MAX_TAGS = 8;
 
-/**
- * Free labels as chips: type and press Enter or a comma to add, Backspace on
- * an empty field to take the last one back. Tags already used elsewhere are
- * offered underneath.
- */
 export function TagInput({
   value,
   onChange,

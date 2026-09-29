@@ -15,10 +15,6 @@ import { ReturnsTable } from "./returns-table";
 
 type InvestmentSort = "value" | "gain" | "name" | "start";
 
-/**
- * Every position — as a compact returns table or as detailed cards — with
- * search, a kind filter and sorting once there are more than three.
- */
 export function InvestmentsCard({ onAdd, onEdit }: { onAdd: () => void; onEdit: (inv: Investment) => void }) {
   const { state } = useStore();
   const { t, tp } = useT();
@@ -121,7 +117,6 @@ export function InvestmentsCard({ onAdd, onEdit }: { onAdd: () => void; onEdit: 
       ) : view === "table" && visible.length > 1 ? (
         <ReturnsTable positions={visible} onOpen={onEdit} />
       ) : (
-        // Balanced columns: positions differ in height, so a row grid would leave holes.
         <div className={`gap-3 sm:gap-4 ${visible.length > 1 ? "sm:columns-2" : ""}`}>
           {visible.map((inv) => (
             <InvestmentCard

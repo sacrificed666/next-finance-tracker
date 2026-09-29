@@ -143,7 +143,6 @@ export const CORE_CURRENCIES: Currency[] = ["UAH", "USD", "EUR"];
 
 export const FOREIGN_CURRENCIES = ["USD", "EUR"] as const;
 
-/** Fixed chart slots, so each currency keeps its colour on every screen. */
 export const CURRENCY_SLOT: Record<Currency, number> = { UAH: 1, USD: 2, EUR: 3 };
 
 export const CURRENCY_SYMBOL: Record<Currency, string> = {

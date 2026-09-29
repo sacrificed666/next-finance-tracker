@@ -8,7 +8,6 @@ import { convert, formatMoney, formatPercent } from "@/lib/finance/money";
 import { useStore } from "@/lib/state/store";
 import { useT } from "@/lib/i18n";
 
-/** This month's income against the 6-month average, the year's trend, year to date, tax and what is planned. */
 export function IncomeHero() {
   const { state } = useStore();
   const { t, tp } = useT();

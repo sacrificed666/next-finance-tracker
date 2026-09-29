@@ -20,7 +20,6 @@ import { ReconcileSheet } from "./reconcile-sheet";
 
 type Deleting = { kind: "account" | "debt" | "receivable"; id: string };
 
-/** Where the money sits: every account with its derived balance, savings goals and debts. */
 export function AccountsPage() {
   const { state, update } = useStore();
   const { t, tp } = useT();

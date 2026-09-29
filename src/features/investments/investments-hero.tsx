@@ -10,7 +10,6 @@ import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import { oneYearFrom, positionReturns } from "./helpers";
 
-/** What the investments are worth, where they head over the next year, and what they have and will earn. */
 export function InvestmentsHero() {
   const { state } = useStore();
   const { t, tp } = useT();
@@ -35,7 +34,6 @@ export function InvestmentsHero() {
     { invested: 0, value: 0, earned: 0, nextYear: 0, capital: 0, paidOut: 0 },
   );
 
-  // Month by month over the next year: value plus the payouts taken out, top-ups included.
   const day = Number(today.slice(8));
   const ahead = Array.from({ length: 13 }, (_, i) =>
     state.investments.reduce((sum, inv) => {

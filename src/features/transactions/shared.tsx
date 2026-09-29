@@ -16,7 +16,6 @@ export function recurringStatus(rule: RecurringRule, month: string): Exclude<Rec
   return "now";
 }
 
-/** Nothing for a running schedule; a labelled badge for everything else. */
 export function StatusBadge({ status }: { status: SubscriptionStatus | Exclude<RecurringView, "all"> }) {
   const { t } = useT();
   if (status === "active" || status === "now") return null;

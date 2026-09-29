@@ -9,12 +9,6 @@ import { TransactionSheet } from "./transaction-sheet";
 
 const ADD_TYPES: TxType[] = ["expense", "income", "transfer"];
 
-/**
- * The entry sheet, opened from the address bar on any page: `?add=expense`,
- * `income` or `transfer` starts a new entry (the installed app's shortcuts and
- * the command palette use it), `?tx=<id>` opens one to edit. Closing the sheet
- * drops the parameter again, so a reload does not reopen it.
- */
 export function EntryIntents() {
   return (
     <Suspense fallback={null}>

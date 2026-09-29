@@ -12,7 +12,6 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import type { TaxRegimeId } from "@/lib/types";
 
-/** Taxed income this year against each regime's annual ceiling. Hidden until something is taxed. */
 export function TaxLimitCard() {
   const { state } = useStore();
   const { t, tp } = useT();
@@ -72,10 +71,6 @@ export function TaxLimitCard() {
   );
 }
 
-/**
- * Where the last twelve months of income came from — by source, or by the
- * currency it arrived in once there is more than one.
- */
 export function IncomeSourcesCard() {
   const { state } = useStore();
   const { t, tp, category } = useT();

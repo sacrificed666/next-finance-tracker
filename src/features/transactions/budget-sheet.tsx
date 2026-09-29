@@ -19,7 +19,6 @@ interface BudgetForm {
   rollover: boolean;
 }
 
-/** A monthly limit for one expense category (and everything under it). */
 export function BudgetSheet({ target, onClose }: { target: Budget | "new"; onClose: () => void }) {
   const { state, update } = useStore();
   const { t } = useT();

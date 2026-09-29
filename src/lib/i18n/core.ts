@@ -23,8 +23,6 @@ function interpolate(template: string, vars?: Vars): string {
   );
 }
 
-// Every dictionary carries every English key (the Dictionary type enforces it), so a
-// lookup needs no English fallback — and English need not ride along in the bundle.
 export function makeI18n(locale: Locale, dict: Messages): I18n {
   const intl = localeInfo(locale).intl;
   const rules = new Intl.PluralRules(intl);

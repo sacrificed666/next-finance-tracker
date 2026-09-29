@@ -9,11 +9,6 @@ import { sortItems } from "@/lib/state/listing";
 import { useStore } from "@/lib/state/store";
 import type { Receivable } from "@/lib/types";
 
-/**
- * Money lent to others: what is still to come back, who is late, and how far
- * each loan is repaid. Settled loans sink to the bottom. Renders nothing until
- * there is one.
- */
 export function ReceivablesCard({ onAdd, onEdit }: { onAdd: () => void; onEdit: (r: Receivable) => void }) {
   const { state } = useStore();
   const { t } = useT();

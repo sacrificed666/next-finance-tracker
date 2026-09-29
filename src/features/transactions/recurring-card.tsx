@@ -13,7 +13,6 @@ import { RecurringSheet } from "./recurring-sheet";
 import { StopPlansSheet } from "./stop-plans-sheet";
 import { recurringStatus, StatusBadge, type RecurringView } from "./shared";
 
-/** Rules that post an entry every month between a start and an optional end. */
 export function RecurringCard({ month }: { month: string }) {
   const { state } = useStore();
   const { t, tp, category } = useT();
@@ -48,11 +47,8 @@ export function RecurringCard({ month }: { month: string }) {
     },
     { in: 0, out: 0 },
   );
-  // When reading the current month: the next day a rule posts.
   const today = todayISO();
   const nowMonth = currentMonth();
-  // Rules that book a whole budget as spent every month. Bills among them are usually real
-  // payments; the hint speaks up only when something looks like a spending plan.
   const booked = month === nowMonth ? plansBookedAsSpending(state, nowMonth) : [];
   const plans = booked.filter((r) => !looksLikeFixedPayment(catById.get(r.categoryId)));
   const nextPost =

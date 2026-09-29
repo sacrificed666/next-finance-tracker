@@ -10,7 +10,6 @@ export type ReportPeriod = "month" | "quarter" | "year";
 
 export const PERIOD_MONTHS: Record<ReportPeriod, number> = { month: 1, quarter: 3, year: 12 };
 
-/** The first month of the period that contains `month`. */
 export function periodStart(period: ReportPeriod, month: string): string {
   const [y, m] = month.split("-").map(Number);
   if (period === "year") return `${y}-01`;
@@ -27,10 +26,6 @@ export interface PeriodTotals {
   months: string[];
 }
 
-/**
- * One period against the one before it: totals, spending by top-level
- * category and by tag, the largest single expenses, and the months inside.
- */
 export function useReport(period: ReportPeriod, anchor: string) {
   const { state } = useStore();
   const { settings } = state;
@@ -67,7 +62,6 @@ export function useReport(period: ReportPeriod, anchor: string) {
     .map((tx) => ({ tx, base: convert(tx.amount, tx.currency, base, settings.rates) }))
     .sort((a, b) => b.base - a.base)
     .slice(0, 5);
-  // Twelve months ending with the period, for the category trends and the year in review.
   const year = monthlySeries(state.transactions, end, 12, settings);
   const trendOf = (categoryId: string) =>
     year.map((m) => rollupToParents(expensesByCategory(state.transactions, m.month, settings), state.categories).get(categoryId) ?? 0);

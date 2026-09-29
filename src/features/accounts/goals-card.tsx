@@ -11,11 +11,6 @@ import { goalsSummary } from "./helpers";
 
 const SHOWN = 4;
 
-/**
- * Every account goal rolled up: overall progress in the base currency, the
- * goals closest to done, and what it takes each month to meet all deadlines.
- * Renders nothing until an account has a goal.
- */
 export function GoalsCard({ className = "" }: { className?: string }) {
   const { state } = useStore();
   const { t } = useT();

@@ -54,7 +54,6 @@ describe("tax calendar", () => {
   });
 
   it("moves a weekend deadline to Monday", () => {
-    // Group 2's September 2026 advance is due on the 20th, a Sunday, so it moves to Monday the 21st.
     const advance = taxObligations(state("fop2"), 2026).find((o) => o.id === "2026-09:single");
     expect(advance?.due).toBe("2026-09-21");
   });

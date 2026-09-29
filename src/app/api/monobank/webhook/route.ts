@@ -4,10 +4,6 @@ import { MonoError, publicMono, setMonoWebhook } from "@/lib/server/monobank";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Turns automatic import on or off: `{ on: boolean }`. Monobank needs an address it
- * can reach, so this works only when AUTH_URL is the app's public https origin.
- */
 export async function POST(request: Request) {
   const userId = (await auth())?.user?.id;
   if (!userId) return NextResponse.json({ error: "Not signed in." }, { status: 401 });

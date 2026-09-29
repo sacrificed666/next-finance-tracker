@@ -9,7 +9,6 @@ import { formatMoney } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { useMonthSummary } from "./use-month-summary";
 
-/** The largest holdings, one row each, and the accounts/investments split underneath. */
 export function HoldingsCard({ className = "" }: { className?: string }) {
   const { state, base, today } = useMonthSummary();
   const { t, tp } = useT();

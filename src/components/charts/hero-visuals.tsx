@@ -15,7 +15,6 @@ function Heading({ title, summary }: { title: string; summary?: ReactNode }) {
   );
 }
 
-/** A large area trend for the right side of a page hero, labelled at both ends. */
 export function HeroTrend({
   title,
   summary,
@@ -55,7 +54,6 @@ export interface SplitSegment {
   icon?: ReactNode;
 }
 
-/** What a total is made of: one bar and a legend with amounts, for the right side of a page hero. */
 export function HeroSplit({
   title,
   summary,
@@ -67,7 +65,6 @@ export function HeroSplit({
   summary?: ReactNode;
   segments: SplitSegment[];
   currency: Currency;
-  /** Three wide parts get a stacked legend: label on top, figures under it, so long labels never truncate. */
   columns?: 2 | 3;
 }) {
   const shown = segments.filter((s) => s.value > 0);

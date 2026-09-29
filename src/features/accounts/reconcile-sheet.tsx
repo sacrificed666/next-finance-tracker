@@ -9,10 +9,6 @@ import { parseAmount } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { uid, useStore } from "@/lib/state/store";
 
-/**
- * Matches an account to what the bank shows by booking the difference as an
- * income or expense adjustment — balances are derived, never typed over.
- */
 export function ReconcileSheet({ accountId, onClose }: { accountId: string; onClose: () => void }) {
   const { state, update } = useStore();
   const { t } = useT();

@@ -6,11 +6,6 @@ import { cachedMessages, loadMessages, rememberMessages, type Messages } from "@
 import { useStore } from "@/lib/state/store";
 import type { Locale } from "@/lib/types";
 
-/**
- * Picks the language: the server's guess until the account's own setting arrives,
- * then that. The server's dictionary comes in as a prop; any other is loaded when
- * first needed, and until it arrives the page stays in the language it was showing.
- */
 export function LocaleBridge({
   initialLocale,
   initialMessages,
@@ -40,7 +35,6 @@ export function LocaleBridge({
         if (alive) setLast({ locale: wanted, messages });
       })
       .catch(() => {
-        // Offline or a failed chunk: stay in the language already on screen.
       });
     return () => {
       alive = false;

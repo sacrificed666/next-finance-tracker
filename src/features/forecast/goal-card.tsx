@@ -24,7 +24,6 @@ const positive = (s: string) => {
   return Number.isFinite(v) && v > 0 ? v : 0;
 };
 
-/** A target amount: when the projection reaches it and what it takes to get there sooner. */
 export function GoalCard({
   f,
   view,

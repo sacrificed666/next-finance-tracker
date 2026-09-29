@@ -13,7 +13,7 @@ below it, in **Auto-categorisation**.
 | --- | --- |
 | Connect | Paste the personal token from `api.monobank.ua`. The server checks it against `client-info`, then seals the token and the card list into the `integrations` table |
 | Link cards | Each Monobank card is linked to one of your accounts (`settings.bankLinks`). Cards left unlinked are skipped |
-| Load | Pick 7, 14 or 31 days. Linked cards are read one after another; entries are booked to the linked account in the card's currency |
+| Load | Pick 7, 14 or 31 days. Linked cards are read one after another; entries are booked to the linked account in the card's currency, on the day the operation happened in Ukraine whatever the server's clock says |
 | Disconnect | Deletes the `integrations` row, token included |
 
 > [!IMPORTANT]

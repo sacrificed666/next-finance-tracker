@@ -14,12 +14,9 @@ import { SpendingOverview } from "./spending-overview";
 import { SubscriptionsCard } from "./subscriptions-card";
 import { TransactionSheet } from "./transaction-sheet";
 
-/** The ledger for one month, with the schedules and budgets that shape it. */
 export function TransactionsPage() {
   const { t } = useT();
   const [chosen, setMonth] = useState(currentMonth());
-  // The switcher follows every click at once; the cards redraw in the background and
-  // can be interrupted, so a quick run of clicks only draws the month it ends on.
   const month = useDeferredValue(chosen);
   const [target, setTarget] = useState<Transaction | "new" | null>(null);
   const openAdd = () => setTarget("new");

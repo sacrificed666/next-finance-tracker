@@ -30,7 +30,6 @@ const VIEW_STATUS: Record<Exclude<SubView, "all">, SubscriptionStatus> = {
   paused: "paused",
 };
 
-/** Subscriptions with a real lifetime; the list follows the month being read. */
 export function SubscriptionsCard({ month }: { month: string }) {
   const { state } = useStore();
   const { t, tp } = useT();
@@ -42,7 +41,6 @@ export function SubscriptionsCard({ month }: { month: string }) {
     [],
     (v): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string"),
   );
-  // Charges that repeat monthly but belong to no subscription yet — found in imported statements.
   const suggestions = suggestSubscriptions(state, todayISO())
     .filter((s) => !dismissed.includes(s.key))
     .slice(0, 3);

@@ -7,7 +7,6 @@ import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import type { Currency, Locale, ThemePref } from "@/lib/types";
 
-/** Language, base currency and theme. */
 export function GeneralCard() {
   const { state, update } = useStore();
   const { settings } = state;

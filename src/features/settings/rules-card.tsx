@@ -7,10 +7,6 @@ import { Button, Card, Icon, SegmentedControl, TextInput } from "@/components/ui
 import { useT } from "@/lib/i18n";
 import { uid, useStore } from "@/lib/state/store";
 
-/**
- * "Description contains … → category". Imports try these before the card's
- * merchant code, so a shop you visit often always lands where you want it.
- */
 export function RulesCard() {
   const { state, update } = useStore();
   const { t, category } = useT();

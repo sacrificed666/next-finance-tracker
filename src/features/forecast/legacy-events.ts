@@ -4,13 +4,8 @@ import { useEffect } from "react";
 import { useStore } from "@/lib/state/store";
 import type { PlannedEvent } from "@/lib/types";
 
-/** Where planned events lived before they were saved with the rest of the data. */
 const LEGACY_KEY = "finance-tracker:view:forecast.events";
 
-/**
- * Moves events saved in this browser by earlier versions into the stored
- * data, once, then forgets the browser copy.
- */
 export function useLegacyEvents() {
   const { update, hydrated } = useStore();
   useEffect(() => {

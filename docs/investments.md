@@ -71,7 +71,8 @@ requires a session.
 - market kinds with reinvested returns compound the expected rate;
 - market kinds that pay out keep their value and accumulate `paidOut`, which the card shows as
   expected earnings;
-- monthly top-ups are added as deposits, never counted as profit.
+- monthly top-ups are added as deposits, never counted as profit; in the one-year outlook they arrive
+  through the year, so on average half of them earn for the whole year.
 
 > [!CAUTION]
 > Expected return is a forecast you enter (or that Inzhur publishes). It never changes what a

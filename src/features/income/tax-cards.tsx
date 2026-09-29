@@ -33,11 +33,6 @@ function usePeriodLabel() {
   };
 }
 
-/**
- * The next tax filings and payments for the regime in the tax profile, with
- * a tap to mark each one done. Renders nothing for regimes without a fixed
- * calendar.
- */
 export function TaxCalendarCard() {
   const { state, update } = useStore();
   const { t, tp, tk } = useT();
@@ -47,7 +42,6 @@ export function TaxCalendarCard() {
   if (!hasTaxCalendar(regime)) return null;
 
   const items = upcomingObligations(state, today, 6);
-  // Payments sharing the earliest deadline are paid together, so the summary adds them up.
   const first = items.find((o) => o.amount !== undefined);
   const due = first ? items.filter((o) => o.amount !== undefined && o.due === first.due) : [];
   const name = (o: TaxObligation) => t(`taxcal.${o.kind}`, { period: periodLabel(o.period) });
@@ -57,7 +51,6 @@ export function TaxCalendarCard() {
     if (days === 0) return t("taxcal.today");
     return `${formatDateShort(o.due)} · ${tp("taxcal.inDays", days)}`;
   };
-  // Paid: remembered on the calendar and booked as an expense under taxes, so it shows in spending.
   const markPaid = (o: TaxObligation) =>
     update((s) => recordTaxPayments(s, [o], true, today, name), t("taxcal.paidToast", { name: name(o) }));
 
@@ -105,7 +98,6 @@ export function TaxCalendarCard() {
   );
 }
 
-/** NBU rates for foreign-currency income, fetched once per currency and day. */
 function useNbuRates(keys: string[]): Map<string, number> {
   const [rates, setRates] = useState<Map<string, number>>(new Map());
   const wanted = keys.join(",");
@@ -129,11 +121,6 @@ function useNbuRates(keys: string[]): Map<string, number> {
   return rates;
 }
 
-/**
- * The year by quarter as the declaration sees it: gross income in hryvnias —
- * foreign currency at the NBU rate of the day it arrived — and what each tax
- * comes to, with what has been marked as paid.
- */
 export function QuarterlyTaxCard() {
   const { state, update } = useStore();
   const { t } = useT();
@@ -144,7 +131,6 @@ export function QuarterlyTaxCard() {
   const paid = state.settings.taxPaid ?? {};
 
   const yearIncome = state.transactions.filter((tx) => tx.type === "income" && tx.tax && tx.date.startsWith(String(year)));
-  // The NBU publishes a rate for days that have passed; planned income uses today's rate until then.
   const fxKeys = [
     ...new Set(
       yearIncome.filter((tx) => tx.currency !== "UAH" && tx.date <= today).map((tx) => `${tx.currency}:${tx.date}`),
@@ -187,11 +173,9 @@ export function QuarterlyTaxCard() {
   const toggle = (row: (typeof quarters)[number]) =>
     update((s) => recordTaxPayments(s, row.payments, !row.settled, today, name));
 
-  // Hryvnias per unit on a day: the NBU rate once it is published, today's rate before that.
   const rateOf: RateOf = (currency, date) => nbu.get(`${currency}:${date}`) ?? state.settings.rates[currency as "USD" | "EUR"] ?? 1;
   const downloadBook = () =>
     downloadFile(`income-book-${year}.csv`, incomeBookCsv(incomeBook(state, year, rateOf)), "text/csv;charset=utf-8");
-  // The declaration for the last quarter that has ended counts everything since 1 January.
   const lastQuarter = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
   const declaration = lastQuarter > 0 ? declarationFigures(state, year, lastQuarter, rateOf) : null;
   const figures = taxYearValues(year);
@@ -205,7 +189,6 @@ export function QuarterlyTaxCard() {
             <tr>
               <th className="text-left">{t("taxcal.col.quarter")}</th>
               <th className="text-right">{t("taxcal.col.income")}</th>
-              {/* On a phone the four parts fold into one total, so the table fits the screen. */}
               <th className="text-right sm:hidden">{t("taxcal.col.taxes")}</th>
               <th className="hidden text-right sm:table-cell">{t("taxcal.col.single")}</th>
               <th className="hidden text-right sm:table-cell">{t("taxcal.col.levy")}</th>

@@ -8,13 +8,10 @@ import { diffState } from "@/lib/state/changes";
 
 export const dynamic = "force-dynamic";
 
-/** Monobank checks the address with a GET before it starts sending; any answer but 200 refuses it. */
 export async function GET() {
   return new NextResponse(null, { status: 200 });
 }
 
-// One user's operations are folded in one after another: the two halves of a transfer
-// arrive almost together, and each has to see the other to be paired.
 const queues = new Map<string, Promise<unknown>>();
 
 function inTurn<T>(userId: string, work: () => Promise<T>): Promise<T> {
@@ -29,12 +26,6 @@ function inTurn<T>(userId: string, work: () => Promise<T>): Promise<T> {
   return next;
 }
 
-/**
- * A new operation on a connected card or jar. The secret in the address says whose it
- * is; the operation is booked like an import — categorised, paired with its other
- * half, matched to a planned payment — to the account the card is linked to. Cards
- * that are not linked are ignored. Monobank retries anything but a quick 200.
- */
 export async function POST(request: Request, { params }: { params: Promise<{ key: string }> }) {
   if (!rateLimit(clientKey(request, "mono-webhook"), 120, 60_000).allowed) {
     return NextResponse.json({ error: "slow down" }, { status: 429 });
