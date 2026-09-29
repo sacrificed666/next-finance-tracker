@@ -82,12 +82,23 @@ database therefore shows which rows exist, but not a single amount, name or note
 | Variable | Meaning |
 | --- | --- |
 | `DATA_ENCRYPTION_KEY` | 32 random bytes, base64 (`openssl rand -base64 32`). The key that seals every record |
+| `DATA_ENCRYPTION_KEY_PREVIOUS` | Optional — the key before the current one, while records move over after a change of key |
 | `AUTH_SECRET` | Used to derive a key when `DATA_ENCRYPTION_KEY` is missing, so records are never written in the clear |
+
+Records are always sealed with the current key: `DATA_ENCRYPTION_KEY`, or the key derived from
+`AUTH_SECRET` when it is not set. Reading tries the current key first, then
+`DATA_ENCRYPTION_KEY_PREVIOUS`, then the key derived from `AUTH_SECRET` (`lib/sealing.ts`). The first
+time an account loads its data after the server starts, every record of that account that only an
+older key opens is sealed again with the current one — across all sealed tables and columns, in one
+transaction (`lib/server/reseal.ts`). The server logs `re-sealed N records` when it does.
+
+That makes a change of key an edit to `.env` and a restart — see
+[Operations](./operations.md#changing-the-encryption-key).
 
 > [!CAUTION]
 > Losing the key means losing the data — there is no recovery path. Keep `DATA_ENCRYPTION_KEY` in your
-> password manager alongside your database backups, and never rotate it without re-encrypting first
-> (load the state with the old key, save it with the new one).
+> password manager alongside your database backups. A record sealed with a key the server does not
+> have stops loading with "A record is sealed with a key this server does not have".
 
 > [!NOTE]
 > Rows written before this feature are still readable: the loader falls back to the plaintext columns

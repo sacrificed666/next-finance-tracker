@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { auth, OWNER_EMAIL } from "@/lib/server/auth";
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from "@/lib/i18n/locales";
 import { claimOrphanData, loadState, saveChanges, stateRevision } from "@/lib/server/repo";
+import { resealOlderRecords } from "@/lib/server/reseal";
 import { describeChanges, parseChanges } from "@/lib/state/changes";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ async function currentUserId(): Promise<string | null> {
   if (OWNER_EMAIL && session.user?.email?.toLowerCase() === OWNER_EMAIL) {
     await claimOrphanData(id);
   }
+  await resealOlderRecords(id);
   return id;
 }
 

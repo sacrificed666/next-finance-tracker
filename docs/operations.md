@@ -79,6 +79,26 @@ Production backs itself up. The `backup` service in `docker/production.yml` runs
 The script runs inside a Linux container, so `.gitattributes` keeps every `*.sh` file with LF line
 endings even in a Windows checkout — a CRLF copy would not run.
 
+### Changing the encryption key
+
+The app sees only the variables `docker-compose.yml` passes to it; `.env` itself never enters the
+image. Records move to a new key by themselves the first time the account loads after a restart
+(see [Security and privacy](./security-and-privacy.md#-encryption-at-rest)).
+
+| Situation | What to put in `.env` |
+| --- | --- |
+| Records sealed with the key derived from `AUTH_SECRET` (no `DATA_ENCRYPTION_KEY` set so far) | A new `DATA_ENCRYPTION_KEY`; keep `AUTH_SECRET` as it is until the move is done |
+| Replacing `DATA_ENCRYPTION_KEY` | The new key as `DATA_ENCRYPTION_KEY`, the old one as `DATA_ENCRYPTION_KEY_PREVIOUS` |
+
+1. `make prod-db-backup-now` — the dump is the way back.
+2. Edit `.env`, then `make prod-up` so the container starts with the new variables.
+3. Open the app once and look for `re-sealed N records` in `make prod-logs`.
+4. After that, `DATA_ENCRYPTION_KEY_PREVIOUS` can be removed, and `AUTH_SECRET` may change again.
+
+> [!NOTE]
+> The notification key is derived from the same secret, so after a change of key each device has to
+> switch reminders on again in Settings.
+
 ```bash
 make prod-backups                          # list the nightly dumps
 make prod-db-backup-now                    # one more, checked, next to the nightly ones

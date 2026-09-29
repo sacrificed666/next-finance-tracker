@@ -1,55 +1,46 @@
 import "server-only";
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { isSealed, keyFromAuthSecret, keyFromSetting, openWith, sealWith } from "@/lib/sealing";
 
-const PREFIX = "enc.v1.";
-const IV_BYTES = 12;
-
-function loadKey(): { key: Buffer; explicit: boolean } | null {
+function loadKeys(): { keys: Buffer[]; explicit: boolean } {
   const configured = process.env.DATA_ENCRYPTION_KEY?.trim();
-  if (configured) {
-    const raw = Buffer.from(configured, "base64");
-    if (raw.length === 32) return { key: raw, explicit: true };
-    return { key: createHash("sha256").update(configured).digest(), explicit: true };
-  }
-  const fallback = process.env.AUTH_SECRET?.trim();
-  if (fallback) {
-    return { key: createHash("sha256").update(`finance-tracker:data:${fallback}`).digest(), explicit: false };
-  }
-  return null;
+  const previous = process.env.DATA_ENCRYPTION_KEY_PREVIOUS?.trim();
+  const auth = process.env.AUTH_SECRET?.trim();
+  const candidates = [
+    configured ? keyFromSetting(configured) : auth ? keyFromAuthSecret(auth) : null,
+    previous ? keyFromSetting(previous) : null,
+    configured && auth ? keyFromAuthSecret(auth) : null,
+  ].filter((key): key is Buffer => key !== null);
+  const keys = candidates.filter((key, i) => candidates.findIndex((k) => k.equals(key)) === i);
+  return { keys, explicit: Boolean(configured) };
 }
 
-const loaded = loadKey();
+const { keys, explicit } = loadKeys();
 
-export const encryptionMode: "key" | "derived" | "off" = loaded
-  ? loaded.explicit
-    ? "key"
-    : "derived"
-  : "off";
+export const encryptionMode: "key" | "derived" | "off" = keys.length === 0 ? "off" : explicit ? "key" : "derived";
+
+export const hasOlderKeys = keys.length > 1;
 
 if (encryptionMode === "off") {
   console.warn("[secrets] No DATA_ENCRYPTION_KEY or AUTH_SECRET — records are stored unencrypted.");
 }
 
 export function seal(plain: string): string {
-  if (!loaded) return plain;
-  const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv("aes-256-gcm", loaded.key, iv);
-  const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return PREFIX + Buffer.concat([iv, tag, body]).toString("base64");
+  return keys.length === 0 ? plain : sealWith(keys[0], plain);
 }
 
 export function open(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
-  if (!value.startsWith(PREFIX)) return value;
-  if (!loaded) throw new Error("Encrypted records found but no encryption key is configured.");
-  const raw = Buffer.from(value.slice(PREFIX.length), "base64");
-  const iv = raw.subarray(0, IV_BYTES);
-  const tag = raw.subarray(IV_BYTES, IV_BYTES + 16);
-  const body = raw.subarray(IV_BYTES + 16);
-  const decipher = createDecipheriv("aes-256-gcm", loaded.key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
+  if (!isSealed(value)) return value;
+  if (keys.length === 0) throw new Error("Encrypted records found but no encryption key is configured.");
+  const opened = openWith(keys, value);
+  if (!opened) throw new Error("A record is sealed with a key this server does not have.");
+  return opened.plain;
+}
+
+export function resealed(value: string | null | undefined): string | null {
+  if (!value || !isSealed(value) || keys.length < 2) return null;
+  const opened = openWith(keys, value);
+  return opened && opened.keyIndex > 0 ? sealWith(keys[0], opened.plain) : null;
 }
 
 export function sealRecord(value: unknown): string {

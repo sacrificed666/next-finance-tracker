@@ -28,6 +28,7 @@ make env
 | `DATABASE_POOL_MAX` | Upper bound of the `pg` pool |
 | `AUTH_SECRET` | Auth.js signing secret — `openssl rand -base64 32` |
 | `DATA_ENCRYPTION_KEY` | Key that encrypts every stored record — `openssl rand -base64 32` |
+| `DATA_ENCRYPTION_KEY_PREVIOUS` | Optional — the old key while records move to a new one |
 | `AUTH_URL` | Public origin, e.g. `https://money.example.com` |
 | `OWNER_EMAIL` | The only address allowed to register; everyone else is rejected |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Optional — Google sign-in appears only when both are set |
