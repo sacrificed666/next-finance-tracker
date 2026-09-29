@@ -18,9 +18,6 @@ export default function proxy(req: NextRequest) {
     if (pathname !== "/") url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
-  if (signedIn && PUBLIC.has(pathname)) {
-    return NextResponse.redirect(new URL("/", req.nextUrl));
-  }
 
   const nonce = btoa(crypto.randomUUID());
   const policy = contentSecurityPolicy(nonce, process.env.NODE_ENV === "production");

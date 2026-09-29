@@ -89,7 +89,9 @@ make prod-logs                             # the backup service logs a line for 
 
 | Symptom | Where to look |
 | --- | --- |
-| Redirect loop at `/login` | `AUTH_SECRET` changed, or the session cookie is blocked |
+| Every device asked to sign in again | `AUTH_SECRET` changed, or *Sign out everywhere* was used on the Profile page |
+| Sign-in keeps asking for a code that is right | The phone's clock is off by more than 30 seconds — turn on automatic time |
+| Phone and recovery codes both lost | Turn two-step verification off from the database, below |
 | 500 on save | A new enum value missing from a `CHECK` constraint in `db/schema.sql` |
 | Blank exchange rates | Monobank rate limit (one request per five minutes) — the NBU fallback covers it |
 | Cryptocurrency prices missing | CoinGecko throttling; previous prices are kept and the error is shown inline |
@@ -101,3 +103,14 @@ make prod-logs                             # the backup service logs a line for 
 
 Container logs: `make dev-logs` (or `stage-` / `prod-`). The app logs one line per request with the
 route, status and timing.
+
+### Locked out of two-step verification
+
+Only the server's owner can do this, and it needs nothing but database access. Open `psql` with
+`make prod-psql` (or `dev-` / `stage-`) and clear the column for the account:
+
+```sql
+UPDATE users SET two_factor = NULL WHERE lower(email) = 'you@example.com';
+```
+
+Sign in with the password alone, then set two-step verification up again on the Profile page.

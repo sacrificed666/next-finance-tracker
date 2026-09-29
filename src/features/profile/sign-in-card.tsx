@@ -3,19 +3,22 @@
 import { useState, type ReactNode } from "react";
 import { signIn, signOut } from "next-auth/react";
 import { PasswordField } from "@/components/forms/password-field";
-import { Badge, Button, Card, Field, Icon, IconDisc, type IconName } from "@/components/ui";
+import { Badge, Button, Card, ConfirmDialog, Field, Icon, IconDisc, type IconName } from "@/components/ui";
 import { useT } from "@/lib/i18n";
 import { passwordStrength } from "@/lib/password-meter";
 import type { Profile } from "./shared";
+import { TwoFactorSheet } from "./two-factor-sheet";
 
-export function SignInCard({ profile, onPassword }: { profile: Profile; onPassword: () => void }) {
-  const { t } = useT();
+export function SignInCard({ profile, onChange }: { profile: Profile; onChange: (patch: Partial<Profile>) => void }) {
+  const { t, tp } = useT();
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [repeat, setRepeat] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [twoFactor, setTwoFactor] = useState<"enable" | "disable" | null>(null);
+  const [endAll, setEndAll] = useState(false);
   const google = profile.providers.includes("google");
   const strength = passwordStrength(next);
   const mismatch = repeat.length > 0 && repeat !== next;
@@ -37,13 +40,20 @@ export function SignInCard({ profile, onPassword }: { profile: Profile; onPasswo
         setNext("");
         setRepeat("");
         setOpen(false);
-        onPassword();
+        onChange({ hasPassword: true });
       } else {
         setMsg({ ok: false, text: body.error ?? t("profile.password.failed") });
       }
     } finally {
       setBusy(false);
     }
+  };
+
+  const signOutEverywhere = async () => {
+    setMsg(null);
+    const res = await fetch("/api/profile/sessions", { method: "DELETE" }).catch(() => null);
+    if (res?.ok) await signOut({ redirectTo: "/login" });
+    else setMsg({ ok: false, text: t("profile.sessions.failed") });
   };
 
   const methods: Array<{ id: string; icon: IconName; slot: number; title: string; status: string; on: boolean; action?: ReactNode }> = [
@@ -68,6 +78,23 @@ export function SignInCard({ profile, onPassword }: { profile: Profile; onPasswo
         </Button>
       ) : undefined,
     },
+    ...(profile.hasPassword
+      ? [
+          {
+            id: "two-factor",
+            icon: "device" as const,
+            slot: 7,
+            title: t("profile.twofa.title"),
+            status: profile.twoFactor ? tp("profile.twofa.on", profile.recoveryLeft) : t("profile.twofa.off"),
+            on: profile.twoFactor,
+            action: (
+              <Button variant="ghost" size="sm" onClick={() => setTwoFactor(profile.twoFactor ? "disable" : "enable")}>
+                {profile.twoFactor ? t("profile.twofa.turnOff") : t("profile.twofa.turnOn")}
+              </Button>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -153,12 +180,33 @@ export function SignInCard({ profile, onPassword }: { profile: Profile; onPasswo
             <Icon name="lock" size={15} />
             {profile.hasPassword ? t("profile.password.change") : t("profile.password.setButton")}
           </Button>
+          <Button variant="ghost" onClick={() => setEndAll(true)}>
+            <Icon name="monitor" size={15} />
+            {t("profile.sessions.endAll")}
+          </Button>
           <Button variant="danger" onClick={() => void signOut({ redirectTo: "/login" })}>
             <Icon name="logout" size={15} />
             {t("nav.signOut")}
           </Button>
         </div>
       )}
+
+      {twoFactor && (
+        <TwoFactorSheet
+          mode={twoFactor}
+          email={profile.email}
+          onDone={(enabled, recoveryLeft) => onChange({ twoFactor: enabled, recoveryLeft })}
+          onClose={() => setTwoFactor(null)}
+        />
+      )}
+      <ConfirmDialog
+        open={endAll}
+        onClose={() => setEndAll(false)}
+        onConfirm={() => void signOutEverywhere()}
+        title={t("profile.sessions.confirmTitle")}
+        message={t("profile.sessions.confirm")}
+        confirmLabel={t("profile.sessions.endAll")}
+      />
     </Card>
   );
 }

@@ -66,9 +66,12 @@ e2e/                      Playwright browser tests (playwright.config.ts); unit 
 groups `(auth)` and `(app)` do not appear in URLs — they only decide which layout wraps a page:
 
 - not signed in and not on `/login` or `/register` → redirect to `/login?next=<path>`;
-- signed in and on `/login` or `/register` → redirect to `/`;
 - anything else passes with a fresh nonce in its `Content-Security-Policy` — see
   [Security and privacy](./security-and-privacy.md#-response-headers).
+
+A cookie proves nothing on its own, so the `(auth)` layout calls `auth()` and sends a valid session
+from `/login` or `/register` to `/`. A cookie whose session has ended — after *Sign out everywhere* or
+a new `AUTH_SECRET` — fails that check, so the form renders instead of bouncing between the two pages.
 
 Its matcher deliberately skips `api`, Next.js internals, the self-hosted logo folders and what an
 install needs before sign-in (the manifest is fetched without cookies):
@@ -123,6 +126,8 @@ sheet of its own.
 | `GET/POST /api/auth/[...nextauth]` | Auth.js handlers (credentials + optional Google) |
 | `GET/PATCH /api/profile` | Display name, avatar URL, about note |
 | `POST /api/profile/password` | Set or change the password |
+| `POST /api/profile/two-factor` | `{ action, code }`: `begin` returns a new secret and its `otpauth://` address, `confirm` turns two-step verification on and returns the recovery codes, `disable` turns it off |
+| `DELETE /api/profile/sessions` | Ends every session of the account by raising its session epoch |
 | `GET /api/inzhur` | Scrapes published Inzhur fund data, cached in memory for 10 minutes |
 | `GET/POST/DELETE /api/monobank` | Monobank connection: the card list (never the token), connect with a token, disconnect |
 | `GET /api/monobank/statement` | One card's statement for a period; `429 wait:<s>` while Monobank's one-a-minute limit applies |

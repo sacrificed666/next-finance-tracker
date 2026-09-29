@@ -57,7 +57,7 @@ export function ProfilePage() {
           side={
             <>
               <HealthCard g={g} />
-              <SignInCard profile={profile} onPassword={() => setProfile((p) => (p ? { ...p, hasPassword: true } : p))} />
+              <SignInCard profile={profile} onChange={(patch) => setProfile((p) => (p ? { ...p, ...patch } : p))} />
             </>
           }
         />

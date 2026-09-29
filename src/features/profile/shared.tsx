@@ -18,6 +18,8 @@ export interface Profile {
   createdAt: string;
   hasPassword: boolean;
   providers: string[];
+  twoFactor: boolean;
+  recoveryLeft: number;
 }
 
 export type Game = ReturnType<typeof gamification>;

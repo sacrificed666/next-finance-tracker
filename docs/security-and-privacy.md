@@ -16,11 +16,45 @@ finances.
 | Comparison | `timingSafeEqual`, and a dummy hash when the user does not exist, so timing does not leak account existence |
 | Minimum password | 10 characters, enforced server-side (`passwordProblem`) |
 | Hash parameters | `scrypt` N = 2¹⁷, r = 8, p = 1, stored inside the hash; older hashes are upgraded on the next successful sign-in |
-| Rate limits | 10 sign-in attempts per email and 5 registrations per address every 15 minutes, plus 10 password changes |
+| Rate limits | 10 sign-in attempts per email and 5 registrations per address every 15 minutes, plus 10 password changes and 10 two-step confirmations |
 | Google sign-in | Optional; appears only when `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are set |
+| Two-step verification | Optional TOTP (RFC 6238: SHA-1, six digits, 30-second steps, one step of clock drift either way) on top of the password |
+| Recovery codes | Eight single-use codes, shown once, stored as SHA-256 hashes and compared in constant time |
+| Code replay | Each code works once: the server remembers the last step an account signed in with |
+| Sign out everywhere | Raises `users.session_epoch`; every session carries the epoch it started with and ends when they differ |
 
 The Profile page adds a strength meter and a confirmation field, but the server remains the authority
 on what is acceptable.
+
+### Two-step verification
+
+Profile → Sign-in → *Two-step verification* shows a QR code and the same key as text for any
+authenticator app, and turns on only after the first code from that app is accepted. The recovery
+codes appear once, with buttons to copy or download them. From then on, signing in with email and
+password asks for the current code; a recovery code works in the same field and is used up.
+
+| Rule | Why |
+| --- | --- |
+| Turning it off needs a current code or a recovery code | A session left open on someone else's computer cannot remove the second step |
+| It cannot be set up again while it is on | Replacing the secret would need no proof of the old one; turn it off first |
+| Code attempts count towards the 10 sign-in attempts | Six digits cannot be guessed inside the limit |
+| The secret lives in `users.two_factor`, sealed like every record | A database dump does not reveal it |
+
+It covers email-and-password sign-in only. Google sign-in relies on the protection of the Google
+account itself.
+
+> [!WARNING]
+> Losing the phone and every recovery code locks the account behind the second step. The owner of the
+> server can still turn it off from the database — see
+> [Operations](./operations.md#locked-out-of-two-step-verification).
+
+### Sign out everywhere
+
+The button under the sign-in methods ends every session of the account, the current one included.
+Sessions are signed cookies, so nothing is deleted: the server raises `users.session_epoch`, and each
+check of a session compares it with the epoch stored in the cookie. Every server process caches the
+epoch for 30 seconds, so an instance other than the one that handled the click notices within that
+time. A browser whose session has ended gets the sign-in form on its next request.
 
 > [!WARNING]
 > Rotating `AUTH_SECRET` invalidates every session. Keep it in `.env` only, and keep `.env` out of
@@ -35,7 +69,7 @@ Every record is stored as an **AES-256-GCM** ciphertext, not as readable columns
 | `transactions`, `categories`, `recurring_rules`, `subscriptions` | The whole entity, including amounts, notes and dates |
 | `savings_accounts`, `investments`, `budgets`, `debts` | The whole entity, including balances and coin holdings |
 | `settings` | Everything except the interface language |
-| `users` | Name, avatar, about, occupation, location, link and birthday |
+| `users` | Name, avatar, about, occupation, location, link and birthday; the two-step verification secret and recovery-code hashes |
 | `category_rules`, `receivables`, `wishlist_items`, `planned_events`, `net_worth_snapshots` | The whole entity — these tables have no other columns |
 | `integrations` | The Monobank token and card list |
 | `attachments` | The receipt photo itself |
@@ -64,8 +98,9 @@ Every API route calls `auth()` and answers `401` without a session, including `/
 one exception is `POST /api/monobank/webhook/<key>`, where Monobank delivers new operations: it has
 no session, so the 24-byte random key in the address is what identifies the user (compared in
 constant time, rate-limited, `404` for anything unknown). Treat that address like a password — it
-only ever travels between the server and Monobank. The middleware additionally gates pages, so an
-unauthenticated browser never renders app HTML.
+only ever travels between the server and Monobank. The middleware additionally gates pages, so a
+browser without a session cookie never renders app HTML; one whose session has ended gets only the
+empty shell, and its first data request answers `401` and sends it to sign in.
 
 `PATCH /api/state` also:
 
@@ -129,6 +164,8 @@ Next.js adds the nonce to its own scripts; the theme script in the root layout r
 - The production image is a standalone Next.js build running as a non-root user with a health check.
 - PostgreSQL is not published to the host outside development.
 - Put a TLS-terminating reverse proxy in front of the app and set `AUTH_URL` to the public origin.
+- Rate limits count by the first address in `X-Forwarded-For`. Have the proxy replace that header
+  rather than append to it, otherwise a client picks its own address and its own limit.
 
 > [!CAUTION]
 > Never reuse the development `POSTGRES_PASSWORD` or `AUTH_SECRET` in production, and never commit a

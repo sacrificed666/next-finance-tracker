@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import PostgresAdapter from "@auth/pg-adapter";
@@ -7,8 +7,18 @@ import { getPool } from "@/lib/server/db";
 import { googleEnabled } from "@/lib/server/auth-config";
 import { hashPassword, needsRehash, verifyPassword } from "@/lib/server/password";
 import { clientKey, rateLimit } from "@/lib/server/rate-limit";
+import { sessionEpoch } from "@/lib/server/sessions";
+import { twoFactorEnabled, verifySecondFactor } from "@/lib/server/two-factor";
 
 export { OWNER_EMAIL, googleEnabled } from "@/lib/server/auth-config";
+
+class SecondFactorRequired extends CredentialsSignin {
+  code = "two_factor";
+}
+
+class SecondFactorWrong extends CredentialsSignin {
+  code = "two_factor_wrong";
+}
 
 const lazyPool = {
   query: (...args: Parameters<Pool["query"]>) => getPool().query(...args),
@@ -29,7 +39,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         ]
       : []),
     Credentials({
-      credentials: { email: {}, password: {} },
+      credentials: { email: {}, password: {}, code: {} },
       async authorize(raw, request) {
         const email = String(raw?.email ?? "").trim().toLowerCase();
         const password = String(raw?.password ?? "");
@@ -51,13 +61,23 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const upgraded = await hashPassword(password);
           await getPool().query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [user.id, upgraded]);
         }
+        if (await twoFactorEnabled(user.id)) {
+          const code = String(raw?.code ?? "").trim();
+          if (!code) throw new SecondFactorRequired();
+          if (!(await verifySecondFactor(user.id, code))) throw new SecondFactorWrong();
+        }
         return { id: user.id, email: user.email, name: user.name, image: user.image };
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user?.id) token.sub = user.id;
+      if (user?.id) {
+        token.sub = user.id;
+        token.epoch = await sessionEpoch(user.id);
+        return token;
+      }
+      if (token.sub && (await sessionEpoch(token.sub)) !== (Number(token.epoch) || 0)) return null;
       return token;
     },
     async session({ session, token }) {

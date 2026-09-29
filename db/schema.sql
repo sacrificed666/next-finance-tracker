@@ -278,6 +278,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS location text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS website text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday date;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_secret text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS session_epoch integer NOT NULL DEFAULT 0;
 
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS parent_id text;
 

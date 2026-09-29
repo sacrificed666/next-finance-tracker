@@ -45,6 +45,8 @@ export function SignInPage({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [needCode, setNeedCode] = useState(false);
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +71,12 @@ export function SignInPage({
           return;
         }
       }
-      const result = await signIn("credentials", { email, password, redirect: false });
+      const result = await signIn("credentials", { email, password, code: needCode ? code : "", redirect: false });
+      if (result?.code === "two_factor" || result?.code === "two_factor_wrong") {
+        setNeedCode(true);
+        if (result.code === "two_factor_wrong") setError(t("auth.code.wrong"));
+        return;
+      }
       if (result?.error) {
         setError(register ? t("auth.error.createdButFailed") : t("auth.error.wrong"));
         return;
@@ -110,42 +117,61 @@ export function SignInPage({
           onSubmit={(e) => {
             e.preventDefault();
             setTouched(true);
-            if (emailOk && passwordOk && !busy) void submit();
+            if (emailOk && passwordOk && !busy && (!needCode || code.trim().length >= 6)) void submit();
           }}
         >
-          {register && (
-            <Field label={t("common.name")} hint={t("common.optional")}>
-              <TextInput
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Illia"
-                autoComplete="name"
-                maxLength={80}
-              />
-            </Field>
+          {needCode ? (
+            <>
+              <p className="text-sm text-ink-2">{t("auth.code.hint")}</p>
+              <Field label={t("auth.code.label")} hint={t("auth.code.recovery")}>
+                <TextInput
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  placeholder="123 456"
+                  maxLength={11}
+                />
+              </Field>
+            </>
+          ) : (
+            <>
+              {register && (
+                <Field label={t("common.name")} hint={t("common.optional")}>
+                  <TextInput
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Illia"
+                    autoComplete="name"
+                    maxLength={80}
+                  />
+                </Field>
+              )}
+              <Field label={t("auth.email")} hint={emailProblem ?? undefined}>
+                <TextInput
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => setTouched(true)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  inputMode="email"
+                />
+              </Field>
+              <Field label={t("auth.password")} hint={register ? t("auth.password.hint") : undefined}>
+                <PasswordField
+                  value={password}
+                  onChange={setPassword}
+                  required
+                  meter={register}
+                  autoComplete={register ? "new-password" : "current-password"}
+                  placeholder="••••••••••"
+                />
+              </Field>
+            </>
           )}
-          <Field label={t("auth.email")} hint={emailProblem ?? undefined}>
-            <TextInput
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => setTouched(true)}
-              placeholder="you@example.com"
-              autoComplete="email"
-              inputMode="email"
-            />
-          </Field>
-          <Field label={t("auth.password")} hint={register ? t("auth.password.hint") : undefined}>
-            <PasswordField
-              value={password}
-              onChange={setPassword}
-              required
-              meter={register}
-              autoComplete={register ? "new-password" : "current-password"}
-              placeholder="••••••••••"
-            />
-          </Field>
 
           {error && (
             <p className="flex items-start gap-2 rounded-field bg-expense/12 px-3 py-2 text-sm text-expense">
@@ -155,11 +181,25 @@ export function SignInPage({
           )}
 
           <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? t("auth.working") : register ? t("auth.register.submit") : t("auth.login.submit")}
+            {busy ? t("auth.working") : needCode ? t("auth.code.submit") : register ? t("auth.register.submit") : t("auth.login.submit")}
           </Button>
+          {needCode && (
+            <Button
+              variant="ghost"
+              className="w-full"
+              disabled={busy}
+              onClick={() => {
+                setNeedCode(false);
+                setCode("");
+                setError(null);
+              }}
+            >
+              {t("auth.code.back")}
+            </Button>
+          )}
         </form>
 
-        {googleEnabled && (
+        {googleEnabled && !needCode && (
           <>
             <div className="my-4 flex items-center gap-3">
               <span className="h-px flex-1 bg-hairline" />

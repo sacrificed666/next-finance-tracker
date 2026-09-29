@@ -62,6 +62,10 @@ date). Two more hold data that never travels with `AppState`:
 | `integrations` | One row per connected bank (`provider = 'monobank'`): the sealed token and card list |
 | `attachments` | Receipt photos, sealed, with their type. Photos no entry refers to any more are removed a day after the save that dropped them |
 
+`users` also carries two sign-in columns: `two_factor` (sealed: the authenticator secret and the
+recovery-code hashes, `NULL` while two-step verification is off) and `session_epoch` (an integer that
+*Sign out everywhere* raises).
+
 > [!NOTE]
 > The app also applies the schema on first database use (`src/lib/server/db.ts`), so a fresh container is
 > usable without a manual migration step.

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { encode } from "@auth/core/jwt";
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type BrowserContext, type Page } from "@playwright/test";
 
 const COOKIE = "authjs.session-token";
 const EMPTY_USER = "00000000-0000-4000-8000-00000000e2e0";
@@ -35,6 +35,16 @@ export const ROUTES = [
 
 const EXTERNAL = /coingecko|monobank\.ua|bank\.gov\.ua|flagcdn|google\.com|gstatic|inzhur/;
 
+export async function addSession(context: BrowserContext, baseURL: string, claims: Record<string, unknown> = {}) {
+  if (!secret) throw new Error("AUTH_SECRET is needed to sign the test session");
+  const token = await encode({
+    token: { sub: process.env.E2E_USER_ID ?? EMPTY_USER, name: "E2E", ...claims },
+    secret,
+    salt: COOKIE,
+  });
+  await context.addCookies([{ name: COOKIE, value: token, url: baseURL }]);
+}
+
 export const test = base.extend<{ signedIn: void; errors: string[] }>({
   errors: async ({ page }, provide) => {
     const errors: string[] = [];
@@ -46,13 +56,7 @@ export const test = base.extend<{ signedIn: void; errors: string[] }>({
   },
   signedIn: [
     async ({ context, baseURL }, provide) => {
-      if (!secret) throw new Error("AUTH_SECRET is needed to sign the test session");
-      const token = await encode({
-        token: { sub: process.env.E2E_USER_ID ?? EMPTY_USER, name: "E2E" },
-        secret,
-        salt: COOKIE,
-      });
-      await context.addCookies([{ name: COOKIE, value: token, url: baseURL! }]);
+      await addSession(context, baseURL!);
       await provide();
     },
     { auto: false },

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, openPage, ROUTES, test } from "./fixtures";
+import { addSession, expect, openPage, ROUTES, test } from "./fixtures";
 
 const KEYS = new Set(
   [...readFileSync("src/lib/i18n/dict/en.ts", "utf8").matchAll(/^\s*"([a-zA-Z0-9_.]+)":/gm)].map((m) => m[1].replace(/\.(one|other)$/, "")),
@@ -22,4 +22,17 @@ test("a visitor without a session is sent to the sign-in page", async ({ page })
   await page.goto("/transactions");
   await expect(page).toHaveURL(/\/login\?next=%2Ftransactions/);
   await expect(page.locator("input[type=email], input[name=email]").first()).toBeVisible();
+});
+
+test("a signed-in visitor on the sign-in page goes to the overview", async ({ page, signedIn }) => {
+  void signedIn;
+  await page.goto("/login");
+  await expect(page).toHaveURL(/\/$/);
+});
+
+test("a session ended on every device lands on the sign-in form", async ({ page, context, baseURL }) => {
+  await addSession(context, baseURL!, { epoch: 999_999 });
+  await page.goto("/transactions");
+  await expect(page).toHaveURL(/\/login\?next=%2Ftransactions/);
+  await expect(page.locator("input[type=email]")).toBeVisible();
 });

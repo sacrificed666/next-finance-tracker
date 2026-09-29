@@ -17,6 +17,8 @@ export interface Profile {
   createdAt: string;
   hasPassword: boolean;
   providers: string[];
+  twoFactor: boolean;
+  recoveryLeft: number;
 }
 
 interface ProfileSecret {
@@ -34,7 +36,7 @@ const PERSONAL = ["name", "image", "about", "occupation", "location", "website",
 export async function loadProfile(userId: string): Promise<Profile | null> {
   const res = await getPool().query(
     `SELECT u.id, u.email, u.name, u.image, u.about, u.occupation, u.location, u.website, u.locale,
-            u.profile_secret,
+            u.profile_secret, u.two_factor,
             to_char(u.birthday, 'YYYY-MM-DD') AS birthday,
             to_char(u."emailVerified", 'YYYY-MM-DD"T"HH24:MI:SSZ') AS email_verified,
             to_char(u.created_at, 'YYYY-MM-DD') AS created_at,
@@ -49,6 +51,7 @@ export async function loadProfile(userId: string): Promise<Profile | null> {
   const r = res.rows[0];
   if (!r) return null;
   const sealed = openRecord<ProfileSecret>(r.profile_secret);
+  const twoFactor = openRecord<{ secret?: string; recovery?: string[] }>(r.two_factor);
   return {
     id: r.id,
     email: r.email,
@@ -64,6 +67,8 @@ export async function loadProfile(userId: string): Promise<Profile | null> {
     createdAt: r.created_at,
     hasPassword: r.has_password,
     providers: r.providers ?? [],
+    twoFactor: Boolean(twoFactor?.secret),
+    recoveryLeft: twoFactor?.secret ? (twoFactor.recovery?.length ?? 0) : 0,
   };
 }
 
