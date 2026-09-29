@@ -25,6 +25,7 @@ it covers and needs no database.
 | `lib/finance/import.test.ts` | Transfer pairing, cash withdrawals, planned-payment matching, duplicates, subscription suggestions, one-operation-at-a-time webhook booking, and rules learned from a correction |
 | `lib/finance/plans.test.ts` | Rules that book a budget as spent, the fixed-bill heuristic and stopping schedules |
 | `lib/finance/tax.test.ts` | Each year's published figures and limits, weekend deadlines, paid taxes as expenses, the income book and declaration totals |
+| `lib/finance/alerts.test.ts` | The note for a bank operation, and budgets speaking up at 80% and 100% only when an operation crosses the mark, subcategories included |
 | `lib/finance/export.test.ts` | The entries and report CSVs: column order, signs, base-currency amounts, quoting, and the separator and decimal mark each language's spreadsheet expects |
 | `lib/finance/forecast.test.ts` | The average kept each month, and the projection adding it to the accounts, compounding it, or running them down |
 | `lib/finance/month-rates.test.ts` | Which months need a rate, the month's rate in conversions, averaging the NBU's daily rates, and normalising stored rates |

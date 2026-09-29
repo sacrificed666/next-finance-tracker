@@ -276,6 +276,7 @@ export interface Settings {
   bankLinks?: Record<string, string>;
   dashboard?: DashboardLayout;
   monthRates?: Record<string, { USD: number; EUR: number }>;
+  notify?: { operations?: boolean; budgets?: boolean };
 }
 
 export interface AppState {

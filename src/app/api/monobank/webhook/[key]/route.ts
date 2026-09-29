@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { budgetCrossings, operationMessage } from "@/lib/finance/alerts";
 import { absorbOperation, candidateFromMono } from "@/lib/finance/import";
+import { makeI18n } from "@/lib/i18n/core";
+import { serverMessages } from "@/lib/i18n/server";
 import { findMonoByWebhookKey, isMonoItem, monoDate, parseMonoItem, recordMonoBalance } from "@/lib/server/monobank";
+import { pushTo } from "@/lib/server/push";
 import { clientKey, rateLimit } from "@/lib/server/rate-limit";
 import { loadState, saveChanges } from "@/lib/server/repo";
 import { diffState } from "@/lib/state/changes";
@@ -52,7 +56,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ key
       if (!linked) return;
       const candidate = candidateFromMono(state, item, currency, linked, monoDate(item.time));
       const next = absorbOperation(state, candidate, randomUUID);
-      if (next !== state) await saveChanges(found.userId, diffState(state, next), null);
+      if (next === state) return;
+      await saveChanges(found.userId, diffState(state, next), null);
+      const booked = next.transactions.find((tx) => tx.externalId === candidate.externalId);
+      if (!booked || booked.type === "transfer") return;
+      const notify = next.settings.notify ?? {};
+      const i18n = makeI18n(next.settings.locale, serverMessages(next.settings.locale));
+      const messages = [
+        ...(notify.operations === false ? [] : [operationMessage(next, booked, i18n)]),
+        ...(notify.budgets === false ? [] : budgetCrossings(state, next, booked, i18n)),
+      ];
+      for (const message of messages) await pushTo(found.userId, message).catch(() => undefined);
     });
   } catch (err) {
     console.error("[api/monobank/webhook]", err);

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Switch } from "@/components/ui";
 import { useT } from "@/lib/i18n";
+import { useStore } from "@/lib/state/store";
 
 type Status = "loading" | "unsupported" | "ios" | "dev" | "server" | "denied" | "off" | "on";
 
@@ -28,6 +29,10 @@ async function send(method: "PUT" | "DELETE", body: unknown): Promise<boolean> {
 
 export function NotificationsCard() {
   const { t } = useT();
+  const { state, update } = useStore();
+  const notify = state.settings.notify ?? {};
+  const setNotify = (key: "operations" | "budgets", on: boolean) =>
+    update((s) => ({ ...s, settings: { ...s.settings, notify: { ...s.settings.notify, [key]: on ? undefined : false } } }));
   const [status, setStatus] = useState<Status>("loading");
   const [hour, setHour] = useState(9);
   const [key, setKey] = useState<Uint8Array | null>(null);
@@ -150,9 +155,20 @@ export function NotificationsCard() {
           </div>
         )}
         {status === "on" && (
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void test()}>
-            {t("settings.push.test")}
-          </Button>
+          <>
+            {(["operations", "budgets"] as const).map((key) => (
+              <div key={key} className="flex items-start gap-3 border-t border-hairline pt-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-ink-1">{t(`settings.push.${key}`)}</p>
+                  <p className="caption">{t(`settings.push.${key}.hint`)}</p>
+                </div>
+                <Switch checked={notify[key] !== false} onChange={(on) => setNotify(key, on)} label={t(`settings.push.${key}`)} />
+              </div>
+            ))}
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void test()}>
+              {t("settings.push.test")}
+            </Button>
+          </>
         )}
         {note && <p className={`text-sm ${note.ok ? "text-income" : "text-expense"}`}>{note.text}</p>}
       </div>

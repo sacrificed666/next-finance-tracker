@@ -16,6 +16,21 @@ The note shows up to five lines, nearest first (taxes before payments on the sam
 rest ("…and 2 more"). It is written in the language chosen in Settings. Tapping it opens the Income
 page when a tax is listed, otherwise the Calendar. Days with nothing due send nothing.
 
+## ⚡ As it happens
+
+With automatic Monobank import on, two more kinds of note arrive the moment the bank reports an
+operation, each with its own switch under the device switch. The switches belong to the account
+(`settings.notify`), so every device that gets notes follows them.
+
+| Note | When | Tap opens |
+| --- | --- | --- |
+| New bank operation | Every payment or income the webhook books, with its amount, merchant, category and account; not transfers between your own accounts | The entry, to change its category |
+| Budget at 80% or 100% | When an operation takes a budget — its category and subcategories together — past either mark for the month | Expenses |
+
+A budget speaks up once per mark: the check compares the budget before and after the operation, so
+an operation that fills in a planned payment of the same size changes nothing
+(`lib/finance/alerts.ts`).
+
 ## 📱 Turning it on
 
 **Settings → Notifications → Reminders on this device.** The browser asks for permission once, and

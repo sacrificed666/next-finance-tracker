@@ -137,7 +137,8 @@ send each new operation as it happens.
 **Exchange rates and asset prices refresh automatically every hour** from Monobank (with the official
 NBU rate as a fallback) and CoinGecko — no buttons to press.
 **Notifications** bring a short note each morning to the devices you switch on: payments and income
-planned for today and tomorrow, taxes coming due and money someone should return.
+planned for today and tomorrow, taxes coming due and money someone should return. With automatic
+Monobank import, each new operation arrives as a note too, and a budget speaks up at 80% and 100%.
 
 ### ⌨️ Everywhere
 

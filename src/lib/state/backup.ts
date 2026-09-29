@@ -24,6 +24,7 @@ import type {
   Receivable,
   RecurringRule,
   SavingsAccount,
+  Settings,
   Subscription,
   TaxProfile,
   TaxRegimeId,
@@ -114,6 +115,7 @@ export function normalizeState(raw: unknown): AppState {
       bankLinks: normalizeBankLinks(s.bankLinks),
       dashboard: normalizeDashboard(s.dashboard),
       monthRates: normalizeMonthRates(s.monthRates),
+      notify: normalizeNotify(s.notify),
     },
   };
 }
@@ -125,6 +127,13 @@ function cleanText(v: unknown, max: number): string | undefined {
   if (typeof v !== "string") return undefined;
   const text = v.trim().slice(0, max);
   return text.length > 0 ? text : undefined;
+}
+
+function normalizeNotify(v: unknown): Settings["notify"] {
+  if (!isRecord(v)) return undefined;
+  const operations = v.operations === false ? false : undefined;
+  const budgets = v.budgets === false ? false : undefined;
+  return operations === undefined && budgets === undefined ? undefined : { operations, budgets };
 }
 
 export function normalizeTags(v: unknown): string[] | undefined {
