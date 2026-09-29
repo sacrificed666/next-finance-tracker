@@ -4,6 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { Button, Card, ConfirmDialog, Icon, IconDisc, SUBJECT_SLOT, type IconName } from "@/components/ui";
 import { DEFAULT_STATE } from "@/lib/constants";
 import { todayISO } from "@/lib/date";
+import { downloadFile } from "@/lib/download";
 import { useT } from "@/lib/i18n";
 import { exportBackup, parseBackup } from "@/lib/state/backup";
 import { useStore } from "@/lib/state/store";
@@ -56,17 +57,7 @@ export function DataCard() {
   const [resetOpen, setResetOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const exportData = () => {
-    const blob = new Blob([exportBackup(state)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `finance-backup-${todayISO()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  };
+  const exportData = () => downloadFile(`finance-backup-${todayISO()}.json`, exportBackup(state), "application/json");
 
   const onFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Button, Icon, Toast } from "@/components/ui";
 import { AutoRefresh } from "@/components/providers/auto-refresh";
+import { PrintTheme } from "@/components/providers/print-theme";
 import { SnapshotRecorder } from "@/components/providers/snapshot-recorder";
 import { useStore, useSyncStatus } from "@/lib/state/store";
 import { useT } from "@/lib/i18n";
@@ -31,11 +32,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <>
       <AutoRefresh />
+      <PrintTheme />
       <SnapshotRecorder />
       <CommandPalette />
       <Sidebar />
-      <div className="md:pl-60">
-        <div className="mx-auto w-full max-w-[1600px] px-3 pb-24 pt-3 sm:px-4 md:px-6 md:pb-8 md:pt-6">
+      <div className="md:pl-60 print:pl-0">
+        <div className="mx-auto w-full max-w-[1600px] px-3 pb-24 pt-3 sm:px-4 md:px-6 md:pb-8 md:pt-6 print:p-0">
           <MobileTopBar />
           <main className="min-w-0">
             {!hydrated ? (

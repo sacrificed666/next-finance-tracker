@@ -21,7 +21,9 @@ import {
   ToolbarSlot,
 } from "@/components/ui";
 import { addMonths, formatDate, formatDateShort, formatMonth, formatMonthShort, formatWeekday, monthOf, todayISO } from "@/lib/date";
+import { downloadFile } from "@/lib/download";
 import { descendantsOf } from "@/lib/finance/categories";
+import { journalCsv } from "@/lib/finance/export";
 import { convert, formatMoney } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { normalizeTags } from "@/lib/state/backup";
@@ -46,7 +48,8 @@ export function LedgerCard({
   onEdit: (tx: Transaction) => void;
 }) {
   const { state, update } = useStore();
-  const { t, tp, category } = useT();
+  const i18n = useT();
+  const { t, tp, category } = i18n;
   const { settings } = state;
   const base = settings.baseCurrency;
   const today = todayISO();
@@ -380,12 +383,23 @@ export function LedgerCard({
             </Button>
           </Toolbar>
           {ledger.length > 0 && (
-            <p className="tnum mb-2 px-1 text-xs text-ink-3">
-              {tp("common.entries", ledger.length)} ·{" "}
-              <span className={net >= 0 ? "text-income" : "text-expense"}>
-                {formatMoney(net, base, { sign: true, compact: true })}
-              </span>
-            </p>
+            <div className="mb-2 flex items-center justify-between gap-2 px-1">
+              <p className="tnum text-xs text-ink-3">
+                {tp("common.entries", ledger.length)} ·{" "}
+                <span className={net >= 0 ? "text-income" : "text-expense"}>
+                  {formatMoney(net, base, { sign: true, compact: true })}
+                </span>
+              </p>
+              <button
+                type="button"
+                title={t("export.csvHint")}
+                onClick={() => downloadFile(`entries-${scope === "all" ? `all-${today}` : scopeStart === scopeEnd ? scopeStart : `${scopeStart}_${scopeEnd}`}.csv`, journalCsv(state, ledger, i18n, today), "text/csv;charset=utf-8")}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold text-ink-2 hover:bg-fill-hover hover:text-ink-1"
+              >
+                <Icon name="arrowDown" size={12} strokeWidth={2.4} />
+                CSV
+              </button>
+            </div>
           )}
         </>
       )}

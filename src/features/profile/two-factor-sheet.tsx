@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button, Field, Sheet, TextInput } from "@/components/ui";
+import { downloadFile } from "@/lib/download";
 import { useT } from "@/lib/i18n";
 import { QrCode } from "./qr-code";
 
@@ -74,14 +75,7 @@ export function TwoFactorSheet({
     await navigator.clipboard.writeText(codesText(codes)).catch(() => {});
     setCopied(true);
   };
-  const download = (codes: string[]) => {
-    const url = URL.createObjectURL(new Blob([codesText(codes)], { type: "text/plain;charset=utf-8" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "finances-recovery-codes.txt";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const download = (codes: string[]) => downloadFile("finances-recovery-codes.txt", codesText(codes), "text/plain;charset=utf-8");
 
   const typed = code.replace(/\s/g, "");
   const title = mode === "disable" ? t("profile.twofa.disableTitle") : step.kind === "codes" ? t("profile.twofa.recoveryTitle") : t("profile.twofa.setupTitle");

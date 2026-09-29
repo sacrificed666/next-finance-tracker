@@ -1661,6 +1661,18 @@ export const en = {
   "push.receivable": "{name} to pay you back",
   "push.test.title": "Notifications work",
   "push.test.body": "This device will get a note around {hour}:00 on days something is due.",
+  "export.col.type": "Type",
+  "export.col.inBase": "Amount, {currency}",
+  "export.col.toAccount": "To account",
+  "export.col.tags": "Tags",
+  "export.col.planned": "Planned",
+  "export.col.change": "Change",
+  "export.yes": "yes",
+  "export.row.income": "Income",
+  "export.row.expense": "Spending",
+  "export.row.net": "Net result",
+  "export.csvHint": "Download these entries as a spreadsheet (CSV)",
+  "export.pdfHint": "Opens printing — choose “Save as PDF” to keep a file",
 } as const;
 
 export type MessageKey = keyof typeof en;

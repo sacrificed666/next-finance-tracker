@@ -4,8 +4,10 @@ import { useDeferredValue, useState } from "react";
 import { HeroSplit, SparkArea } from "@/components/charts";
 import { PageHero } from "@/components/layout/hero";
 import { PageBody, Split } from "@/components/layout/page";
-import { Card, Icon, IconDisc, Money, PageHeader, SegmentedControl } from "@/components/ui";
+import { Button, Card, Icon, IconDisc, Money, PageHeader, SegmentedControl } from "@/components/ui";
 import { addMonths, currentMonth, daysInMonth, formatDateShort, formatMonth, formatMonthShort, todayISO } from "@/lib/date";
+import { downloadFile } from "@/lib/download";
+import { reportCsv } from "@/lib/finance/export";
 import { formatMoney, formatNumber, formatPercent } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
@@ -17,7 +19,8 @@ const signed = (v: number) => `${v >= 0 ? "+" : "−"}${formatNumber(Math.abs(v)
 /** Where the money went over a month, a quarter or a year, against the period before. */
 export function ReportsPage() {
   const { state } = useStore();
-  const { t, tp, category } = useT();
+  const i18n = useT();
+  const { t, tp, category } = i18n;
   const base = state.settings.baseCurrency;
   const [period, setPeriod] = useState<ReportPeriod>("month");
   const [anchor, setAnchor] = useState(currentMonth());
@@ -73,22 +76,50 @@ export function ReportsPage() {
     return { icon: cat?.icon ?? "❓", name: category(cat), slot: cat?.colorSlot };
   };
 
+  const exportCsv = () => {
+    const csv = reportCsv(
+      cats.map((c) => ({ label: catName(c.id).name, current: c.value, previous: c.before })),
+      {
+        income: { label: t("export.row.income"), current: r.current.income, previous: r.previous.income },
+        expense: { label: t("export.row.expense"), current: r.current.expense, previous: r.previous.expense },
+        net: { label: t("export.row.net"), current: r.current.net, previous: r.previous.net },
+      },
+      { current: label(r.start), previous: label(r.prevStart) },
+      base,
+      i18n,
+    );
+    const file = shownPeriod === "month" ? r.start : shownPeriod === "quarter" ? `${r.start.slice(0, 4)}-Q${Math.floor(Number(r.start.slice(5)) / 3) + 1}` : r.start.slice(0, 4);
+    downloadFile(`report-${file}.csv`, csv, "text/csv;charset=utf-8");
+  };
+
   return (
     <>
       <PageHeader
         title={t("nav.reports")}
         subtitle={t("reports.subtitle")}
         action={
-          <SegmentedControl
-            label={t("reports.period")}
-            options={[
-              { value: "month" as const, label: t("reports.period.month") },
-              { value: "quarter" as const, label: t("reports.period.quarter") },
-              { value: "year" as const, label: t("reports.period.year") },
-            ]}
-            value={period}
-            onChange={setPeriod}
-          />
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+            <SegmentedControl
+              label={t("reports.period")}
+              options={[
+                { value: "month" as const, label: t("reports.period.month") },
+                { value: "quarter" as const, label: t("reports.period.quarter") },
+                { value: "year" as const, label: t("reports.period.year") },
+              ]}
+              value={period}
+              onChange={setPeriod}
+            />
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={exportCsv}>
+                <Icon name="arrowDown" size={14} />
+                CSV
+              </Button>
+              <Button variant="ghost" size="sm" title={t("export.pdfHint")} onClick={() => window.print()}>
+                <Icon name="receipt" size={14} />
+                PDF
+              </Button>
+            </div>
+          </div>
         }
       />
       <PageBody>
@@ -96,7 +127,7 @@ export function ReportsPage() {
           icon="chart"
           label={label(r.start)}
           action={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 print:hidden">
               <button type="button" aria-label={t("month.previous")} onClick={() => step(-1)} className="icon-btn size-9 border border-hairline bg-ghost text-ink-2">
                 <Icon name="chevronLeft" size={18} strokeWidth={2.2} />
               </button>

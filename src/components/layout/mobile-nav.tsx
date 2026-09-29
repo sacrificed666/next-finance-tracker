@@ -15,7 +15,7 @@ export function MobileTopBar() {
   const pathname = usePathname();
   const settingsActive = pathname === SETTINGS.href;
   return (
-    <header className="sticky top-3 z-40 mb-4 md:hidden">
+    <header className="sticky top-3 z-40 mb-4 md:hidden print:hidden">
       <div className="glass-strong flex items-center gap-2 rounded-full py-1.5 pl-2 pr-2.5">
         <Brand />
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -55,7 +55,7 @@ export function TabBar() {
   const pathname = usePathname();
   const { t } = useT();
   return (
-    <nav className="glass-strong fixed inset-x-3 bottom-3 z-40 flex rounded-full px-1 py-1.5 md:hidden">
+    <nav className="glass-strong fixed inset-x-3 bottom-3 z-40 flex rounded-full px-1 py-1.5 md:hidden print:hidden">
       {TAB_BAR.map((item) => {
         const active = pathname === item.href;
         return (

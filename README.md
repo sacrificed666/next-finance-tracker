@@ -39,6 +39,7 @@ day, and a pace chart of the running total against the month before, plus:
 - **Split one purchase** across several categories — a supermarket receipt with food and household.
 - **Receipt photos** on any entry, shrunk in the browser and stored encrypted.
 - **Bulk edit** — tick several entries to change their category, add a tag or delete them at once.
+- **Export** the entries on screen, with every filter applied, as a CSV for a spreadsheet.
 
 ### 🧾 Income
 
@@ -104,9 +105,10 @@ listed in full, with a button that adds an entry on exactly that date.
 
 ### 📑 Reports
 
-Any period — a month, a quarter, half a year, a year — against the one before: categories compared
-side by side, each category's trend as a small chart, the biggest changes, the largest expenses,
-spending by tag, and a year in review.
+Any period — a month, a quarter or a year — against the one before: categories compared side by side,
+each category's trend as a small chart, the biggest changes, the largest expenses, spending by tag,
+and a year in review. The comparison downloads as a CSV, and **PDF** prints the page (or saves it as
+a PDF) without the navigation and always in the light theme.
 
 ### 🧑‍🚀 Profile
 

@@ -56,7 +56,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { t } = useT();
   return (
-    <aside className="fixed inset-y-3 left-3 z-40 hidden w-52 md:flex">
+    <aside className="fixed inset-y-3 left-3 z-40 hidden w-52 md:flex print:hidden">
       <div className="glass flex h-full w-full flex-col overflow-y-auto rounded-card p-3">
         <Brand />
         <PaletteButton className="mt-3" />

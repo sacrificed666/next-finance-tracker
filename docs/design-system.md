@@ -16,6 +16,12 @@ it pulls in Tailwind and the partials in `src/styles/`:
 | `_charts.scss` | Chart entry animations |
 | `_motion.scss` | `rise`, the stagger ladder, sheet and overlay animations |
 | `_preferences.scss` | `prefers-reduced-transparency`, `prefers-reduced-motion` |
+| `_print.scss` | Printing: no backdrop, plain white cards with a hairline border, cards kept whole across pages |
+
+A printed page drops the sidebar and the phone bars (`print:hidden`) and always uses the light
+theme: `PrintTheme` (`components/providers/print-theme.tsx`) switches `data-theme` for as long as
+the page prints and restores it afterwards. Controls that mean nothing on paper, such as the period
+switch on Reports, carry `print:hidden` too.
 
 Three glass levels plus wells:
 

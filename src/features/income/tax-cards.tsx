@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Fact, Facts, Icon, SummaryPanel } from "@/components/ui";
 import { formatDate, formatDateShort, formatMonth, todayISO } from "@/lib/date";
+import { downloadFile } from "@/lib/download";
 import { formatMoney } from "@/lib/finance/money";
 import { taxRegime, taxYearValues } from "@/lib/finance/tax";
 import {
@@ -188,15 +189,8 @@ export function QuarterlyTaxCard() {
 
   // Hryvnias per unit on a day: the NBU rate once it is published, today's rate before that.
   const rateOf: RateOf = (currency, date) => nbu.get(`${currency}:${date}`) ?? state.settings.rates[currency as "USD" | "EUR"] ?? 1;
-  const downloadBook = () => {
-    const blob = new Blob([incomeBookCsv(incomeBook(state, year, rateOf))], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `income-book-${year}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const downloadBook = () =>
+    downloadFile(`income-book-${year}.csv`, incomeBookCsv(incomeBook(state, year, rateOf)), "text/csv;charset=utf-8");
   // The declaration for the last quarter that has ended counts everything since 1 January.
   const lastQuarter = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
   const declaration = lastQuarter > 0 ? declarationFigures(state, year, lastQuarter, rateOf) : null;

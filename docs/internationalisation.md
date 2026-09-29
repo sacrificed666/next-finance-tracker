@@ -50,6 +50,12 @@ Plural forms follow `Intl.PluralRules`. English, German, Spanish, French, Italia
 `Intl.DateTimeFormat` and `Intl.NumberFormat`. Month names, weekday names, decimal separators and
 compact notation all follow the language without any translated strings.
 
+Exported CSVs follow it as well (`csvStyle` in `lib/finance/export.ts`): where the language writes a
+decimal comma, columns are separated by `;` and amounts use the comma, as a spreadsheet in that
+language expects; English gets `,` and a decimal point. Headers are translated, and a byte-order mark
+keeps Cyrillic readable in Excel. The income book is the exception — a Ukrainian tax record, it is
+always written the Ukrainian way.
+
 ## 🍪 How the language is chosen
 
 1. `settings.locale` from the account, once the state has loaded (`LocaleBridge`).

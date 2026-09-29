@@ -1,0 +1,41 @@
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .app-backdrop {
+    display: none !important;
+  }
+
+  .glass,
+  .glass-strong,
+  .glass-solid {
+    background: #fff !important;
+    border: 1px solid #dfe3e4 !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+
+    &::after {
+      display: none;
+    }
+  }
+
+  .glow {
+    box-shadow: none !important;
+  }
+
+  main section {
+    break-inside: avoid;
+  }
+}
