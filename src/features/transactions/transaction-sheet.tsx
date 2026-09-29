@@ -5,10 +5,11 @@ import { OptionPicker } from "@/components/forms/option-picker";
 import { useAccountGroups, useCategoryGroups } from "@/components/forms/picker-groups";
 import { ReceiptPhotos } from "@/components/forms/receipt-photos";
 import { TagInput } from "@/components/forms/tag-input";
-import { Button, ConfirmDialog, Field, FieldSet, Icon, SegmentedControl, Sheet, TextInput } from "@/components/ui";
+import { Button, ConfirmDialog, Field, FieldSet, Icon, SegmentedControl, Sheet, Switch, TextInput } from "@/components/ui";
 import { CURRENCY_SYMBOL } from "@/lib/constants";
 import { currentMonth, dateInMonth, todayISO } from "@/lib/date";
 import { categoryTree } from "@/lib/finance/categories";
+import { applyLearnedRule, learnedRule } from "@/lib/finance/import";
 import { convert, formatMoney, parseAmount } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { uid, useStore } from "@/lib/state/store";
@@ -96,10 +97,12 @@ export function TransactionSheet({
   onClose: () => void;
 }) {
   const { state, update } = useStore();
-  const { t, category } = useT();
+  const { t, tp, category } = useT();
   const { settings } = state;
   const [form, setForm] = useState<TxForm>(() => initialForm(state, target, month, date, type));
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [moveOthers, setMoveOthers] = useState(false);
 
   const expenseCategoryGroups = useCategoryGroups(state.categories, ["expense"]);
   const incomeCategoryGroups = useCategoryGroups(state.categories, ["income"]);
@@ -174,6 +177,12 @@ export function TransactionSheet({
     return t("tx.problem.arrived", { name: toAccount?.name ?? t("tx.destination") });
   })();
 
+  const learned =
+    target !== "new" && form.type === target.type && form.splits.length === 0 && form.categoryId !== ""
+      ? learnedRule(state, target, form.categoryId)
+      : null;
+  const newCategoryName = category(state.categories.find((c) => c.id === form.categoryId));
+
   const save = () => {
     if (!valid) return;
     const patch: Omit<Transaction, "id"> =
@@ -232,6 +241,12 @@ export function TransactionSheet({
         ...pieces,
       ],
     }));
+    if (learned && remember) {
+      update(
+        (s) => applyLearnedRule(s, learned, form.categoryId, moveOthers, uid()),
+        moveOthers && learned.others.length > 0 ? tp("tx.learn.moved", learned.others.length) : t("tx.learn.saved"),
+      );
+    }
     onClose();
   };
 
@@ -342,6 +357,23 @@ export function TransactionSheet({
                 groups={form.type === "income" ? incomeCategoryGroups : expenseCategoryGroups}
               />
             </Field>
+            {learned && (
+              <div className="space-y-2.5 rounded-field bg-ghost p-3">
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink-1">{t("tx.learn.rule", { name: learned.match, category: newCategoryName })}</p>
+                    <p className="caption">{t("tx.learn.hint")}</p>
+                  </div>
+                  <Switch checked={remember} onChange={setRemember} label={t("tx.learn.rule", { name: learned.match, category: newCategoryName })} />
+                </div>
+                {remember && learned.others.length > 0 && (
+                  <div className="flex items-start gap-3 border-t border-hairline pt-2.5">
+                    <p className="min-w-0 flex-1 text-sm text-ink-1">{tp("tx.learn.others", learned.others.length)}</p>
+                    <Switch checked={moveOthers} onChange={setMoveOthers} label={tp("tx.learn.others", learned.others.length)} />
+                  </div>
+                )}
+              </div>
+            )}
             {canSplit && (
               <FieldSet
                 label={t("tx.split")}

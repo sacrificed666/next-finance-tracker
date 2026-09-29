@@ -40,6 +40,8 @@ day, and a pace chart of the running total against the month before, plus:
 - **Split one purchase** across several categories — a supermarket receipt with food and household.
 - **Receipt photos** on any entry, shrunk in the browser and stored encrypted.
 - **Bulk edit** — tick several entries to change their category, add a tag or delete them at once.
+- **Learns from corrections** — move an imported entry to another category and it offers to file that
+  merchant there from now on, and to move its earlier entries too.
 - **Export** the entries on screen, with every filter applied, as a CSV for a spreadsheet.
 
 ### 🧾 Income

@@ -5,6 +5,10 @@ import type { AppState, SavingsAccount, Transaction } from "@/lib/types";
 import {
   absorbOperation,
   applyImport,
+  applyLearnedRule,
+  learnedRule,
+  ruleMatches,
+  suggestCategory,
   cashWithdrawals,
   markDuplicates,
   matchPlanned,
@@ -270,5 +274,50 @@ describe("tax payments marked paid", () => {
     const [c] = prepareImport(s, [line({ externalId: "mono:esv", accountId: "black", amount: 5707.02, date: "2026-10-20", description: "ЄСВ ФОП" })]);
     expect(c.duplicate).toBe(false);
     expect(c.planned?.id).toBe("tax:2026-Q3:esv");
+  });
+});
+
+describe("rules learned from a correction", () => {
+  const imported = (over: Partial<Transaction>): Transaction =>
+    ({ id: Math.random().toString(36).slice(2), type: "expense", amount: 120, currency: "UAH", categoryId: "cat-other-exp", date: "2026-09-10", externalId: `mono:${Math.random()}`, ...over }) as Transaction;
+
+  it("matches a rule by its words, whatever the digits and punctuation around them", () => {
+    expect(ruleMatches({ match: "silpo kyiv" }, "SILPO 1234 KYIV")).toBe(true);
+    expect(ruleMatches({ match: "Netflix" }, "NETFLIX.COM 12/09")).toBe(true);
+    expect(ruleMatches({ match: "7-11" }, "7-11 STORE")).toBe(true);
+    expect(ruleMatches({ match: "7-11" }, "ATB MARKET")).toBe(false);
+    expect(ruleMatches({ match: "silpo" }, "ATB")).toBe(false);
+  });
+
+  it("offers a rule when an imported entry moves to another category, with the merchant's other entries", () => {
+    const tx = imported({ note: "SILPO 1234 KYIV" });
+    const older = imported({ note: "Silpo #88 Kyiv" });
+    const typed = { ...imported({ note: "Silpo Kyiv" }), externalId: undefined };
+    const s = { ...state, transactions: [tx, older, typed] };
+    const learned = learnedRule(s, tx, "cat-food");
+    expect(learned?.match).toBe("silpo kyiv");
+    expect(learned?.others.map((o) => o.id)).toEqual([older.id]);
+  });
+
+  it("offers nothing for typed entries, transfers or a category a rule already gives", () => {
+    const tx = imported({ note: "SILPO KYIV" });
+    expect(learnedRule(state, { ...tx, externalId: undefined }, "cat-food")).toBeNull();
+    expect(learnedRule(state, { ...tx, type: "transfer" }, "cat-food")).toBeNull();
+    expect(learnedRule(state, tx, tx.categoryId)).toBeNull();
+    const ruled = { ...state, rules: [{ id: "r", match: "silpo", categoryId: "cat-food", type: "expense" as const }] };
+    expect(learnedRule(ruled, tx, "cat-food")).toBeNull();
+  });
+
+  it("puts the new rule first, so it wins over a broader one, and moves the others only when asked", () => {
+    const tx = imported({ note: "SILPO KYIV" });
+    const older = imported({ note: "SILPO 7 KYIV" });
+    const s = { ...state, transactions: [tx, older], rules: [{ id: "old", match: "silpo", categoryId: "cat-other-exp", type: "expense" as const }] };
+    const learned = learnedRule(s, tx, "cat-food")!;
+    const kept = applyLearnedRule(s, learned, "cat-food", false, "new");
+    expect(kept.rules.map((r) => r.id)).toEqual(["new", "old"]);
+    expect(kept.transactions.find((o) => o.id === older.id)?.categoryId).toBe("cat-other-exp");
+    expect(suggestCategory(kept, "SILPO 55 KYIV", "expense")).toBe("cat-food");
+    const moved = applyLearnedRule(s, learned, "cat-food", true, "new");
+    expect(moved.transactions.find((o) => o.id === older.id)?.categoryId).toBe("cat-food");
   });
 });

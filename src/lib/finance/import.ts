@@ -1,5 +1,5 @@
 import { addMonths, monthDiff, monthOf } from "@/lib/date";
-import type { AppState, Currency, Transaction } from "@/lib/types";
+import type { AppState, CategoryRule, Currency, Transaction } from "@/lib/types";
 
 export interface ImportCandidate {
   externalId: string;
@@ -58,7 +58,7 @@ function mccMatches(mcc: number, ranges: Array<number | [number, number]>): bool
 export function suggestCategory(state: AppState, description: string, type: "income" | "expense", mcc?: number): string {
   const text = description.toLocaleLowerCase();
   const exists = (id: string) => state.categories.some((c) => c.id === id && c.kind === type);
-  const rule = state.rules.find((r) => r.type === type && text.includes(r.match.toLocaleLowerCase()) && exists(r.categoryId));
+  const rule = state.rules.find((r) => r.type === type && ruleMatches(r, text) && exists(r.categoryId));
   if (rule) return rule.categoryId;
   if (type === "expense" && mcc !== undefined) {
     for (const [ranges, ids] of MCC_CATEGORIES) {
@@ -265,15 +265,67 @@ export interface SubscriptionSuggestion {
   startMonth: string;
 }
 
-function merchantKey(note: string): string {
-  return note
+function merchantWords(text: string): string {
+  return text
     .toLocaleLowerCase()
     .replace(/[\d*#№.,:;!?'"«»()[\]{}\-_/\\]+/g, " ")
     .replace(/\s+/g, " ")
-    .trim()
-    .split(" ")
-    .slice(0, 3)
-    .join(" ");
+    .trim();
+}
+
+export function merchantKey(note: string): string {
+  return merchantWords(note).split(" ").slice(0, 3).join(" ");
+}
+
+export function ruleMatches(rule: Pick<CategoryRule, "match">, description: string): boolean {
+  if (description.toLocaleLowerCase().includes(rule.match.toLocaleLowerCase())) return true;
+  const words = merchantWords(rule.match);
+  return words.length > 0 && merchantWords(description).includes(words);
+}
+
+export interface LearnedRule {
+  match: string;
+  type: "income" | "expense";
+  others: Transaction[];
+}
+
+export function learnedRule(state: AppState, tx: Transaction, categoryId: string): LearnedRule | null {
+  if (!tx.externalId || tx.type === "transfer" || !tx.note || tx.splitId || categoryId === tx.categoryId) return null;
+  const match = merchantKey(tx.note);
+  if (match.length < 3) return null;
+  const type = tx.type;
+  const current = state.rules.find((r) => r.type === type && ruleMatches(r, tx.note!));
+  if (current?.categoryId === categoryId) return null;
+  const others = state.transactions.filter(
+    (o) =>
+      o.id !== tx.id &&
+      o.type === type &&
+      Boolean(o.externalId) &&
+      !o.splitId &&
+      Boolean(o.note) &&
+      o.categoryId !== categoryId &&
+      merchantKey(o.note!) === match,
+  );
+  return { match, type, others };
+}
+
+export function applyLearnedRule(
+  state: AppState,
+  learned: LearnedRule,
+  categoryId: string,
+  moveOthers: boolean,
+  id: string,
+): AppState {
+  const moving = new Set(moveOthers ? learned.others.map((o) => o.id) : []);
+  return {
+    ...state,
+    rules: [
+      { id, match: learned.match, categoryId, type: learned.type },
+      ...state.rules.filter((r) => !(r.type === learned.type && r.match.toLocaleLowerCase() === learned.match)),
+    ],
+    transactions:
+      moving.size > 0 ? state.transactions.map((o) => (moving.has(o.id) ? { ...o, categoryId } : o)) : state.transactions,
+  };
 }
 
 export function suggestSubscriptions(state: AppState, today: string): SubscriptionSuggestion[] {

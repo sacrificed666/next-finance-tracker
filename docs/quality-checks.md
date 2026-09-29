@@ -22,7 +22,7 @@ it covers and needs no database.
 | --- | --- |
 | `lib/state/changes.test.ts` | Diffing and applying change sets, merging two devices' edits, and that `normalizeState` is idempotent — the server relies on it to write only what changed |
 | `lib/state/dashboard.test.ts` | The overview layout: saved order kept, unknown or repeated cards dropped, new cards added, moving and hiding, and nothing stored for the default |
-| `lib/finance/import.test.ts` | Transfer pairing, cash withdrawals, planned-payment matching, duplicates, subscription suggestions and one-operation-at-a-time webhook booking |
+| `lib/finance/import.test.ts` | Transfer pairing, cash withdrawals, planned-payment matching, duplicates, subscription suggestions, one-operation-at-a-time webhook booking, and rules learned from a correction |
 | `lib/finance/plans.test.ts` | Rules that book a budget as spent, the fixed-bill heuristic and stopping schedules |
 | `lib/finance/tax.test.ts` | Each year's published figures and limits, weekend deadlines, paid taxes as expenses, the income book and declaration totals |
 | `lib/finance/export.test.ts` | The entries and report CSVs: column order, signs, base-currency amounts, quoting, and the separator and decimal mark each language's spreadsheet expects |

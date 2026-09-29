@@ -55,11 +55,25 @@ paired with the other half of a transfer, matched to a planned payment — throu
 
 `suggestCategory` in `lib/finance/import.ts` tries, in order:
 
-1. **Your rules** — "description contains … → category", per type. Add them in Settings → Auto-categorisation.
+1. **Your rules** — "description contains … → category", per type, first match wins. A rule matches
+   when the description contains its text, or contains its words once digits and punctuation are
+   left out of both — so `silpo kyiv` matches "SILPO 1234 KYIV" (`ruleMatches`).
 2. **The merchant code** (MCC) for expenses — groceries, restaurants, transport, fuel, pharmacies,
    utilities and so on map to the default categories.
 3. **Cashback** in the description for income.
 4. "Other expenses" / "Other income".
+
+### Rules learned from corrections
+
+Moving an imported entry to another category offers a rule in the same sheet: **Always file "…"
+under …**, on by default. Its text is the merchant — the first three words of the bank's description
+without digits and punctuation (`learnedRule`). When other imported entries from that merchant sit in
+a different category, a second switch moves them as well. The new rule goes to the top of the list,
+so it wins over a broader one, and a rule with the same text is replaced. Undo takes the rule and the
+moves back and keeps the edit itself.
+
+Nothing is offered for typed entries, transfers, split purchases, or when a rule already files the
+merchant where the entry went.
 
 ## ⇄ Transfers, cash and jars
 
