@@ -40,7 +40,7 @@ ROW := printf "  $(CYAN)%-20s$(RESET) %s\n"
         stage-build stage-up stage-down stage-restart stage-logs stage-ps stage-shell \
         stage-psql stage-migrate stage-db-backup stage-db-restore stage-destroy stage-deploy \
         prod-build prod-up prod-down prod-restart prod-logs prod-ps prod-shell prod-psql \
-        prod-migrate prod-db-backup prod-db-backup-now prod-backups prod-db-restore prod-destroy prod-deploy \
+        prod-migrate prod-db-backup prod-db-backup-now prod-backup-check prod-backups prod-db-restore prod-destroy prod-deploy \
         lint typecheck build config prune clean
 
 help:
@@ -91,6 +91,7 @@ help:
 	@$(ROW) "prod-migrate" "🧬 Apply db/schema.sql to the production database"
 	@$(ROW) "prod-db-backup" "💾 Dump the production database into ./backups"
 	@$(ROW) "prod-db-backup-now" "🛟 Take a checked backup into ./backups/auto now"
+	@$(ROW) "prod-backup-check" "🧪 Take a backup and restore it into a scratch database to prove it works"
 	@$(ROW) "prod-backups" "🗂️  List the nightly backups (kept BACKUP_KEEP_DAYS)"
 	@$(ROW) "prod-db-restore" "♻️  Restore the production database (FILE=….sql or ….dump)"
 	@$(ROW) "prod-destroy" "💣 Stop production and delete its database volume (asks first)"
@@ -317,6 +318,10 @@ prod-db-backup:
 prod-db-backup-now:
 	@printf "$(PROD_TAG) 🛟 taking a checked backup…\n"
 	@$(PROD) run --rm -e BACKUP_ONCE=1 backup
+
+prod-backup-check:
+	@printf "$(PROD_TAG) 🧪 backing up and restoring into a scratch database…\n"
+	@$(PROD) run --rm -e BACKUP_ONCE=1 -e BACKUP_RESTORE_CHECK=now backup
 
 prod-backups:
 	@ls -lh $(BACKUP_DIR)/auto 2>/dev/null || printf "$(PROD_TAG) no nightly backups yet — the backup service writes them to $(BACKUP_DIR)/auto\n"

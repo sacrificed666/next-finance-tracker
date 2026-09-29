@@ -74,7 +74,11 @@ Production backs itself up. The `backup` service in `docker/production.yml` runs
   and dropped instead of silently replacing a good one;
 - it deletes dumps older than `BACKUP_KEEP_DAYS` (14 by default);
 - on start it takes one straight away when today has none, so a fresh deploy is covered at once.
-- with `BACKUP_ONCE=1` it takes a single dump and exits — what `make prod-db-backup-now` runs.
+- with `BACKUP_ONCE=1` it takes a single dump and exits — what `make prod-db-backup-now` runs;
+- with `BACKUP_REMOTE` set it copies every dump off the server, encrypted when `BACKUP_AGE_RECIPIENT`
+  is set, and prunes copies there older than `BACKUP_REMOTE_KEEP_DAYS`;
+- once a week (on `BACKUP_RESTORE_CHECK_DAY`, `0` = Sunday) it restores that night's dump into a
+  scratch database, counts the accounts and entries in it, logs the result and drops the database.
 
 The script runs inside a Linux container, so `.gitattributes` keeps every `*.sh` file with LF line
 endings even in a Windows checkout — a CRLF copy would not run.
@@ -102,6 +106,7 @@ image. Records move to a new key by themselves the first time the account loads 
 ```bash
 make prod-backups                          # list the nightly dumps
 make prod-db-backup-now                    # one more, checked, next to the nightly ones
+make prod-backup-check                     # one more, then restored into a scratch database
 make prod-db-backup                        # a plain SQL dump → backups/prod-YYYYmmdd-HHMMSS.sql
 make prod-db-restore FILE=backups/auto/prod-….dump   # .dump or .sql — the target picks the tool
 make prod-logs                             # the backup service logs a line for every run
@@ -112,8 +117,31 @@ make prod-logs                             # the backup service logs a line for 
 > `DATA_ENCRYPTION_KEY`. Without that key a backup restores rows nobody can read, so keep the key
 > in a password manager — never in the same place as the dumps.
 
-`backups/` is ignored by Git on purpose. Copy it off the server as well (a nightly `rsync` or
-`rclone` of `backups/auto` is enough): a backup on the same disk does not survive that disk.
+`backups/` is ignored by Git on purpose. A backup on the same disk does not survive that disk, so
+send a copy elsewhere.
+
+### Copies off the server
+
+| Variable | Meaning |
+| --- | --- |
+| `BACKUP_REMOTE` | Where [rclone](https://rclone.org) copies each dump — `offsite:finance` for a remote named in the config, or a path |
+| `BACKUP_AGE_RECIPIENT` | An [age](https://age-encryption.org) public key (`age1…`). With it, the copy is `….dump.age` and only the matching private key opens it |
+| `BACKUP_REMOTE_KEEP_DAYS` | How long copies stay there (default `90`) |
+| `BACKUP_RESTORE_CHECK_DAY` | The weekday of the restore check, `0`–`6` from Sunday (default `0`) |
+
+1. Describe the remote in `backups/rclone.conf` (`rclone config` on any machine writes one; S3,
+   Backblaze B2, Google Drive, another server over SFTP…). The backup service reads it from there,
+   so no storage credentials travel through `.env`.
+2. `age-keygen -o finance-backup.key` on a machine you trust; put the `age1…` line in
+   `BACKUP_AGE_RECIPIENT` and keep the key file with `DATA_ENCRYPTION_KEY`, **not** on the server.
+3. `make prod-up`, then `make prod-backup-check` and look for `copied …` and `restore check passed`
+   in `make prod-logs`.
+
+The service installs `rclone` and `age` inside its container the first time they are needed. The local
+copy in `backups/auto` stays unencrypted by `age` — the records in it are sealed either way.
+
+To use an encrypted copy: `age -d -i finance-backup.key -o prod.dump prod-….dump.age`, then
+`make prod-db-restore FILE=prod.dump`.
 
 ## 🩺 Health and troubleshooting
 
