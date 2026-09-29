@@ -15,7 +15,8 @@ import { DEFAULT_STATE, THEME_KEY } from "@/lib/constants";
 import { addMonths, currentMonth, dateInMonth, monthOf } from "@/lib/date";
 import { dueMonths } from "@/lib/finance/finmath";
 import { normalizeState } from "@/lib/state/backup";
-import { applyChanges, diffState, isEmptyChange } from "@/lib/state/changes";
+import { applyChanges, changeSize, diffState, isEmptyChange } from "@/lib/state/changes";
+import { clearOutbox, readOutbox, writeOutbox } from "@/lib/state/outbox";
 import type { AppState, RecurringRule, Subscription, Transaction } from "@/lib/types";
 
 export const PLANNING_HORIZON_MONTHS = 12;
@@ -46,10 +47,11 @@ interface StoreApi {
 interface SyncApi {
   sync: SyncStatus;
   undoLabel: string | null;
+  restored: number;
 }
 
 const StoreContext = createContext<StoreApi | null>(null);
-const SyncContext = createContext<SyncApi>({ sync: "idle", undoLabel: null });
+const SyncContext = createContext<SyncApi>({ sync: "idle", undoLabel: null, restored: 0 });
 
 const STATE_ENDPOINT = "/api/state";
 const RETRY_MS = 5_000;
@@ -58,7 +60,7 @@ function unquote(etag: string | null): string {
   return (etag ?? "").replace(/^W\//, "").replace(/^"(.*)"$/, "$1");
 }
 
-async function fetchState(): Promise<{ state: AppState; revision: string }> {
+async function fetchState(): Promise<{ state: AppState; revision: string; account: string }> {
   const res = await fetch(STATE_ENDPOINT, { cache: "no-store" });
   if (res.status === 401) {
     if (typeof window !== "undefined" && !AUTH_PATHS.has(window.location.pathname)) {
@@ -72,7 +74,7 @@ async function fetchState(): Promise<{ state: AppState; revision: string }> {
     throw new Error(detail?.error ?? `Server responded with ${res.status}`);
   }
   const revision = unquote(res.headers.get("etag"));
-  return { state: normalizeState(await res.json()), revision };
+  return { state: normalizeState(await res.json()), revision, account: res.headers.get("x-account") ?? "" };
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -81,6 +83,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sync, setSync] = useState<SyncStatus>("idle");
   const [undoLabel, setUndoLabel] = useState<string | null>(null);
+  const [restored, setRestored] = useState(0);
+  const account = useRef("");
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedFromServer = useRef(false);
@@ -101,8 +105,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const loaded = await fetchState();
       loadedFromServer.current = true;
       revision.current = loaded.revision;
+      account.current = loaded.account;
       savedRef.current = loaded.state;
-      setState(materializeRecurring(loaded.state));
+      const fresh = materializeRecurring(loaded.state);
+      const outbox = await readOutbox();
+      if (outbox && outbox.account === loaded.account && !isEmptyChange(outbox.changes)) {
+        undoRef.current = fresh;
+        setRestored(changeSize(outbox.changes));
+        setState(materializeRecurring(applyChanges(loaded.state, outbox.changes)));
+      } else {
+        if (outbox) void clearOutbox();
+        setState(fresh);
+      }
       setLoadError(null);
       setSync("idle");
     } catch (err) {
@@ -133,6 +147,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const changes = diffState(base, target);
     if (isEmptyChange(changes)) {
       setSync("idle");
+      void clearOutbox();
       return;
     }
     savingRef.current = true;
@@ -155,6 +170,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       savingRef.current = false;
     }
     if (failed) {
+      if (account.current) {
+        void writeOutbox({ account: account.current, changes: diffState(base, stateRef.current), at: Date.now() });
+      }
       setSync("error");
       if (retryTimer.current) clearTimeout(retryTimer.current);
       retryTimer.current = setTimeout(() => void saveRef.current(), RETRY_MS);
@@ -163,7 +181,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const more = resaveRef.current || stateRef.current !== target;
     resaveRef.current = false;
     if (more) void saveRef.current();
-    else setSync("idle");
+    else {
+      setSync("idle");
+      void clearOutbox();
+    }
   }, [catchUp]);
 
   useEffect(() => {
@@ -209,8 +230,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (sync === "idle") return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    const keep = () => {
+      const base = savedRef.current;
+      if (!base || !account.current) return;
+      const changes = diffState(base, stateRef.current);
+      if (!isEmptyChange(changes)) void writeOutbox({ account: account.current, changes, at: Date.now() });
+    };
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    window.addEventListener("pagehide", keep);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      window.removeEventListener("pagehide", keep);
+    };
   }, [sync]);
 
   const theme = state.settings.theme;
@@ -236,6 +267,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (loadedFromServer.current) setSync("saving");
     undoRef.current = undoLabel ? from : null;
     setUndoLabel(undoLabel ?? null);
+    setRestored(0);
   }, []);
 
   const update = useCallback(
@@ -269,13 +301,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const dismissUndo = useCallback(() => {
     undoRef.current = null;
     setUndoLabel(null);
+    setRestored(0);
   }, []);
 
   const api = useMemo<StoreApi>(
     () => ({ state, hydrated, loadError, update, quietUpdate, replace, reload: load, undo, dismissUndo }),
     [state, hydrated, loadError, update, quietUpdate, replace, load, undo, dismissUndo],
   );
-  const status = useMemo<SyncApi>(() => ({ sync, undoLabel }), [sync, undoLabel]);
+  const status = useMemo<SyncApi>(() => ({ sync, undoLabel, restored }), [sync, undoLabel, restored]);
 
   return (
     <StoreContext.Provider value={api}>

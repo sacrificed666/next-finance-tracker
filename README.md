@@ -142,6 +142,8 @@ Monobank import, each new operation arrives as a note too, and a budget speaks u
 
 ### ⌨️ Everywhere
 
+- **Nothing typed is lost.** An edit made without a connection waits in the browser and is sent when
+  the app can reach the server again, even after the page was closed.
 - **Ctrl + K** (⌘K on a Mac) opens a command palette: jump to any page, account or position, start a
   new entry, switch the theme, or find an entry by its note, category, tag or amount.
 - **Installable** as an app on a phone or desktop, with shortcuts to add an expense or income from

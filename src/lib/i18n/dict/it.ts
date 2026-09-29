@@ -1693,6 +1693,8 @@ export const it: Dictionary = {
   "push.receivable": "{name} deve restituirti i soldi",
   "push.test.title": "Le notifiche funzionano",
   "push.test.body": "Questo dispositivo riceverà un promemoria verso le {hour}:00 nei giorni in cui c’è qualcosa in scadenza.",
+  "sync.restored.one": "Ripristinata {count} modifica che non era arrivata al server",
+  "sync.restored.other": "Ripristinate {count} modifiche che non erano arrivate al server",
   "push.op.tap": "Tocca per cambiare la categoria",
   "push.budget.title": "Budget {category}",
   "push.budget.near": "{pct}% usato: {spent} su {limit}",

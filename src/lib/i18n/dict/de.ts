@@ -1693,6 +1693,8 @@ export const de: Dictionary = {
   "push.receivable": "{name} zahlt zurück",
   "push.test.title": "Benachrichtigungen funktionieren",
   "push.test.body": "Dieses Gerät bekommt gegen {hour}:00 Uhr eine Nachricht, wenn etwas ansteht.",
+  "sync.restored.one": "{count} Änderung wiederhergestellt, die den Server nicht erreicht hatte",
+  "sync.restored.other": "{count} Änderungen wiederhergestellt, die den Server nicht erreicht hatten",
   "push.op.tap": "Tippen, um die Kategorie zu ändern",
   "push.budget.title": "Budget {category}",
   "push.budget.near": "{pct} % verbraucht: {spent} von {limit}",

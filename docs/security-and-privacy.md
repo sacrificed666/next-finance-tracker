@@ -141,7 +141,10 @@ empty shell, and its first data request answers `401` and sends it to sign in.
 > Monobank token is sealed on the server and is never sent back to the browser, not even masked.
 
 The installed app's service worker (`public/sw.js`) caches only the build's static files and icons,
-and shows notifications. Pages and API responses are never stored on the device.
+and shows notifications. Pages and API responses are never stored on the device. The one exception is
+an edit the server has not accepted yet — offline, or while it is unreachable: it waits in the
+browser's IndexedDB, tagged with the account, until a save goes through, and signing out on that
+device removes it.
 
 ## 🧪 Input hardening
 

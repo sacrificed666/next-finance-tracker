@@ -1,6 +1,7 @@
 "use client";
 
 import { signOut } from "next-auth/react";
+import { clearOutbox } from "@/lib/state/outbox";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/ui";
@@ -43,7 +44,7 @@ function SignOutRow() {
   return (
     <button
       type="button"
-      onClick={() => void signOut({ redirectTo: "/login" })}
+      onClick={() => void clearOutbox().then(() => signOut({ redirectTo: "/login" }))}
       className="row-tap flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-ink-2 transition-colors hover:text-ink-1"
     >
       <Icon name="logout" size={17} />

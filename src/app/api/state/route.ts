@@ -42,7 +42,7 @@ export async function GET() {
       userId,
       isLocale(preferred) ? preferred : DEFAULT_LOCALE,
     );
-    return NextResponse.json(state, { headers: { ETag: toEtag(revision) } });
+    return NextResponse.json(state, { headers: { ETag: toEtag(revision), "X-Account": userId } });
   } catch (err) {
     return fail(err);
   }

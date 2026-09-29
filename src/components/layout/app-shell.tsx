@@ -14,8 +14,9 @@ import { Sidebar } from "./sidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { hydrated, loadError, reload, undo, dismissUndo } = useStore();
-  const { undoLabel } = useSyncStatus();
-  const { t } = useT();
+  const { undoLabel, restored } = useSyncStatus();
+  const { t, tp } = useT();
+  const toast = restored > 0 ? tp("sync.restored", restored) : undoLabel;
   const pathname = usePathname();
 
   useEffect(() => {
@@ -49,9 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </div>
       <TabBar />
-      {undoLabel && (
-        <Toast message={undoLabel} actionLabel={t("common.undo")} onAction={undo} onDismiss={dismissUndo} />
-      )}
+      {toast && <Toast message={toast} actionLabel={t("common.undo")} onAction={undo} onDismiss={dismissUndo} />}
     </>
   );
 }

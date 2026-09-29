@@ -1691,6 +1691,8 @@ export const en = {
   "push.receivable": "{name} to pay you back",
   "push.test.title": "Notifications work",
   "push.test.body": "This device will get a note around {hour}:00 on days something is due.",
+  "sync.restored.one": "Restored {count} change that had not reached the server",
+  "sync.restored.other": "Restored {count} changes that had not reached the server",
   "push.op.tap": "Tap to change the category",
   "push.budget.title": "{category} budget",
   "push.budget.near": "{pct}% used: {spent} of {limit}",

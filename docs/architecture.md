@@ -99,6 +99,7 @@ matcher: [
 | Save | Half a second after the last edit, `PATCH /api/state` sends only what changed since the last save (`lib/state/changes.ts`): the records added or edited and the keys removed |
 | Other devices | Saves of one user queue behind each other (`SELECT … FOR UPDATE` on the settings row). Changes merge on the server record by record. A save built on an older revision comes back `stale`, and the tab pulls the newer state and lays its unsent edits over it; returning to the tab checks the revision with `HEAD /api/state` and does the same |
 | Undo | `update(fn, toastMessage)` keeps the previous state for one-click undo |
+| Unsent edits | A save that fails keeps what it could not send in the browser's IndexedDB (`lib/state/outbox.ts`), with the account it belongs to, and retries every 5 seconds. The next load of the same account lays those changes over the server's state and says so in a toast whose **Undo** drops them. A successful save or signing out clears the store |
 | Background writes | `quietUpdate(fn)` saves without touching the undo slot — the daily net worth snapshot uses it |
 | Save status | `useSyncStatus()` — `sync` and the pending undo live in their own context, so a save or a toast closing re-renders only the sync dot and the toast, not every card |
 | Derivations | Recurring rules and subscriptions are materialised into transactions after every load |

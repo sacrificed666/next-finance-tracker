@@ -39,3 +39,33 @@ test("saving is attempted as a change set and never reaches the database", async
   const body = JSON.parse(saves.at(-1)!);
   expect(Object.keys(body.changes)).toEqual(["settings"]);
 });
+
+test("an edit the server did not take survives a reload, and undo drops it", async ({ page, signedIn }) => {
+  void signedIn;
+  await page.route("**/api/state", (route) =>
+    route.request().method() === "PATCH" ? route.fulfill({ status: 503, body: "{}" }) : route.fallback(),
+  );
+  const pending = () =>
+    page.evaluate(
+      () =>
+        new Promise<boolean>((resolve) => {
+          const open = indexedDB.open("finance-tracker", 1);
+          open.onupgradeneeded = () => open.result.createObjectStore("outbox");
+          open.onsuccess = () => {
+            const get = open.result.transaction("outbox", "readonly").objectStore("outbox").get("pending");
+            get.onsuccess = () => resolve(Boolean(get.result));
+            get.onerror = () => resolve(false);
+          };
+          open.onerror = () => resolve(false);
+        }),
+    );
+  await openPage(page, "/settings");
+  await page.keyboard.press("Control+k");
+  await page.keyboard.type("theme");
+  await page.keyboard.press("Enter");
+  await expect.poll(pending).toBe(true);
+  await page.reload();
+  await expect(page.getByText(/Restored \d+ changes? that had not reached the server/)).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(pending).toBe(false);
+});

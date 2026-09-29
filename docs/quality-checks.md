@@ -62,7 +62,7 @@ phone, and the flows that tie pages together.
 | --- | --- |
 | `e2e/pages.spec.ts` | Every page renders without page or console errors and shows no key from `en.ts` untranslated; a visitor without a session lands on the sign-in page, a signed-in one is sent on from it, and a session ended on every device reaches the form |
 | `e2e/layout.spec.ts` | No page is wider than the screen, and no block scrolls by only a few pixels |
-| `e2e/flows.spec.ts` | The command palette opens, filters and navigates; an entry opens from the address bar and closing clears it; a change is saved as a change set |
+| `e2e/flows.spec.ts` | The command palette opens, filters and navigates; an entry opens from the address bar and closing clears it; a change is saved as a change set; an edit the server did not take survives a reload and undo drops it |
 
 ```bash
 npm run e2e                                   # against http://localhost:3000

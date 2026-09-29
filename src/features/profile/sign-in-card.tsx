@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { signIn, signOut } from "next-auth/react";
+import { clearOutbox } from "@/lib/state/outbox";
 import { PasswordField } from "@/components/forms/password-field";
 import { Badge, Button, Card, ConfirmDialog, Field, Icon, IconDisc, type IconName } from "@/components/ui";
 import { useT } from "@/lib/i18n";
@@ -52,7 +53,10 @@ export function SignInCard({ profile, onChange }: { profile: Profile; onChange: 
   const signOutEverywhere = async () => {
     setMsg(null);
     const res = await fetch("/api/profile/sessions", { method: "DELETE" }).catch(() => null);
-    if (res?.ok) await signOut({ redirectTo: "/login" });
+    if (res?.ok) {
+      await clearOutbox();
+      await signOut({ redirectTo: "/login" });
+    }
     else setMsg({ ok: false, text: t("profile.sessions.failed") });
   };
 
@@ -184,7 +188,7 @@ export function SignInCard({ profile, onChange }: { profile: Profile; onChange: 
             <Icon name="monitor" size={15} />
             {t("profile.sessions.endAll")}
           </Button>
-          <Button variant="danger" onClick={() => void signOut({ redirectTo: "/login" })}>
+          <Button variant="danger" onClick={() => void clearOutbox().then(() => signOut({ redirectTo: "/login" }))}>
             <Icon name="logout" size={15} />
             {t("nav.signOut")}
           </Button>

@@ -1693,6 +1693,8 @@ export const nl: Dictionary = {
   "push.receivable": "{name} betaalt je terug",
   "push.test.title": "Meldingen werken",
   "push.test.body": "Dit apparaat krijgt rond {hour}:00 een bericht op dagen dat er iets aankomt.",
+  "sync.restored.one": "{count} wijziging hersteld die de server niet had bereikt",
+  "sync.restored.other": "{count} wijzigingen hersteld die de server niet hadden bereikt",
   "push.op.tap": "Tik om de categorie te wijzigen",
   "push.budget.title": "Budget {category}",
   "push.budget.near": "{pct}% gebruikt: {spent} van {limit}",
