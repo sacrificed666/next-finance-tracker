@@ -1,7 +1,7 @@
 "use client";
 
 import { dateInMonth, daysInMonth, formatMonth, monthOf } from "@/lib/date";
-import { convert } from "@/lib/finance/money";
+import { convert, ratesAt } from "@/lib/finance/money";
 import { taxObligations, type TaxObligation } from "@/lib/finance/tax-calendar";
 import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
@@ -129,7 +129,7 @@ export function useMonthEvents(month: string): { days: DaySummary[]; keyDates: D
   const days: DaySummary[] = Array.from({ length: daysInMonth(month) }, (_, i) => {
     const date = dateInMonth(month, i + 1);
     const own = [...events.filter((e) => e.date === date), ...keyDates.filter((e) => e.date === date)];
-    const inBase = (e: DayEvent) => convert(e.amount ?? 0, e.currency ?? base, base, settings.rates);
+    const inBase = (e: DayEvent) => convert(e.amount ?? 0, e.currency ?? base, base, ratesAt(settings, date));
     const spent = own.filter((e) => e.kind === "expense").reduce((sum, e) => sum + inBase(e), 0);
     const earned = own.filter((e) => e.kind === "income").reduce((sum, e) => sum + inBase(e), 0);
     return { date, events: own, net: earned - spent, spent };

@@ -5,7 +5,7 @@ import { PageHero, type HeroStat } from "@/components/layout/hero";
 import { addMonths, currentMonth, daysInMonth, formatMonthShort, monthOf, todayISO } from "@/lib/date";
 import { budgetLimit, spentInBudget } from "@/lib/finance/categories";
 import { monthlySeries, monthTotals } from "@/lib/finance/finmath";
-import { convert, formatMoney, formatPercent } from "@/lib/finance/money";
+import { convert, formatMoney, formatPercent, ratesAt } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
 import { MonthSwitcher } from "./month-switcher";
@@ -42,7 +42,7 @@ export function MonthHero({
   const plannedIn = (type: "income" | "expense") =>
     state.transactions
       .filter((tx) => tx.type === type && monthOf(tx.date) === month && tx.date > today)
-      .reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, settings.rates), 0);
+      .reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date)), 0);
   const stillAhead = (total: number, ahead: number) =>
     ahead > 0
       ? t("tx.soFarPlanned", {

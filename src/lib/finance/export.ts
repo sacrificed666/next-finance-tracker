@@ -1,6 +1,6 @@
 import type { I18n } from "@/lib/i18n/core";
 import type { AppState, Currency, Transaction } from "@/lib/types";
-import { convert } from "./money";
+import { convert, ratesAt } from "./money";
 
 export interface CsvStyle {
   separator: string;
@@ -58,7 +58,7 @@ export function journalCsv(state: AppState, transactions: Transaction[], i18n: I
       t(`tx.type.${tx.type}`),
       num(sign(tx) * tx.amount),
       tx.currency,
-      num(sign(tx) * convert(tx.amount, tx.currency, base, state.settings.rates)),
+      num(sign(tx) * convert(tx.amount, tx.currency, base, ratesAt(state.settings, tx.date))),
       cell(tx.type === "transfer" ? "" : categoryPath(tx.categoryId)),
       cell(tx.accountId ? (accounts.get(tx.accountId) ?? "") : ""),
       cell(tx.toAccountId ? (accounts.get(tx.toAccountId) ?? "") : ""),

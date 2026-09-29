@@ -17,7 +17,7 @@ import {
 } from "@/components/ui";
 import { formatDateShort, formatMonth, monthOf, todayISO } from "@/lib/date";
 import { descendantsOf } from "@/lib/finance/categories";
-import { convert, formatMoney } from "@/lib/finance/money";
+import { convert, formatMoney, ratesAt } from "@/lib/finance/money";
 import { taxRegime } from "@/lib/finance/tax";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { matchesQuery, oneOf, sortItems, usePersistentState } from "@/lib/state/listing";
@@ -75,7 +75,7 @@ export function IncomeListCard({
     else byMonth.set(m, [tx]);
   }
   const months = sortItems([...byMonth.keys()], (m) => m, sortDir);
-  const flatByAmount = sortItems(visibleTx, (tx) => convert(tx.amount, tx.currency, base, settings.rates), sortDir);
+  const flatByAmount = sortItems(visibleTx, (tx) => convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date)), sortDir);
 
   const taxLabelOf = (txTax: IncomeTax) =>
     txTax.label || (txTax.regime ? t(taxRegime(txTax.regime).shortKey as MessageKey) : t("income.tax"));
@@ -111,7 +111,7 @@ export function IncomeListCard({
             <span className="block text-xs text-ink-3">
               {tx.currency !== base && (
                 <span className="tnum">
-                  ≈ {formatMoney(convert(tx.amount, tx.currency, base, settings.rates), base, { compact: true })}
+                  ≈ {formatMoney(convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date)), base, { compact: true })}
                   {" · "}
                 </span>
               )}
@@ -205,7 +205,7 @@ export function IncomeListCard({
             <div className="space-y-3">
               {months.map((month) => {
                 const rows = sortItems(byMonth.get(month)!, (tx) => `${tx.date}|${tx.id}`, sortDir);
-                const subtotal = rows.reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, settings.rates), 0);
+                const subtotal = rows.reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date)), 0);
                 return (
                   <section key={month}>
                     <h3 className="group-head">

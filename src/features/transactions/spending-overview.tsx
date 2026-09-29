@@ -4,7 +4,7 @@ import { CategoryBreakdown, PaceLines, type BreakdownSegment } from "@/component
 import { Card, EmptyState, Icon, SegmentedControl } from "@/components/ui";
 import { addMonths, currentMonth, dateInMonth, daysInMonth, formatMonth, formatMonthShort, todayISO } from "@/lib/date";
 import { expensesByCategory, rollupToParents } from "@/lib/finance/finmath";
-import { convert, formatMoney } from "@/lib/finance/money";
+import { convert, formatMoney, ratesAt } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { oneOf, usePersistentState } from "@/lib/state/listing";
 import { useStore } from "@/lib/state/store";
@@ -37,7 +37,7 @@ export function SpendingOverview({ month }: { month: string }) {
       const date = dateInMonth(m, i + 1);
       return state.transactions
         .filter((tx) => tx.type === "expense" && tx.date === date)
-        .reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, settings.rates), 0);
+        .reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date)), 0);
     });
   const running = (values: number[]) => values.map((_, i) => values.slice(0, i + 1).reduce((a, b) => a + b, 0));
   const elapsed = month === currentMonth() ? Number(today.slice(8)) : month < currentMonth() ? daysInMonth(month) : 0;

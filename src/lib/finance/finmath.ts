@@ -14,7 +14,7 @@ import {
   investmentKind,
   valuationOf,
 } from "@/lib/constants";
-import { convert } from "@/lib/finance/money";
+import { convert, ratesAt } from "@/lib/finance/money";
 import { holdingsValue } from "@/lib/market/crypto";
 import type {
   AppState,
@@ -326,7 +326,7 @@ export function monthTotals(
   let expense = 0;
   for (const tx of transactions) {
     if (tx.type === "transfer" || monthOf(tx.date) !== month) continue;
-    const v = convert(tx.amount, tx.currency, settings.baseCurrency, settings.rates);
+    const v = convert(tx.amount, tx.currency, settings.baseCurrency, ratesAt(settings, tx.date));
     if (tx.type === "income") income += v;
     else expense += v;
   }
@@ -348,7 +348,7 @@ export function monthlySeries(
     if (tx.type === "transfer") continue;
     const bucket = byMonth.get(monthOf(tx.date));
     if (!bucket) continue;
-    const v = convert(tx.amount, tx.currency, settings.baseCurrency, settings.rates);
+    const v = convert(tx.amount, tx.currency, settings.baseCurrency, ratesAt(settings, tx.date));
     if (tx.type === "income") bucket.income += v;
     else bucket.expense += v;
   }
@@ -365,7 +365,7 @@ export function expensesByCategory(
   const byCat = new Map<string, number>();
   for (const tx of transactions) {
     if (tx.type !== "expense" || monthOf(tx.date) !== month) continue;
-    const v = convert(tx.amount, tx.currency, settings.baseCurrency, settings.rates);
+    const v = convert(tx.amount, tx.currency, settings.baseCurrency, ratesAt(settings, tx.date));
     byCat.set(tx.categoryId, (byCat.get(tx.categoryId) ?? 0) + v);
   }
   return new Map([...byCat.entries()].sort((a, b) => b[1] - a[1]));
@@ -382,7 +382,7 @@ export function spentInCategory(
   for (const tx of transactions) {
     if (tx.type !== "expense") continue;
     if (tx.categoryId !== categoryId || monthOf(tx.date) !== month) continue;
-    sum += convert(tx.amount, tx.currency, to, settings.rates);
+    sum += convert(tx.amount, tx.currency, to, ratesAt(settings, tx.date));
   }
   return sum;
 }
@@ -420,7 +420,7 @@ export function incomeByCategory(
     if (tx.type !== "income") continue;
     const m = monthOf(tx.date);
     if (m < fromMonth || m > toMonth) continue;
-    const v = convert(tx.amount, tx.currency, settings.baseCurrency, settings.rates);
+    const v = convert(tx.amount, tx.currency, settings.baseCurrency, ratesAt(settings, tx.date));
     byCat.set(tx.categoryId, (byCat.get(tx.categoryId) ?? 0) + v);
   }
   return new Map([...byCat.entries()].sort((a, b) => b[1] - a[1]));
@@ -548,9 +548,9 @@ export function taxPaid(
     const vatPct = tx.tax.vatPct ?? 0;
     const vatNative = vatPct > 0 ? tx.tax.gross - tx.tax.gross / (1 + vatPct / 100) : 0;
     const deducted = tx.tax.gross - tx.amount;
-    vat += convert(vatNative, tx.currency, to, settings.rates);
-    tax += convert(deducted - vatNative, tx.currency, to, settings.rates);
-    gross += convert(tx.tax.gross, tx.currency, to, settings.rates);
+    vat += convert(vatNative, tx.currency, to, ratesAt(settings, tx.date));
+    tax += convert(deducted - vatNative, tx.currency, to, ratesAt(settings, tx.date));
+    gross += convert(tx.tax.gross, tx.currency, to, ratesAt(settings, tx.date));
     entries++;
   }
   return { tax, vat, gross, entries };

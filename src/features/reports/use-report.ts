@@ -2,7 +2,7 @@
 
 import { addMonths, monthDiff, monthOf } from "@/lib/date";
 import { expensesByCategory, monthlySeries, rollupToParents } from "@/lib/finance/finmath";
-import { convert } from "@/lib/finance/money";
+import { convert, ratesAt } from "@/lib/finance/money";
 import { useStore } from "@/lib/state/store";
 import type { Transaction } from "@/lib/types";
 
@@ -47,7 +47,7 @@ export function useReport(period: ReportPeriod, anchor: string) {
     const byTag = new Map<string, number>();
     for (const tx of state.transactions) {
       if (tx.type !== "expense" || !tx.tags?.length || !months.includes(monthOf(tx.date))) continue;
-      for (const tag of tx.tags) byTag.set(tag, (byTag.get(tag) ?? 0) + convert(tx.amount, tx.currency, base, settings.rates));
+      for (const tag of tx.tags) byTag.set(tag, (byTag.get(tag) ?? 0) + convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date)));
     }
     const income = series.reduce((s, m) => s + m.income, 0);
     const expense = series.reduce((s, m) => s + m.expense, 0);
@@ -59,7 +59,7 @@ export function useReport(period: ReportPeriod, anchor: string) {
   const inPeriod = (tx: Transaction) => monthDiff(start, monthOf(tx.date)) >= 0 && monthDiff(monthOf(tx.date), end) >= 0;
   const largest = state.transactions
     .filter((tx) => tx.type === "expense" && inPeriod(tx))
-    .map((tx) => ({ tx, base: convert(tx.amount, tx.currency, base, settings.rates) }))
+    .map((tx) => ({ tx, base: convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date)) }))
     .sort((a, b) => b.base - a.base)
     .slice(0, 5);
   const year = monthlySeries(state.transactions, end, 12, settings);

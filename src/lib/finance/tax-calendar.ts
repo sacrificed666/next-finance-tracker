@@ -1,5 +1,5 @@
 import { addDays, pad } from "@/lib/date";
-import { convert } from "@/lib/finance/money";
+import { convert, ratesAt } from "@/lib/finance/money";
 import { esvMinimum, taxRegime } from "@/lib/finance/tax";
 import type { AppState, TaxRegimeId, Transaction } from "@/lib/types";
 
@@ -39,7 +39,7 @@ export function taxedIncome(state: AppState, from: string, to: string): { gross:
   for (const tx of state.transactions) {
     if (tx.type !== "income" || !tx.tax || tx.date < from || tx.date > to) continue;
     const vatPct = tx.tax.vatPct ?? 0;
-    const g = convert(tx.tax.gross, tx.currency, "UAH", settings.rates);
+    const g = convert(tx.tax.gross, tx.currency, "UAH", ratesAt(settings, tx.date));
     gross += g;
     vat += vatPct > 0 ? g - g / (1 + vatPct / 100) : 0;
     entries.push(tx);

@@ -138,7 +138,7 @@ sheet of its own.
 | `GET/POST /api/monobank/webhook/[key]` | Where Monobank sends new operations; the secret key identifies the user, no session |
 | `POST /api/attachments` | Store a receipt photo (WebP, JPEG or PNG, up to 1.5 MB), sealed like every record |
 | `GET /api/attachments/[id]` | Read one back, privately cached |
-| `GET /api/nbu-rate` | The official NBU rate for a currency on a past date, cached in memory |
+| `GET /api/nbu-rate` | The official NBU rate for a currency on a past date, or with `?month=` the month's average for USD and EUR; cached in memory |
 
 Every handler calls `auth()` first and answers `401` without a session — except the Monobank webhook
 receiver, which Monobank calls without one and which is identified by the secret in its address, and
@@ -180,7 +180,7 @@ All of them are pure: same state in, same numbers out. Nothing there touches the
 | CoinGecko | Cryptocurrency prices | `lib/market/crypto.ts`, refreshed hourly |
 | inzhur.reit | Fund NAV and published yields | `app/api/inzhur/route.ts` (server-side) |
 | Monobank personal API | Card list and statements, with your token | `lib/server/monobank.ts` (server-side) |
-| NBU | The official rate on a given day, for the quarterly tax summary | `app/api/nbu-rate/route.ts` (server-side) |
+| NBU | The official rate on a given day, for the quarterly tax summary, and each ended month's average, for past income and spending | `app/api/nbu-rate/route.ts` (server-side) |
 
 > [!CAUTION]
 > Rate and price calls are made by the browser (except Inzhur). They are optional: the app works

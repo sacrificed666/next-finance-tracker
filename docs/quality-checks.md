@@ -27,6 +27,7 @@ it covers and needs no database.
 | `lib/finance/tax.test.ts` | Each year's published figures and limits, weekend deadlines, paid taxes as expenses, the income book and declaration totals |
 | `lib/finance/export.test.ts` | The entries and report CSVs: column order, signs, base-currency amounts, quoting, and the separator and decimal mark each language's spreadsheet expects |
 | `lib/finance/forecast.test.ts` | The average kept each month, and the projection adding it to the accounts, compounding it, or running them down |
+| `lib/finance/month-rates.test.ts` | Which months need a rate, the month's rate in conversions, averaging the NBU's daily rates, and normalising stored rates |
 | `lib/finance/reminders.test.ts` | What the morning notification lists and when, and how it reads in the user's language |
 | `lib/sealing.test.ts` | Sealing and opening records, which of several keys opened one, and that a wrong key opens nothing |
 | `lib/totp.test.ts` | One-time codes against the RFC 6238 vectors, clock drift, recovery-code format |

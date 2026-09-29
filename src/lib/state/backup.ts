@@ -6,6 +6,7 @@ import { INZHUR_FUNDS } from "@/lib/market/inzhur";
 import { returnPolicy } from "@/lib/finance/returns";
 import { LOCALES } from "@/lib/i18n/locales";
 import { DEFAULT_TAX_PROFILE, taxRegime, TAX_REGIMES } from "@/lib/finance/tax";
+import { normalizeMonthRates } from "@/lib/finance/month-rates";
 import { normalizeDashboard } from "./dashboard";
 import type {
   AppState,
@@ -112,6 +113,7 @@ export function normalizeState(raw: unknown): AppState {
       taxPaid: normalizeTaxPaid(s.taxPaid),
       bankLinks: normalizeBankLinks(s.bankLinks),
       dashboard: normalizeDashboard(s.dashboard),
+      monthRates: normalizeMonthRates(s.monthRates),
     },
   };
 }

@@ -275,6 +275,7 @@ export interface Settings {
   taxPaid?: Record<string, string>;
   bankLinks?: Record<string, string>;
   dashboard?: DashboardLayout;
+  monthRates?: Record<string, { USD: number; EUR: number }>;
 }
 
 export interface AppState {

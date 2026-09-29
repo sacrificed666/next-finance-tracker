@@ -40,9 +40,23 @@ convert(amount, "UAH", "USD", rates)  // amount ÷ rates.USD
 convert(amount, "USD", "EUR", rates)  // through UAH
 ```
 
-> [!WARNING]
-> Rates are a snapshot, not a time series. Historical charts convert old amounts at today's rate —
-> the app is a personal tracker, not an accounting ledger.
+### Rates of past months
+
+Money that moved in a past month is counted at that month's rate, so a dollar salary from January
+stays what it was worth in January. `settings.monthRates` keeps, for every month that has ended, the
+NBU's average of the daily official rates for USD and EUR (`GET /api/nbu-rate?month=YYYY-MM`, which
+averages the NBU's daily rates for the month and remembers the answer for the life of the server).
+
+| Figure | Converted at |
+| --- | --- |
+| Income, spending and net per month or period — dashboard, month page, reports, calendar, budgets, income, exports | The rate of the month the entry falls in (`ratesAt(settings, date)`), today's rate for the current month and anything planned |
+| Balances, net worth, investments, the forecast | Today's rate — they are what the money is worth now |
+| Tax declaration and income book | The NBU rate of the day the income arrived, as the Tax Code requires |
+
+Months are filled in the background shortly after the app opens: the ones with entries that have no
+rate yet, newest first, twelve at a time (`monthsNeedingRates`). While everything is in hryvnias —
+base currency, entries and budgets — nothing is fetched at all. Until a month has its rate, today's
+rate stands in.
 
 ## 🔢 Formatting
 

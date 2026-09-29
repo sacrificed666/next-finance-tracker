@@ -4,7 +4,7 @@ import { HeroTrend } from "@/components/charts";
 import { PageHero } from "@/components/layout/hero";
 import { currentMonth, formatMonthShort, monthOf, todayISO } from "@/lib/date";
 import { monthlySeries, taxPaid } from "@/lib/finance/finmath";
-import { convert, formatMoney, formatPercent } from "@/lib/finance/money";
+import { convert, formatMoney, formatPercent, ratesAt } from "@/lib/finance/money";
 import { useStore } from "@/lib/state/store";
 import { useT } from "@/lib/i18n";
 
@@ -34,7 +34,7 @@ export function IncomeHero() {
   const plannedTotal = planned.reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, settings.rates), 0);
   const plannedThisMonth = planned
     .filter((tx) => monthOf(tx.date) === nowMonth)
-    .reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, settings.rates), 0);
+    .reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date)), 0);
 
   return (
     <PageHero

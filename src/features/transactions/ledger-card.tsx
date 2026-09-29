@@ -24,7 +24,7 @@ import { addMonths, formatDate, formatDateShort, formatMonth, formatMonthShort, 
 import { downloadFile } from "@/lib/download";
 import { descendantsOf } from "@/lib/finance/categories";
 import { journalCsv } from "@/lib/finance/export";
-import { convert, formatMoney } from "@/lib/finance/money";
+import { convert, formatMoney, ratesAt } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { normalizeTags } from "@/lib/state/backup";
 import { matchesQuery, oneOf, sortItems, usePersistentState } from "@/lib/state/listing";
@@ -146,7 +146,7 @@ export function LedgerCard({
   const spanning = scope !== "month";
   const ledger = scoped.filter(matchesFilter);
   const signedBase = (tx: Transaction) =>
-    (tx.type === "expense" ? -1 : 1) * convert(tx.amount, tx.currency, base, settings.rates);
+    (tx.type === "expense" ? -1 : 1) * convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date));
   const net = ledger.reduce((sum, tx) => (tx.type === "transfer" ? sum : sum + signedBase(tx)), 0);
 
   const byDay = new Map<string, Transaction[]>();

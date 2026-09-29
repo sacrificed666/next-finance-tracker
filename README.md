@@ -225,8 +225,9 @@ PostgreSQL 18, Node 26, Auth.js 5. Charts are hand-rolled SVG — no chart libra
 - **One owner.** Registration is limited to `OWNER_EMAIL`; every API route requires a session.
 - **Saves are small and merge.** An edit sends only the records it changed; two devices editing
   different records both keep their work, and destructive actions carry an undo.
-- **Exchange rates are current, not historical.** Old amounts in other currencies are converted at
-  today's rate; cross-currency transfers are the exception and store what actually arrived.
+- **Past months keep their exchange rate.** Income and spending are counted at the NBU's average rate
+  of their month, balances and net worth at today's; cross-currency transfers store what actually
+  arrived.
 - **Back up before migrating or resetting**: Settings → Data → Export, or `make <env>-db-backup`.
 - **Put a reverse proxy in front in production** for TLS, and set `AUTH_URL` to the public origin.
 

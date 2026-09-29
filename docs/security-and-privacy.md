@@ -130,7 +130,7 @@ empty shell, and its first data request answers `401` and sends it to sign in.
 | CoinGecko prices | Coin ids and a target currency | Browser |
 | Inzhur fund pages | Nothing but the request | Server |
 | Monobank personal API | Your token, a card id and a period — only when you connect or load a statement | Server |
-| NBU rate by date | A currency and a date | Server |
+| NBU rates by date or month | A currency and a date, or a month | Server |
 | Flags (flagcdn), brand favicons | The image URL | Browser |
 | Notifications | The morning note, encrypted for your device — the push service sees only its size and time | Server |
 

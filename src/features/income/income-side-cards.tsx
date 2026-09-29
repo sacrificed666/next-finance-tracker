@@ -6,7 +6,7 @@ import { Card, EmptyState, Icon, ProgressMeter, SegmentedControl, SummaryPanel }
 import { CURRENCIES, CURRENCY_SLOT, CURRENCY_SYMBOL } from "@/lib/constants";
 import { addMonths, currentMonth, monthOf, todayISO } from "@/lib/date";
 import { incomeByCategory, rollupToParents } from "@/lib/finance/finmath";
-import { convert, formatMoney, formatPercent } from "@/lib/finance/money";
+import { convert, formatMoney, formatPercent, ratesAt } from "@/lib/finance/money";
 import { regimeAnnualHeadroom, taxRegime, taxYearValues } from "@/lib/finance/tax";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
@@ -24,7 +24,7 @@ export function TaxLimitCard() {
   for (const tx of state.transactions) {
     if (tx.type !== "income" || !tx.tax || tx.date > today || monthOf(tx.date) < yearStart) continue;
     const regime: TaxRegimeId = tx.tax.regime ?? "custom";
-    const gross = convert(tx.tax.gross, tx.currency, "UAH", settings.rates);
+    const gross = convert(tx.tax.gross, tx.currency, "UAH", ratesAt(settings, tx.date));
     grossByRegime.set(regime, (grossByRegime.get(regime) ?? 0) + gross);
   }
   const limits = [...grossByRegime.entries()]

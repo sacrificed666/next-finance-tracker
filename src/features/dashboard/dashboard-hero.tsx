@@ -6,7 +6,7 @@ import { displayCurrencies } from "@/lib/constants";
 import { addMonths, formatMonthShort, monthOf } from "@/lib/date";
 import { netWorth, netWorthByKind } from "@/lib/finance/finmath";
 import { worthHistory } from "@/lib/finance/history";
-import { convert, formatMoney, formatNumber, formatPercent } from "@/lib/finance/money";
+import { convert, formatMoney, formatNumber, formatPercent, ratesAt } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import type { AccountKind, InvestmentKind } from "@/lib/types";
 import { useMonthSummary } from "./use-month-summary";
@@ -33,7 +33,7 @@ export function DashboardHero() {
   const planned = (type: "income" | "expense") =>
     state.transactions
       .filter((tx) => tx.type === type && monthOf(tx.date) === month && tx.date > today)
-      .reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, settings.rates), 0);
+      .reduce((sum, tx) => sum + convert(tx.amount, tx.currency, base, ratesAt(settings, tx.date)), 0);
   const soFar = (total: number, ahead: number) =>
     ahead > 0
       ? t("tx.soFarPlanned", {

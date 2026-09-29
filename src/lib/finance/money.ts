@@ -6,6 +6,10 @@ export function rateToUAH(currency: Currency, rates: Settings["rates"]): number 
   return rates[currency];
 }
 
+export function ratesAt(settings: Pick<Settings, "rates" | "monthRates">, dateISO: string): Settings["rates"] {
+  return settings.monthRates?.[dateISO.slice(0, 7)] ?? settings.rates;
+}
+
 export function convert(
   amount: number,
   from: Currency,
