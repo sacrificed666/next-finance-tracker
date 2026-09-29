@@ -25,6 +25,7 @@ money tracker built with Next.js 16, React 19, PostgreSQL and Tailwind v4.
 | [Investments](./investments.md) | Valuation, return types, Inzhur funds, live prices |
 | [Budgets and schedules](./budgets-and-schedules.md) | Categories, budgets with rollover, recurring rules, subscriptions |
 | [Bank import](./bank-import.md) | Monobank, CSV statements, categorisation rules, duplicates |
+| [Notifications](./notifications.md) | The morning note of what is due, devices, how delivery works |
 
 ## 🎮 Experience
 

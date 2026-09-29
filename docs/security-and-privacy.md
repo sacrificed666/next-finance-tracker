@@ -16,7 +16,7 @@ finances.
 | Comparison | `timingSafeEqual`, and a dummy hash when the user does not exist, so timing does not leak account existence |
 | Minimum password | 10 characters, enforced server-side (`passwordProblem`) |
 | Hash parameters | `scrypt` N = 2¹⁷, r = 8, p = 1, stored inside the hash; older hashes are upgraded on the next successful sign-in |
-| Rate limits | 10 sign-in attempts per email and 5 registrations per address every 15 minutes, plus 10 password changes and 10 two-step confirmations |
+| Rate limits | 10 sign-in attempts per email and 5 registrations per address every 15 minutes, plus 10 password changes, 10 two-step confirmations and 5 test notifications |
 | Google sign-in | Optional; appears only when `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are set |
 | Two-step verification | Optional TOTP (RFC 6238: SHA-1, six digits, 30-second steps, one step of clock drift either way) on top of the password |
 | Recovery codes | Eight single-use codes, shown once, stored as SHA-256 hashes and compared in constant time |
@@ -72,6 +72,7 @@ Every record is stored as an **AES-256-GCM** ciphertext, not as readable columns
 | `users` | Name, avatar, about, occupation, location, link and birthday; the two-step verification secret and recovery-code hashes |
 | `category_rules`, `receivables`, `wishlist_items`, `planned_events`, `net_worth_snapshots` | The whole entity — these tables have no other columns |
 | `integrations` | The Monobank token and card list |
+| `push_subscriptions` | Each device's push address and keys |
 | `attachments` | The receipt photo itself |
 
 Each row keeps only its `id`, its `user_id` and a `secret` column that holds
@@ -94,11 +95,13 @@ database therefore shows which rows exist, but not a single amount, name or note
 
 ## 🛡️ Request authorisation
 
-Every API route calls `auth()` and answers `401` without a session, including `/api/inzhur`. The
-one exception is `POST /api/monobank/webhook/<key>`, where Monobank delivers new operations: it has
-no session, so the 24-byte random key in the address is what identifies the user (compared in
+Every API route calls `auth()` and answers `401` without a session, including `/api/inzhur`. There
+are two exceptions. `POST /api/monobank/webhook/<key>` is where Monobank delivers new operations: it
+has no session, so the 24-byte random key in the address is what identifies the user (compared in
 constant time, rate-limited, `404` for anything unknown). Treat that address like a password — it
-only ever travels between the server and Monobank. The middleware additionally gates pages, so a
+only ever travels between the server and Monobank. `POST /api/push/remind` sends the morning
+notifications and is called by the server itself; it needs a token derived from `AUTH_SECRET` and
+answers `404` without it. The middleware additionally gates pages, so a
 browser without a session cookie never renders app HTML; one whose session has ended gets only the
 empty shell, and its first data request answers `401` and sends it to sign in.
 
@@ -118,14 +121,16 @@ empty shell, and its first data request answers `401` and sends it to sign in.
 | Monobank personal API | Your token, a card id and a period — only when you connect or load a statement | Server |
 | NBU rate by date | A currency and a date | Server |
 | Flags (flagcdn), brand favicons | The image URL | Browser |
+| Notifications | The morning note, encrypted for your device — the push service sees only its size and time | Server |
 
 > [!IMPORTANT]
-> No amounts, balances, categories or names are sent anywhere. Everything else stays in your
-> PostgreSQL database. The Monobank token is sealed on the server and is never sent back to the
-> browser, not even masked.
+> No amounts, balances, categories or names are sent anywhere in readable form: the one message that
+> carries them, the morning notification, is encrypted end to end for your device
+> ([Notifications](./notifications.md)). Everything else stays in your PostgreSQL database. The
+> Monobank token is sealed on the server and is never sent back to the browser, not even masked.
 
-The installed app's service worker (`public/sw.js`) caches only the build's static files and icons.
-Pages and API responses are never stored on the device.
+The installed app's service worker (`public/sw.js`) caches only the build's static files and icons,
+and shows notifications. Pages and API responses are never stored on the device.
 
 ## 🧪 Input hardening
 

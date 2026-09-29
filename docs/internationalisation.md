@@ -72,13 +72,18 @@ language until it has arrived. Client-side navigation never resends the dictiona
 > Never import a dictionary from client code. One static `import { uk } from "./dict/uk"` puts that
 > language back into every page's bundle — before this split all eight added 690 KB to each load.
 
+Text the server writes for someone, such as the morning notification, uses the same `t` and `tp`:
+`makeI18n` in `lib/i18n/core.ts` has no React in it, so the server builds one from that user's
+language and `serverMessages`.
+
 ## ➕ Adding a language
 
 1. Add the locale to `src/lib/i18n/locales.ts` (code, native name, English name, country for the
    flag, `Intl` tag).
 2. Copy `dict/en.ts` to `dict/<code>.ts` and translate every value; keep the keys untouched.
 3. Add the plural forms your language needs.
-4. Register it in `src/lib/i18n/index.tsx`.
+4. Register it in `loadMessages` (`src/lib/i18n/messages.ts`) and in `serverMessages`
+   (`src/lib/i18n/server.ts`).
 5. Run `npx tsc --noEmit` and the dictionary validator described in
    [Quality checks](./quality-checks.md).
 

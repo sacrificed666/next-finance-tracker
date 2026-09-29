@@ -55,16 +55,17 @@ Tables: `users`, `accounts`, `sessions`, `verification_token` (Auth.js), plus `s
 
 Newer record types use **sealed-only** tables with nothing but `(user_id, id, secret)`:
 `category_rules`, `receivables`, `wishlist_items`, `planned_events` and `net_worth_snapshots` (keyed by
-date). Two more hold data that never travels with `AppState`:
+date). Three more hold data that never travels with `AppState`:
 
 | Table | Holds |
 | --- | --- |
 | `integrations` | One row per connected bank (`provider = 'monobank'`): the sealed token and card list |
 | `attachments` | Receipt photos, sealed, with their type. Photos no entry refers to any more are removed a day after the save that dropped them |
+| `push_subscriptions` | One sealed row per device that gets notifications: its push address and keys |
 
-`users` also carries two sign-in columns: `two_factor` (sealed: the authenticator secret and the
+`users` also carries two sign-in columns — `two_factor` (sealed: the authenticator secret and the
 recovery-code hashes, `NULL` while two-step verification is off) and `session_epoch` (an integer that
-*Sign out everywhere* raises).
+*Sign out everywhere* raises) — and `reminded_on`, the last day the morning notification was handled.
 
 > [!NOTE]
 > The app also applies the schema on first database use (`src/lib/server/db.ts`), so a fresh container is

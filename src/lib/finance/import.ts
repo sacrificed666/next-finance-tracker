@@ -97,7 +97,7 @@ export function suggestCategory(state: AppState, description: string, type: "inc
  * subscription posting, or a tax marked paid in the tax calendar (id "tax:…"). The
  * real operation takes its place instead of being counted next to it.
  */
-function isPlaceholder(tx: Transaction): boolean {
+export function isPlaceholder(tx: Transaction): boolean {
   return Boolean(tx.recurringId || tx.subscriptionId || tx.id.startsWith("tax:"));
 }
 

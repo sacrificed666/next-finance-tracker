@@ -390,3 +390,13 @@ CREATE TABLE IF NOT EXISTS attachments (
     created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, id)
 );
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id         text NOT NULL,
+    secret     text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, id)
+);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reminded_on date;

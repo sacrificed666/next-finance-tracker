@@ -128,6 +128,9 @@ sheet of its own.
 | `POST /api/profile/password` | Set or change the password |
 | `POST /api/profile/two-factor` | `{ action, code }`: `begin` returns a new secret and its `otpauth://` address, `confirm` turns two-step verification on and returns the recovery codes, `disable` turns it off |
 | `DELETE /api/profile/sessions` | Ends every session of the account by raising its session epoch |
+| `GET/PUT/DELETE /api/push` | The key devices subscribe with and the hour notes go out; save or forget this device |
+| `POST /api/push/test` | Send a test notification to this device |
+| `POST /api/push/remind` | Send the day's notes; called every 15 minutes by the server's own timer, with a token instead of a session |
 | `GET /api/inzhur` | Scrapes published Inzhur fund data, cached in memory for 10 minutes |
 | `GET/POST/DELETE /api/monobank` | Monobank connection: the card list (never the token), connect with a token, disconnect |
 | `GET /api/monobank/statement` | One card's statement for a period; `429 wait:<s>` while Monobank's one-a-minute limit applies |
@@ -138,7 +141,8 @@ sheet of its own.
 | `GET /api/nbu-rate` | The official NBU rate for a currency on a past date, cached in memory |
 
 Every handler calls `auth()` first and answers `401` without a session — except the Monobank webhook
-receiver, which Monobank calls without one and which is identified by the secret in its address.
+receiver, which Monobank calls without one and which is identified by the secret in its address, and
+the notification sender, which the server's own timer calls with a token derived from `AUTH_SECRET`.
 
 ## 🖥️ Rendering model
 

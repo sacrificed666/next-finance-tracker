@@ -129,6 +129,8 @@ subscription) fills in the plan instead of doubling it. On a public https addres
 send each new operation as it happens.
 **Exchange rates and asset prices refresh automatically every hour** from Monobank (with the official
 NBU rate as a fallback) and CoinGecko — no buttons to press.
+**Notifications** bring a short note each morning to the devices you switch on: payments and income
+planned for today and tomorrow, taxes coming due and money someone should return.
 
 ### ⌨️ Everywhere
 
@@ -178,6 +180,7 @@ Everything else lives in [`docs/`](./docs/README.md):
 | [Investments](./docs/investments.md) | Valuation, return types, Inzhur, live prices |
 | [Budgets and schedules](./docs/budgets-and-schedules.md) | Categories, budgets, recurring, subscriptions |
 | [Bank import](./docs/bank-import.md) | Monobank, CSV statements, categorisation rules, duplicates |
+| [Notifications](./docs/notifications.md) | The morning note of what is due |
 | [Gamification](./docs/gamification.md) | XP, levels, achievements, health score |
 | [Internationalisation](./docs/internationalisation.md) | Locales, dictionaries, plurals |
 | [Design system](./docs/design-system.md) | Surfaces, layout rules, contrast and colour rationale |

@@ -35,6 +35,10 @@ services:
       OWNER_EMAIL: ${OWNER_EMAIL:-}
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
       AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
+      TZ: ${TZ:-Europe/Kyiv}
+      REMINDER_HOUR: ${REMINDER_HOUR:-9}
+      REMINDERS: ${REMINDERS:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     depends_on:
       db:
         condition: service_healthy

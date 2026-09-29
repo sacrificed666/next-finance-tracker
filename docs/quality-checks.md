@@ -24,6 +24,9 @@ it covers and needs no database.
 | `lib/finance/import.test.ts` | Transfer pairing, cash withdrawals, planned-payment matching, duplicates, subscription suggestions and one-operation-at-a-time webhook booking |
 | `lib/finance/plans.test.ts` | Rules that book a budget as spent, the fixed-bill heuristic and stopping schedules |
 | `lib/finance/tax.test.ts` | Each year's published figures and limits, weekend deadlines, paid taxes as expenses, the income book and declaration totals |
+| `lib/finance/reminders.test.ts` | What the morning notification lists and when, and how it reads in the user's language |
+| `lib/totp.test.ts` | One-time codes against the RFC 6238 vectors, clock drift, recovery-code format |
+| `lib/web-push.test.ts` | Push encryption against the RFC 8291 example, VAPID signatures, the push-service allow-list, and a delivery to a local server that decrypts it |
 
 > [!TIP]
 > Pure logic in `lib/` gets a test next to it; components are covered by the browser pass below.

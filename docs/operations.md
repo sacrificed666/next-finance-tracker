@@ -92,6 +92,8 @@ make prod-logs                             # the backup service logs a line for 
 | Every device asked to sign in again | `AUTH_SECRET` changed, or *Sign out everywhere* was used on the Profile page |
 | Sign-in keeps asking for a code that is right | The phone's clock is off by more than 30 seconds — turn on automatic time |
 | Phone and recovery codes both lost | Turn two-step verification off from the database, below |
+| No morning notification | Nothing was due, the device's switch is off, or the browser blocks the site; **Send a test** in Settings tells which |
+| Notifications stopped after a secret changed | The push key follows `DATA_ENCRYPTION_KEY` (or `AUTH_SECRET`); switch reminders on again on each device |
 | 500 on save | A new enum value missing from a `CHECK` constraint in `db/schema.sql` |
 | Blank exchange rates | Monobank rate limit (one request per five minutes) — the NBU fallback covers it |
 | Cryptocurrency prices missing | CoinGecko throttling; previous prices are kept and the error is shown inline |

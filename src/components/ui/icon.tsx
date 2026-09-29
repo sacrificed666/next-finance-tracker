@@ -180,6 +180,7 @@ const PATHS = {
     "M10.5 20.5v-4h3v4",
   ],
   plus: ["M12 5v14", "M5 12h14"],
+  bell: ["M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2h-14l1.5-2Z", "M10 20.5a2.2 2.2 0 0 0 4 0"],
 } as const;
 
 export type IconName = keyof typeof PATHS;
@@ -189,7 +190,7 @@ export const SUBJECT_SLOT: Partial<Record<IconName, number>> = {
   spend: 2, trend: 2,
   bank: 3, sliders: 3, gear: 3,
   globe: 4, exchange: 4,
-  device: 5,
+  device: 5, bell: 5,
   target: 6, arrowDown: 6,
   bolt: 7, card: 7,
   wallet: 8,

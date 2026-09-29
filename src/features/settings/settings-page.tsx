@@ -7,6 +7,7 @@ import { CategoriesCard } from "./categories-card";
 import { DataCard } from "./data-card";
 import { GeneralCard } from "./general-card";
 import { ImportCard } from "./import-card";
+import { NotificationsCard } from "./notifications-card";
 import { RatesCard } from "./rates-card";
 import { RulesCard } from "./rules-card";
 import { SettingsHero } from "./settings-hero";
@@ -41,6 +42,7 @@ export function SettingsPage() {
           side={
             <>
               <GeneralCard />
+              <NotificationsCard />
               <RatesCard />
               <AboutCard />
             </>
