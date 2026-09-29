@@ -68,6 +68,8 @@ many months of spending your emergency fund covers and how the money splits by a
 currency.
 
 - **Balances are derived, never typed over** — opening balance plus everything booked to the account.
+- **Checked against the bank** — accounts linked to Monobank show whether they match the bank's
+  balance, and one tap books the difference.
 - **Cryptocurrency accounts** hold several coins at once (25 supported), priced live from CoinGecko.
 - **Game item accounts** for CS2, Dota 2, Team Fortress 2, Rust, PUBG or a custom game.
 - **Savings goals** roll up into one card: overall progress, the goals closest to done, and what it

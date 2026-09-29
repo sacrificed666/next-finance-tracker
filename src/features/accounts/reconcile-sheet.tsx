@@ -9,11 +9,11 @@ import { parseAmount } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { uid, useStore } from "@/lib/state/store";
 
-export function ReconcileSheet({ accountId, onClose }: { accountId: string; onClose: () => void }) {
+export function ReconcileSheet({ accountId, amount: bankAmount, onClose }: { accountId: string; amount?: number; onClose: () => void }) {
   const { state, update } = useStore();
   const { t } = useT();
   const today = todayISO();
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(bankAmount !== undefined ? String(bankAmount) : "");
   const account = state.savings.find((a) => a.id === accountId) ?? null;
   const current = account ? (accountBalances(state, today).get(account.id) ?? 0) : 0;
   const delta = parseAmount(amount) - current;

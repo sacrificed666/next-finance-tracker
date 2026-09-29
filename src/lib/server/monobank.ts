@@ -18,6 +18,7 @@ export interface MonoAccount {
   maskedPan: string;
   title?: string;
   balance: number;
+  balanceAt?: number;
 }
 
 export interface MonoItem {
@@ -29,6 +30,7 @@ export interface MonoItem {
   amount: number;
   opAmount?: number;
   opCurrency?: Currency;
+  balance?: number;
 }
 
 interface MonoStored {
@@ -111,8 +113,11 @@ interface ClientInfo {
 
 export async function connectMono(userId: string, token: string): Promise<MonoStored> {
   const info = await call<ClientInfo>(userId, token, "/personal/client-info");
+  const previous = await loadMono(userId);
+  const now = Math.floor(Date.now() / 1000);
   const stored: MonoStored = {
     token,
+    ...(previous?.token === token ? { webhookKey: previous.webhookKey, webhookUrl: previous.webhookUrl } : {}),
     name: info.name,
     accounts: [
       ...(info.accounts ?? []).map((a) => ({
@@ -122,6 +127,7 @@ export async function connectMono(userId: string, token: string): Promise<MonoSt
         type: a.type ?? "black",
         maskedPan: a.maskedPan?.[0] ?? "",
         balance: a.balance / 100,
+        balanceAt: now,
       })),
       ...(info.jars ?? []).map((j) => ({
         id: j.id,
@@ -131,6 +137,7 @@ export async function connectMono(userId: string, token: string): Promise<MonoSt
         maskedPan: "",
         title: j.title?.slice(0, 80),
         balance: j.balance / 100,
+        balanceAt: now,
       })),
     ],
     fetchedAt: Date.now(),
@@ -149,6 +156,7 @@ interface RawItem {
   amount: number;
   operationAmount?: number;
   currencyCode?: number;
+  balance?: number;
 }
 
 export function parseMonoItem(i: RawItem): MonoItem {
@@ -161,7 +169,20 @@ export function parseMonoItem(i: RawItem): MonoItem {
     amount: i.amount / 100,
     opAmount: i.operationAmount !== undefined ? Math.abs(i.operationAmount) / 100 : undefined,
     opCurrency: i.currencyCode !== undefined ? CURRENCY_CODES[i.currencyCode] : undefined,
+    balance: Number.isFinite(i.balance) ? i.balance! / 100 : undefined,
   };
+}
+
+export async function recordMonoBalance(userId: string, accountId: string, items: MonoItem[]): Promise<void> {
+  const latest = items.filter((i) => i.balance !== undefined).sort((a, b) => b.time - a.time)[0];
+  if (!latest) return;
+  const stored = await loadMono(userId);
+  const account = stored?.accounts?.find((a) => a.id === accountId);
+  if (!stored || !account || (account.balanceAt ?? 0) > latest.time) return;
+  await saveMono(userId, {
+    ...stored,
+    accounts: stored.accounts!.map((a) => (a.id === accountId ? { ...a, balance: latest.balance!, balanceAt: latest.time } : a)),
+  });
 }
 
 export function isMonoItem(v: unknown): v is RawItem {

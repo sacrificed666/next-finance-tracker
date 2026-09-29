@@ -80,6 +80,10 @@ smaller than 24 px, which used to slip through as blurry letter placeholders.
 - Transfers move money between accounts; cross-currency transfers carry `toAmount`, so both sides
   stay exact.
 - Cryptocurrency accounts have no reconcile button: their value follows the coin prices.
+- **Bank balances** appears on the Accounts page once Monobank is connected and cards are linked. It
+  sets each linked account against what Monobank last reported and marks the ones that differ;
+  **Match** opens the reconcile sheet with the bank's figure filled in. See
+  [Bank import](./bank-import.md#bank-balances).
 
 ## 🤝 Money owed to you
 

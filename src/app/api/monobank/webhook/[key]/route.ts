@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { absorbOperation, candidateFromMono } from "@/lib/finance/import";
-import { findMonoByWebhookKey, isMonoItem, monoDate, parseMonoItem } from "@/lib/server/monobank";
+import { findMonoByWebhookKey, isMonoItem, monoDate, parseMonoItem, recordMonoBalance } from "@/lib/server/monobank";
 import { clientKey, rateLimit } from "@/lib/server/rate-limit";
 import { loadState, saveChanges } from "@/lib/server/repo";
 import { diffState } from "@/lib/state/changes";
@@ -46,6 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ key
 
   try {
     await inTurn(found.userId, async () => {
+      await recordMonoBalance(found.userId, account.id, [item]);
       const { state } = await loadState(found.userId);
       const linked = state.settings.bankLinks?.[account.id];
       if (!linked) return;

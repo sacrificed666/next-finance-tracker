@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/server/auth";
-import { loadMono, MONO_MAX_RANGE_S, monoStatement, MonoError } from "@/lib/server/monobank";
+import { loadMono, MONO_MAX_RANGE_S, monoStatement, MonoError, recordMonoBalance } from "@/lib/server/monobank";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "range" }, { status: 400 });
   }
   try {
-    return NextResponse.json({ items: await monoStatement(userId, stored.token, account, from, to) });
+    const items = await monoStatement(userId, stored.token, account, from, to);
+    await recordMonoBalance(userId, account, items);
+    return NextResponse.json({ items });
   } catch (err) {
     if (err instanceof MonoError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error("[api/monobank/statement]", err);

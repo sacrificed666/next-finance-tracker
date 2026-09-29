@@ -38,6 +38,19 @@ paired with the other half of a transfer, matched to a planned payment — throu
   Monobank to stop; disconnecting forgets the key.
 - Operations for one user are processed one after another, so the two halves of a transfer, which
   arrive almost together, still find each other. Operations on cards that are not linked are ignored.
+- Refreshing the card list keeps the address, so automatic import carries on after a refresh.
+
+### Bank balances
+
+Every operation Monobank sends carries the account's balance right after it. The server keeps the
+latest one per card or jar, with its time, from three places: the card list when it is fetched, every
+statement loaded, and every operation the webhook delivers (`recordMonoBalance`). None of them costs
+an extra request. **Check now** on the Accounts card fetches the card list again, within Monobank's
+one-request-a-minute limit.
+
+The card compares that balance with the linked account's balance in the app for today. A planned
+payment dated today that the bank has not charged yet shows up as a difference — which is what the
+card is for. **Match** books the difference through the reconcile sheet, as an adjusting entry.
 
 ## 📄 CSV statements
 

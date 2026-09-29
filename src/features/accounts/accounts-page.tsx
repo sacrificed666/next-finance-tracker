@@ -16,6 +16,7 @@ import { DebtsCard } from "./debts-card";
 import { GoalsCard } from "./goals-card";
 import { ReceivableSheet } from "./receivable-sheet";
 import { ReceivablesCard } from "./receivables-card";
+import { BankCheckCard } from "./bank-check-card";
 import { ReconcileSheet } from "./reconcile-sheet";
 
 type Deleting = { kind: "account" | "debt" | "receivable"; id: string };
@@ -27,7 +28,7 @@ export function AccountsPage() {
   const [account, setAccount] = useState<SavingsAccount | "new" | null>(null);
   const [debt, setDebt] = useState<Debt | "new" | null>(null);
   const [receivable, setReceivable] = useState<Receivable | "new" | null>(null);
-  const [reconcileId, setReconcileId] = useState<string | null>(null);
+  const [reconcile, setReconcile] = useState<{ id: string; amount?: number } | null>(null);
   const [deleting, setDeleting] = useState<Deleting | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
 
@@ -95,6 +96,7 @@ export function AccountsPage() {
           main={<AccountsCard onAdd={addAccount} onEdit={setAccount} />}
           side={
             <>
+              <BankCheckCard onMatch={(id, amount) => setReconcile({ id, amount })} />
               <CurrenciesCard />
               <GoalsCard />
               <DebtsCard onAdd={addDebt} onEdit={setDebt} />
@@ -113,12 +115,14 @@ export function AccountsPage() {
           onDelete={(id) => setDeleting({ kind: "account", id })}
           onReconcile={(id) => {
             setAccount(null);
-            setReconcileId(id);
+            setReconcile({ id });
           }}
           onPriceError={setPriceError}
         />
       )}
-      {reconcileId && <ReconcileSheet key={reconcileId} accountId={reconcileId} onClose={() => setReconcileId(null)} />}
+      {reconcile && (
+        <ReconcileSheet key={reconcile.id} accountId={reconcile.id} amount={reconcile.amount} onClose={() => setReconcile(null)} />
+      )}
       {debt && (
         <DebtSheet
           key={debt === "new" ? "new" : debt.id}
