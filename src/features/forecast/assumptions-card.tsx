@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { Card, Slider, Switch } from "@/components/ui";
 import { CURRENCY_SYMBOL } from "@/lib/constants";
-import { formatPercent } from "@/lib/finance/money";
+import { formatMoney, formatPercent } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import type { Forecast } from "./use-forecast";
 
@@ -22,8 +22,8 @@ function SliderRow({ label, value, hint, children }: { label: string; value: str
 
 function ToggleRow({ title, hint, children }: { title: string; hint: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 lg:col-span-3">
-      <div className="min-w-0">
+    <div className="flex items-center justify-between gap-3 lg:col-span-3">
+      <div className="min-w-0 flex-1">
         <p className="body-strong">{title}</p>
         <p className="caption mt-0.5">{hint}</p>
       </div>
@@ -44,6 +44,8 @@ export function AssumptionsCard({
   setInflationOn,
   withDebts,
   setWithDebts,
+  withSaving,
+  setWithSaving,
 }: {
   f: Forecast;
   years: number;
@@ -56,9 +58,12 @@ export function AssumptionsCard({
   setInflationOn: (v: boolean) => void;
   withDebts: boolean;
   setWithDebts: (v: boolean) => void;
+  withSaving: boolean;
+  setWithSaving: (v: boolean) => void;
 }) {
   const { t, tp } = useT();
-  const { inflationMix } = f;
+  const { inflationMix, kept, base } = f;
+  const money = (v: number) => formatMoney(v, base, { compact: true });
   return (
     <Card title={t("forecast.assumptions")} subtitle={t("forecast.assumptions.subtitle")} icon="sliders">
       <div className="grid gap-x-6 gap-y-5 lg:grid-cols-3">
@@ -71,6 +76,17 @@ export function AssumptionsCard({
         <SliderRow label={t("forecast.spread")} value={`±${formatPercent(spreadPct)}`} hint={t("forecast.spread.hint")}>
           <Slider min={0} max={10} step={0.5} value={spreadPct} onChange={setSpreadPct} label={t("forecast.spread")} />
         </SliderRow>
+
+        <ToggleRow
+          title={t("forecast.saving")}
+          hint={
+            kept.topUps > 0
+              ? t("forecast.saving.hintTopUps", { amount: money(kept.toAccounts), average: money(kept.average), topUps: money(kept.topUps) })
+              : t("forecast.saving.hint", { amount: money(kept.toAccounts) })
+          }
+        >
+          <Switch checked={withSaving} onChange={setWithSaving} label={t("forecast.saving")} />
+        </ToggleRow>
 
         <ToggleRow
           title={t("forecast.real")}

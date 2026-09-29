@@ -92,8 +92,8 @@ the next year, allocation by type, and the positions — as detailed cards or a 
 
 Project savings and investments 1–40 years ahead: cautious, base and optimistic scenarios, one-off
 planned events in any currency, optional debt subtraction, a goal with the date you reach it, and a
-year-by-year table. Growth comes from what you actually hold and from the monthly contributions set
-on your investments — nothing has to be typed twice.
+year-by-year table. Growth comes from what you actually hold, from the monthly contributions set on
+your investments and from what you usually keep each month — nothing has to be typed twice.
 
 A **wishlist** sits beside it: what you want, what it costs, how many months of your usual surplus it
 takes, and — once you give it a month — a planned event in the forecast.

@@ -222,6 +222,7 @@ export interface ProjectionOptions {
   savingsReturnPct?: number;
   events?: ProjectionEvent[];
   includeDebts?: boolean;
+  monthlySaving?: number;
 }
 
 export function debtBalances(state: AppState, horizonMonths: number): number[] {
@@ -295,7 +296,7 @@ export function buildProjection(
     const month = addMonths(startMonth, m);
     const payoutInflow = Math.max(0, inv.paidOut - prevPaidOut);
     prevPaidOut = inv.paidOut;
-    savings = savings * (1 + monthlyReturn) + payoutInflow;
+    savings = savings * (1 + monthlyReturn) + payoutInflow + (opts.monthlySaving ?? 0);
     savings += eventsByMonth.get(month) ?? 0;
     const debt = debts ? debts[m] : 0;
     points.push({
@@ -623,4 +624,11 @@ export function rollupToParents(
     out.set(key, (out.get(key) ?? 0) + value);
   }
   return new Map([...out.entries()].sort((a, b) => b[1] - a[1]));
+}
+
+export function averageKept(state: AppState, month: string, months = 6): number {
+  const series = monthlySeries(state.transactions, addMonths(month, -1), months, state.settings).filter(
+    (m) => m.income > 0 || m.expense > 0,
+  );
+  return series.length > 0 ? series.reduce((sum, m) => sum + m.net, 0) / series.length : 0;
 }

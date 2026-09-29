@@ -12,15 +12,16 @@ time:
 | Part | How it moves |
 | --- | --- |
 | Accounts | Today's balances, growing by the **return on savings** set on the page, compounded monthly |
+| What you keep | With **Add what you keep each month** on, the average net result of the last six full months with entries (`averageKept`), less the investments' monthly top-ups, lands in the accounts every month — negative when spending ran ahead of income |
 | Investments | Each position valued on the same day of every future month the way the Investments page values it today — accrual, coupons, dividends, top-ups |
 | Payouts | Interest, coupons and dividends an investment pays out land in the accounts in the month they are paid |
 | Planned events | One-off amounts in a given month: a purchase subtracts, a windfall adds |
 | Wishlist | Items given a month join the events as planned purchases |
 | Debts | With **Subtract debts** on, each balance shrinks by its monthly payment and the chart shows net worth |
 
-> [!NOTE]
-> The projection does not add what you keep each month from income over spending. The money you save
-> in future months appears only through planned events and investment top-ups.
+The month in progress is left out of that average: halfway through, it holds the salary but not yet
+the spending. Top-ups are taken off because the money that goes into an investment is already counted
+there.
 
 ## 🎚️ Assumptions
 
@@ -31,6 +32,7 @@ time:
 | Scenario spread | 0 to 10 points | 3 points |
 | Show in today's money | On or off | Off |
 | Subtract debts | On or off | On when there are debts |
+| Add what you keep each month | On or off | On |
 
 **Cautious** and **optimistic** runs use the return minus and plus the spread (never below zero).
 They differ only where a return applies, so with a zero return the hero shows one figure, not a range.
@@ -51,14 +53,14 @@ much of that spending the total covers today.
 ## 🎯 Reach a goal
 
 Enter an amount, a currency and a month. The card shows when the projection reaches the amount and,
-if the month comes first, how much more to put aside each month to close the gap — compounded at the
-same return on savings.
+if the month comes first, how much more to put aside each month — on top of what the projection
+already counts — to close the gap, compounded at the same return on savings.
 
 ## 🛍️ Wishlist
 
 Items are ordered by priority, then price. Each gets the month it becomes affordable if what you keep
-on average goes towards the list, one item after another. That pace is the average net result of the
-last six months that had any income or spending.
+on average goes towards the list, one item after another. That pace is the same average as above: the
+net result of the last six full months that had any income or spending.
 
 > [!TIP]
 > Planned events made in older versions lived in the browser. They are moved into the saved data the

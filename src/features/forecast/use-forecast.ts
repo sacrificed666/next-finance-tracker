@@ -2,7 +2,7 @@
 
 import { CURRENCIES } from "@/lib/constants";
 import { currentMonth, todayISO } from "@/lib/date";
-import { buildProjection, holdings, monthlySeries } from "@/lib/finance/finmath";
+import { averageKept, buildProjection, holdings, monthlySeries } from "@/lib/finance/finmath";
 import { convert } from "@/lib/finance/money";
 import { useStore } from "@/lib/state/store";
 import type { Currency, PlannedEvent } from "@/lib/types";
@@ -17,6 +17,7 @@ export interface ForecastInputs {
   spreadPct: number;
   inflationOn: boolean;
   withDebts: boolean;
+  withSaving: boolean;
   events: PlannedEvent[];
 }
 
@@ -26,7 +27,7 @@ export function useForecast(inputs: ForecastInputs) {
   const base = settings.baseCurrency;
   const today = todayISO();
   const startMonth = currentMonth();
-  const { years, view, returnPct, spreadPct, inflationOn, withDebts, events } = inputs;
+  const { years, view, returnPct, spreadPct, inflationOn, withDebts, withSaving, events } = inputs;
 
   const projectionEvents = events.map((e) => ({
     month: e.month,
@@ -45,12 +46,21 @@ export function useForecast(inputs: ForecastInputs) {
     };
   })();
 
+  const investmentTopUps = state.investments.reduce(
+    (sum, inv) => sum + convert(inv.monthlyContribution ?? 0, inv.currency, base, settings.rates),
+    0,
+  );
+  const averageNet = averageKept(state, startMonth);
+  const kept = { average: averageNet, topUps: investmentTopUps, toAccounts: averageNet - investmentTopUps };
+  const monthlySaving = withSaving ? kept.toAccounts : 0;
+
   const months = years * 12;
   const projectionFor = (returns: number) =>
     buildProjection(state, today, months, {
       savingsReturnPct: returns,
       events: projectionEvents,
       includeDebts: withDebts,
+      monthlySaving,
     });
 
   const projection = projectionFor(returnPct);
@@ -80,11 +90,7 @@ export function useForecast(inputs: ForecastInputs) {
 
   const contributionSplit = (() => {
     const start = nowTotal;
-    const investmentTopUps = state.investments.reduce(
-      (sum, inv) => sum + convert(inv.monthlyContribution ?? 0, inv.currency, base, settings.rates),
-      0,
-    );
-    const deposits = show(investmentTopUps * months, projection.length - 1);
+    const deposits = Math.max(0, show((investmentTopUps + monthlySaving) * months, projection.length - 1));
     const growth = Math.max(0, endTotal - start - deposits);
     const total = Math.max(1e-9, start + deposits + growth);
     return {
@@ -103,6 +109,7 @@ export function useForecast(inputs: ForecastInputs) {
     base,
     startMonth,
     inflationMix,
+    kept,
     projection,
     projectionFor,
     show,

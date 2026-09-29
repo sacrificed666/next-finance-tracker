@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AddButton, Card, IconDisc, SummaryPanel } from "@/components/ui";
 import { addMonths, currentMonth, formatMonthShort } from "@/lib/date";
-import { monthlySeries } from "@/lib/finance/finmath";
+import { averageKept } from "@/lib/finance/finmath";
 import { convert, formatMoney } from "@/lib/finance/money";
 import { useT } from "@/lib/i18n";
 import { useStore } from "@/lib/state/store";
@@ -19,8 +19,7 @@ export function WishlistCard() {
   const base = settings.baseCurrency;
   const [sheet, setSheet] = useState<WishItem | "new" | null>(null);
 
-  const series = monthlySeries(state.transactions, currentMonth(), 6, settings).filter((m) => m.income > 0 || m.expense > 0);
-  const pace = Math.max(0, series.reduce((sum, m) => sum + m.net, 0) / Math.max(1, series.length));
+  const pace = Math.max(0, averageKept(state, currentMonth()));
   const items = [...state.wishlist].sort((a, b) => ORDER[a.priority] - ORDER[b.priority] || a.price - b.price);
   const inBase = (w: WishItem) => convert(w.price, w.currency, base, settings.rates);
   const total = items.reduce((sum, w) => sum + inBase(w), 0);

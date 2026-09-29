@@ -28,11 +28,13 @@ export function ForecastPage() {
   const [spreadPct, setSpreadPct] = useState(3);
   const [inflationOn, setInflationOn] = useState(false);
   const [withDebts, setWithDebts] = useState(state.debts.length > 0);
+  const [withSaving, setWithSaving] = useState(true);
   const shownYears = useDeferredValue(years);
   const shownReturn = useDeferredValue(returnPct);
   const shownSpread = useDeferredValue(spreadPct);
   const shownInflation = useDeferredValue(inflationOn);
   const shownDebts = useDeferredValue(withDebts);
+  const shownSaving = useDeferredValue(withSaving);
   const events = state.plannedEvents;
   const setEvents = (next: PlannedEvent[]) => update((s) => ({ ...s, plannedEvents: next }));
   useLegacyEvents();
@@ -47,6 +49,7 @@ export function ForecastPage() {
     spreadPct: shownSpread,
     inflationOn: shownInflation,
     withDebts: shownDebts,
+    withSaving: shownSaving,
     events: [...events, ...wishes],
   });
   const isEmpty = state.savings.length === 0 && state.investments.length === 0;
@@ -91,6 +94,8 @@ export function ForecastPage() {
               setInflationOn={setInflationOn}
               withDebts={withDebts}
               setWithDebts={setWithDebts}
+              withSaving={withSaving}
+              setWithSaving={setWithSaving}
             />
             <Card>
               <EmptyState
@@ -123,6 +128,8 @@ export function ForecastPage() {
                     setInflationOn={setInflationOn}
                     withDebts={withDebts}
                     setWithDebts={setWithDebts}
+                    withSaving={withSaving}
+                    setWithSaving={setWithSaving}
                   />
                   <ProjectionCard
                     f={f}
