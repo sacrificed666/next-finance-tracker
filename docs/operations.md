@@ -27,17 +27,21 @@
 
 ## 🔥 Development
 
-The dev container mounts the repository and runs `next dev`. Two details are worth knowing:
+The dev container mounts the repository and runs `next dev`. A few details are worth knowing:
 
 - `npm run dev:docker` starts Next.js with the webpack dev server because Turbopack does not pick up
   file changes through a bind mount on Windows and macOS hosts; `WATCHPACK_POLLING=true` then makes
-  watching reliable. Locally, outside Docker, `npm run dev` with Turbopack is faster.
+  watching reliable. Turbopack's own `watchOptions.pollIntervalMs` was tried with Next.js 16.3 and did
+  not help: no edit reached it within a minute, where webpack showed it in about five seconds.
+  Locally, outside Docker, `npm run dev` with Turbopack is faster.
 - `/app/.next` and `/app/node_modules` are anonymous volumes, so host artefacts never leak into the
   container.
-
 - Stylesheets are **Sass**, so the `sass` package has to exist inside the container. After any
   dependency change run `make dev-build` (or `docker compose exec app npm install`), otherwise the
   dev server cannot compile `globals.scss`.
+- The dev server watches `src/app/globals.scss` but not the partials it pulls in from `src/styles/`.
+  After editing a partial, save `globals.scss` as well (any save, even unchanged) and the change shows
+  in a few seconds — no restart needed.
 
 > [!TIP]
 > If a change does not appear, clear the build cache instead of guessing:
