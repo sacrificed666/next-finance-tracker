@@ -85,6 +85,27 @@ smaller than 24 px, which used to slip through as blurry letter placeholders.
   **Match** opens the reconcile sheet with the bank's figure filled in. See
   [Bank import](./bank-import.md#bank-balances).
 
+## 💳 Debts
+
+A `Debt` has a balance, an optional starting amount, a yearly rate and a monthly payment. The Debts
+card shows how much of each is paid off, the month it clears, the interest still ahead, and the same
+figures for all debts together (`debtPayoff` in `lib/finance/finmath.ts`).
+
+**Plan the payoff** opens a sheet that sets the debts as they stand against a plan
+(`planPayoff` in `lib/finance/payoff.ts`):
+
+| Setting | Effect |
+| --- | --- |
+| Extra each month | Paid on top of the debts' own payments, in the base currency |
+| Highest rate (avalanche) | The extra goes to the dearest debt first — the least interest overall |
+| Smallest balance (snowball) | The extra goes to the smallest debt first — debts disappear sooner, at a little more interest |
+
+The plan keeps paying the same total every month: when a debt is cleared, its payment moves on to
+the next one, so even without an extra amount it finishes sooner than the debts as they stand. The
+sheet shows the debt-free month and the interest both ways, what the plan saves, and the order in
+which the debts clear. All figures are in the base currency at today's rates; a debt with no monthly
+payment is paid only from the extra.
+
 ## 🤝 Money owed to you
 
 Money you lent is a `Receivable`: who has it, how much, since when, an optional due date and how much

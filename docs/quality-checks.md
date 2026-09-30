@@ -29,6 +29,7 @@ it covers and needs no database.
 | `lib/finance/export.test.ts` | The entries and report CSVs: column order, signs, base-currency amounts, quoting, and the separator and decimal mark each language's spreadsheet expects |
 | `lib/finance/forecast.test.ts` | The average kept each month, and the projection adding it to the accounts, compounding it, or running them down |
 | `lib/finance/month-rates.test.ts` | Which months need a rate, the month's rate in conversions, averaging the NBU's daily rates, and normalising stored rates |
+| `lib/finance/payoff.test.ts` | The payoff plan: as the debts stand it matches the Debts card, an extra amount finishes sooner and cheaper, avalanche and snowball clear in their own order, cleared payments roll on, and a plan that never catches up says so |
 | `lib/finance/reminders.test.ts` | What the morning notification lists and when, and how it reads in the user's language |
 | `lib/sealing.test.ts` | Sealing and opening records, which of several keys opened one, and that a wrong key opens nothing |
 | `lib/totp.test.ts` | One-time codes against the RFC 6238 vectors, clock drift, recovery-code format |

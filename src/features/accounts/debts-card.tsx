@@ -1,6 +1,7 @@
 "use client";
 
-import { AddButton, Card, IconDisc, ProgressMeter, SortSelect, type SortDirection } from "@/components/ui";
+import { useState } from "react";
+import { AddButton, Button, Card, IconDisc, ProgressMeter, SortSelect, type SortDirection } from "@/components/ui";
 import { debtColorSlot } from "@/lib/constants";
 import { currentMonth, formatMonthCompact, todayISO } from "@/lib/date";
 import { debtPayoff, netWorth } from "@/lib/finance/finmath";
@@ -9,6 +10,7 @@ import { useT } from "@/lib/i18n";
 import { oneOf, sortItems, usePersistentState } from "@/lib/state/listing";
 import { useStore } from "@/lib/state/store";
 import type { Debt } from "@/lib/types";
+import { PayoffSheet } from "./payoff-sheet";
 
 type DebtSort = "balance" | "rate" | "payoff" | "name";
 
@@ -29,6 +31,7 @@ export function DebtsCard({
   const worth = netWorth(state, todayISO());
   const [sort, setSort] = usePersistentState<DebtSort>("debt.sort", "balance", oneOf(["balance", "rate", "payoff", "name"] as const));
   const [dir, setDir] = usePersistentState<SortDirection>("debt.dir", "desc", oneOf(["asc", "desc"] as const));
+  const [planning, setPlanning] = useState(false);
 
   if (state.debts.length === 0) return null;
 
@@ -169,6 +172,10 @@ export function DebtsCard({
           </span>
         )}
       </div>
+      <Button variant="ghost" size="sm" className="mt-2" onClick={() => setPlanning(true)}>
+        {t("payoff.open")}
+      </Button>
+      {planning && <PayoffSheet onClose={() => setPlanning(false)} />}
     </Card>
   );
 }

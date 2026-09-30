@@ -74,7 +74,9 @@ currency.
 - **Game item accounts** for CS2, Dota 2, Team Fortress 2, Rust, PUBG or a custom game.
 - **Savings goals** roll up into one card: overall progress, the goals closest to done, and what it
   takes each month to meet every deadline.
-- **Debts** with payoff dates, interest left and monthly payment plans.
+- **Debts** with payoff dates, interest left and monthly payment plans, and a **payoff planner**:
+  add an extra amount, pick the dearest or the smallest debt first, and see how much sooner and
+  cheaper it gets.
 - **Empty accounts** fold into one row at the end of the list until you ask to see them.
 - **Money owed to you** — what you lent, to whom, when it is due and how much came back; it counts
   towards net worth.
