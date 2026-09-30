@@ -22,6 +22,8 @@ finances.
 | Recovery codes | Eight single-use codes, shown once, stored as SHA-256 hashes and compared in constant time |
 | Code replay | Each code works once: the server remembers the last step an account signed in with |
 | Sign out everywhere | Raises `users.session_epoch`; every session carries the epoch it started with and ends when they differ |
+| Passkeys | WebAuthn through `@simplewebauthn/server`: discoverable credentials, user verification preferred, no attestation asked for; the public key and counter are sealed in `passkeys` |
+| Sign-in log | Every sign-in's method, device and address, sealed in `sign_ins`; the latest 50 per account are kept |
 
 The Profile page adds a strength meter and a confirmation field, but the server remains the authority
 on what is acceptable.
@@ -47,6 +49,31 @@ account itself.
 > Losing the phone and every recovery code locks the account behind the second step. The owner of the
 > server can still turn it off from the database — see
 > [Operations](./operations.md#locked-out-of-two-step-verification).
+
+### Passkeys
+
+Profile → Sign-in → **Passkeys** adds one for the device in hand: its fingerprint, face or screen
+lock, or a phone nearby. The sign-in page then offers **Sign in with a passkey**, which needs no email
+and no password.
+
+| Rule | Why |
+| --- | --- |
+| Registration and sign-in each get a one-time challenge that expires after five minutes and is used once | A recorded answer cannot be played back |
+| The origin and the relying party come from `AUTH_URL` | A passkey made for this address works nowhere else, and a lookalike address cannot ask for it |
+| The signature counter is kept and checked | A cloned authenticator gives itself away |
+| A passkey sign-in skips the authenticator-app code | The passkey already proves both the device and the person holding it |
+| Sign-in attempts with passkeys share a limit of 20 per address every 15 minutes | Guessing gets nowhere |
+
+Removing a passkey on the Profile page stops it from signing in straight away; the copy on the device
+stays until it is removed there too.
+
+### Recent sign-ins
+
+**Recent sign-ins** on the Profile page lists the last ten: the browser and system, how (password,
+Google or passkey), the address and the time, with the current session marked. The first time a
+browser and system not seen in the last 180 days signs in, every device with notifications on gets a
+note — "Not you? Sign out everywhere from your profile." The very first sign-in of an account sends
+nothing.
 
 ### Sign out everywhere
 

@@ -19,6 +19,7 @@ export interface Profile {
   providers: string[];
   twoFactor: boolean;
   recoveryLeft: number;
+  passkeys: number;
 }
 
 interface ProfileSecret {
@@ -44,7 +45,8 @@ export async function loadProfile(userId: string): Promise<Profile | null> {
             COALESCE(
               (SELECT array_agg(DISTINCT a.provider) FROM accounts a WHERE a."userId" = u.id),
               '{}'
-            ) AS providers
+            ) AS providers,
+            (SELECT count(*) FROM passkeys p WHERE p.user_id = u.id)::int AS passkeys
        FROM users u WHERE u.id = $1`,
     [userId],
   );
@@ -69,6 +71,7 @@ export async function loadProfile(userId: string): Promise<Profile | null> {
     providers: r.providers ?? [],
     twoFactor: Boolean(twoFactor?.secret),
     recoveryLeft: twoFactor?.secret ? (twoFactor.recovery?.length ?? 0) : 0,
+    passkeys: Number(r.passkeys ?? 0),
   };
 }
 

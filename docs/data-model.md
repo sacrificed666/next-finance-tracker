@@ -63,6 +63,10 @@ date). Three more hold data that never travels with `AppState`:
 | `attachments` | Receipt photos, sealed, with their type. Photos no entry refers to any more are removed a day after the save that dropped them |
 | `push_subscriptions` | One sealed row per device that gets notifications: its push address and keys |
 
+Two more tables belong to sign-in and stay out of `AppState`: `passkeys` (one row per passkey, keyed
+by the credential id, with the public key, counter, name and dates sealed) and `sign_ins` (method,
+device and address of each sign-in, sealed; the latest 50 per account are kept).
+
 `app_errors` is the one table not tied to an account: the latest 200 server failures — time, route
 pattern and message — for **Settings → Server problems**.
 

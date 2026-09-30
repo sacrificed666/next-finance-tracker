@@ -20,6 +20,7 @@ export interface Profile {
   providers: string[];
   twoFactor: boolean;
   recoveryLeft: number;
+  passkeys: number;
 }
 
 export type Game = ReturnType<typeof gamification>;

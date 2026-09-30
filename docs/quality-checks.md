@@ -31,6 +31,7 @@ it covers and needs no database.
 | `lib/finance/month-rates.test.ts` | Which months need a rate, the month's rate in conversions, averaging the NBU's daily rates, and normalising stored rates |
 | `lib/finance/payoff.test.ts` | The payoff plan: as the debts stand it matches the Debts card, an extra amount finishes sooner and cheaper, avalanche and snowball clear in their own order, cleared payments roll on, and a plan that never catches up says so |
 | `lib/finance/reminders.test.ts` | What the morning notification lists and when, and how it reads in the user's language |
+| `lib/device.test.ts` | Naming a device from its user agent, and the client's address from forwarded headers |
 | `lib/sealing.test.ts` | Sealing and opening records, which of several keys opened one, and that a wrong key opens nothing |
 | `lib/totp.test.ts` | One-time codes against the RFC 6238 vectors, clock drift, recovery-code format |
 | `lib/web-push.test.ts` | Push encryption against the RFC 8291 example, VAPID signatures, the push-service allow-list, and a delivery to a local server that decrypts it |

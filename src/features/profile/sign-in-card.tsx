@@ -8,6 +8,7 @@ import { Badge, Button, Card, ConfirmDialog, Field, Icon, IconDisc, type IconNam
 import { useT } from "@/lib/i18n";
 import { passwordStrength } from "@/lib/password-meter";
 import type { Profile } from "./shared";
+import { PasskeysSheet } from "./passkeys-sheet";
 import { TwoFactorSheet } from "./two-factor-sheet";
 
 export function SignInCard({ profile, onChange }: { profile: Profile; onChange: (patch: Partial<Profile>) => void }) {
@@ -20,6 +21,7 @@ export function SignInCard({ profile, onChange }: { profile: Profile; onChange: 
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [twoFactor, setTwoFactor] = useState<"enable" | "disable" | null>(null);
   const [endAll, setEndAll] = useState(false);
+  const [passkeysOpen, setPasskeysOpen] = useState(false);
   const google = profile.providers.includes("google");
   const strength = passwordStrength(next);
   const mismatch = repeat.length > 0 && repeat !== next;
@@ -81,6 +83,19 @@ export function SignInCard({ profile, onChange }: { profile: Profile; onChange: 
           {t("profile.google.link")}
         </Button>
       ) : undefined,
+    },
+    {
+      id: "passkeys",
+      icon: "key" as const,
+      slot: 5,
+      title: t("profile.passkeys.title"),
+      status: profile.passkeys > 0 ? tp("profile.passkeys.count", profile.passkeys) : t("profile.passkeys.none"),
+      on: profile.passkeys > 0,
+      action: (
+        <Button variant="ghost" size="sm" onClick={() => setPasskeysOpen(true)}>
+          {profile.passkeys > 0 ? t("profile.passkeys.manage") : t("profile.passkeys.add")}
+        </Button>
+      ),
     },
     ...(profile.hasPassword
       ? [
@@ -195,6 +210,7 @@ export function SignInCard({ profile, onChange }: { profile: Profile; onChange: 
         </div>
       )}
 
+      {passkeysOpen && <PasskeysSheet onCount={(passkeys) => onChange({ passkeys })} onClose={() => setPasskeysOpen(false)} />}
       {twoFactor && (
         <TwoFactorSheet
           mode={twoFactor}

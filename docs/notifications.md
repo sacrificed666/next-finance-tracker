@@ -31,6 +31,9 @@ A budget speaks up once per mark: the check compares the budget before and after
 an operation that fills in a planned payment of the same size changes nothing
 (`lib/finance/alerts.ts`).
 
+One note needs no switch: a sign-in from a browser and system the account has not used in the last
+180 days — see [Security and privacy](./security-and-privacy.md#recent-sign-ins).
+
 ## 📱 Turning it on
 
 **Settings → Notifications → Reminders on this device.** The browser asks for permission once, and

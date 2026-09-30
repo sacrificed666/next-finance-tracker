@@ -404,3 +404,19 @@ CREATE TABLE IF NOT EXISTS app_errors (
     message text NOT NULL,
     digest  text
 );
+
+CREATE TABLE IF NOT EXISTS passkeys (
+    id         text PRIMARY KEY,
+    user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    secret     text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS passkeys_user ON passkeys (user_id);
+
+CREATE TABLE IF NOT EXISTS sign_ins (
+    id      bigserial PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    at      timestamptz NOT NULL DEFAULT now(),
+    secret  text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sign_ins_user ON sign_ins (user_id, at DESC);

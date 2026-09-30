@@ -124,8 +124,10 @@ across seven groups, and a **financial health score** built from seven parts —
 emergency fund, debt load, budget discipline, stability, diversification and investing — each with an
 explanation and a tip that links to the page where you would fix it.
 
-The sign-in card sets or changes the password, links Google, turns on **two-step verification** with
-any authenticator app (plus eight single-use recovery codes) and **signs out every device** at once.
+The sign-in card sets or changes the password, links Google, adds **passkeys** (fingerprint, face or
+screen lock instead of a password), turns on **two-step verification** with any authenticator app
+(plus eight single-use recovery codes) and **signs out every device** at once. **Recent sign-ins**
+lists where the account was opened, and a sign-in from an unfamiliar device sends a notification.
 
 ### ⚙️ Settings
 
@@ -198,7 +200,7 @@ Everything else lives in [`docs/`](./docs/README.md):
 | [Internationalisation](./docs/internationalisation.md) | Locales, dictionaries, plurals |
 | [Design system](./docs/design-system.md) | Surfaces, layout rules, contrast and colour rationale |
 | [Operations](./docs/operations.md) | Docker stacks, migrations, backups, troubleshooting |
-| [Security and privacy](./docs/security-and-privacy.md) | Sessions, hashing, two-step verification, what leaves the machine |
+| [Security and privacy](./docs/security-and-privacy.md) | Sessions, hashing, passkeys, two-step verification, what leaves the machine |
 | [Quality checks](./docs/quality-checks.md) | Types, lint, unit and browser tests, accessibility, screenshots, CI |
 
 ---

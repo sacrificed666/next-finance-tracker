@@ -7,7 +7,9 @@ import { getPool } from "@/lib/server/db";
 import { googleEnabled } from "@/lib/server/auth-config";
 import { hashPassword, needsRehash, verifyPassword } from "@/lib/server/password";
 import { clientKey, rateLimit } from "@/lib/server/rate-limit";
+import { verifyPasskeyLogin } from "@/lib/server/passkeys";
 import { sessionEpoch } from "@/lib/server/sessions";
+import { noteSignIn } from "@/lib/server/sign-ins";
 import { twoFactorEnabled, verifySecondFactor } from "@/lib/server/two-factor";
 
 export { OWNER_EMAIL, googleEnabled } from "@/lib/server/auth-config";
@@ -18,6 +20,12 @@ class SecondFactorRequired extends CredentialsSignin {
 
 class SecondFactorWrong extends CredentialsSignin {
   code = "two_factor_wrong";
+}
+
+declare module "next-auth" {
+  interface Session {
+    signInId?: string;
+  }
 }
 
 const lazyPool = {
@@ -69,12 +77,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return { id: user.id, email: user.email, name: user.name, image: user.image };
       },
     }),
+    Credentials({
+      id: "passkey",
+      name: "Passkey",
+      credentials: { response: {} },
+      async authorize(raw, request) {
+        if (!rateLimit(clientKey(request, "passkey"), 20, 15 * 60_000).allowed) return null;
+        try {
+          return await verifyPasskeyLogin(JSON.parse(String(raw?.response ?? "")));
+        } catch {
+          return null;
+        }
+      },
+    }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user?.id) {
         token.sub = user.id;
         token.epoch = await sessionEpoch(user.id);
+        const method = account?.provider === "google" ? "google" : account?.provider === "passkey" ? "passkey" : "password";
+        token.signInId = await noteSignIn(user.id, method);
         return token;
       }
       if (token.sub && (await sessionEpoch(token.sub)) !== (Number(token.epoch) || 0)) return null;
@@ -82,6 +105,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async session({ session, token }) {
       if (token.sub && session.user) session.user.id = token.sub;
+      if (typeof token.signInId === "string") session.signInId = token.signInId;
       return session;
     },
   },

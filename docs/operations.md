@@ -149,7 +149,8 @@ To use an encrypted copy: `age -d -i finance-backup.key -o prod.dump prod-….du
 | --- | --- |
 | Every device asked to sign in again | `AUTH_SECRET` changed, or *Sign out everywhere* was used on the Profile page |
 | Sign-in keeps asking for a code that is right | The phone's clock is off by more than 30 seconds — turn on automatic time |
-| Phone and recovery codes both lost | Turn two-step verification off from the database, below |
+| Phone and recovery codes both lost | A passkey still signs in; otherwise turn two-step verification off from the database, below |
+| Creating or using a passkey fails at once | `AUTH_URL` has to be the exact address in the browser's bar — the same scheme, host and port |
 | No morning notification | Nothing was due, the device's switch is off, or the browser blocks the site; **Send a test** in Settings tells which |
 | Notifications stopped after a secret changed | The push key follows `DATA_ENCRYPTION_KEY` (or `AUTH_SECRET`); switch reminders on again on each device |
 | 500 on save | A new enum value missing from a `CHECK` constraint in `db/schema.sql` |

@@ -12,6 +12,7 @@ import { HealthCard } from "./health-card";
 import { ProfileHero } from "./profile-hero";
 import type { Profile } from "./shared";
 import { SignInCard } from "./sign-in-card";
+import { SignInsCard } from "./sign-ins-card";
 import { StatsCard } from "./stats-card";
 
 export function ProfilePage() {
@@ -58,6 +59,7 @@ export function ProfilePage() {
             <>
               <HealthCard g={g} />
               <SignInCard profile={profile} onChange={(patch) => setProfile((p) => (p ? { ...p, ...patch } : p))} />
+              <SignInsCard />
             </>
           }
         />

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -13,6 +14,7 @@ import { passwordStrength } from "@/lib/password-meter";
 import type { Locale } from "@/lib/types";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const noSubscription = () => () => {};
 
 function LanguagePicker() {
   const { locale } = useT();
@@ -46,6 +48,7 @@ export function SignInPage({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const canPasskey = useSyncExternalStore(noSubscription, () => browserSupportsWebAuthn(), () => false) && !register;
   const [needCode, setNeedCode] = useState(false);
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -85,6 +88,30 @@ export function SignInPage({
       router.refresh();
     } catch {
       setError(t("auth.error.network"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const passkeySignIn = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const options = await fetch("/api/passkeys/options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purpose: "login" }),
+      }).then((res) => (res.ok ? res.json() : Promise.reject(new Error("options"))));
+      const response = await startAuthentication({ optionsJSON: options });
+      const result = await signIn("passkey", { response: JSON.stringify(response), redirect: false });
+      if (result?.error) {
+        setError(t("auth.passkey.failed"));
+        return;
+      }
+      router.push(next);
+      router.refresh();
+    } catch (err) {
+      if (!(err instanceof Error && err.name === "NotAllowedError")) setError(t("auth.passkey.failed"));
     } finally {
       setBusy(false);
     }
@@ -199,22 +226,32 @@ export function SignInPage({
           )}
         </form>
 
-        {googleEnabled && !needCode && (
+        {(googleEnabled || canPasskey) && !needCode && (
           <>
             <div className="my-4 flex items-center gap-3">
               <span className="h-px flex-1 bg-hairline" />
               <span className="caption">{t("auth.or")}</span>
               <span className="h-px flex-1 bg-hairline" />
             </div>
-            <Button
-              variant="ghost"
-              className="w-full"
-              disabled={busy}
-              onClick={() => void signIn("google", { redirectTo: next })}
-            >
-              <Icon name="globe" size={16} />
-              {t("auth.google")}
-            </Button>
+            <div className="space-y-2">
+              {canPasskey && (
+                <Button variant="ghost" className="w-full" disabled={busy} onClick={() => void passkeySignIn()}>
+                  <Icon name="key" size={16} />
+                  {t("auth.passkey")}
+                </Button>
+              )}
+              {googleEnabled && (
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() => void signIn("google", { redirectTo: next })}
+                >
+                  <Icon name="globe" size={16} />
+                  {t("auth.google")}
+                </Button>
+              )}
+            </div>
           </>
         )}
       </Card>

@@ -124,7 +124,10 @@ sheet of its own.
 | `PATCH /api/state` | `{ base, changes }`: merges the changes into the stored state, normalises the result and writes only the records whose content changed |
 | `HEAD /api/state` | The revision alone, for the "did another device save?" check |
 | `POST /api/auth/register` | Owner-only registration (`OWNER_EMAIL`) |
-| `GET/POST /api/auth/[...nextauth]` | Auth.js handlers (credentials + optional Google) |
+| `GET/POST /api/auth/[...nextauth]` | Auth.js handlers (password, passkey and optional Google) |
+| `POST /api/passkeys/options` | `{ purpose: "register" }` with a session, or `{ purpose: "login" }` without one: the WebAuthn options with a fresh challenge |
+| `GET/POST/DELETE /api/passkeys` | This account's passkeys; save one after the browser created it; remove one |
+| `GET /api/profile/sign-ins` | The last ten sign-ins, and which of them is the current session |
 | `GET/PATCH /api/profile` | Display name, avatar URL, about note |
 | `POST /api/profile/password` | Set or change the password |
 | `POST /api/profile/two-factor` | `{ action, code }`: `begin` returns a new secret and its `otpauth://` address, `confirm` turns two-step verification on and returns the recovery codes, `disable` turns it off |
