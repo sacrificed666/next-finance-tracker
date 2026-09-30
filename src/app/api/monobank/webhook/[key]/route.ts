@@ -9,6 +9,7 @@ import { pushTo } from "@/lib/server/push";
 import { clientKey, rateLimit } from "@/lib/server/rate-limit";
 import { loadState, saveChanges } from "@/lib/server/repo";
 import { diffState } from "@/lib/state/changes";
+import { logError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ key
       for (const message of messages) await pushTo(found.userId, message).catch(() => undefined);
     });
   } catch (err) {
-    console.error("[api/monobank/webhook]", err);
+    await logError("api/monobank/webhook/[key]", err);
     return NextResponse.json({ error: "not saved" }, { status: 500 });
   }
   return NextResponse.json({ ok: true });

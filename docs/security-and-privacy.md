@@ -75,6 +75,10 @@ Every record is stored as an **AES-256-GCM** ciphertext, not as readable columns
 | `push_subscriptions` | Each device's push address and keys |
 | `attachments` | The receipt photo itself |
 
+`app_errors` is not sealed: it holds error messages and route patterns, keeps only the latest 200, and
+only the owner can read it. No record is written into it, though a database error can quote the value
+it tripped on — an email address in a duplicate-key error, for example.
+
 Each row keeps only its `id`, its `user_id` and a `secret` column that holds
 `enc.v1.<iv+tag+ciphertext>` in base64; the old plaintext columns are written as `NULL`. A dump of the
 database therefore shows which rows exist, but not a single amount, name or note.

@@ -4,6 +4,7 @@ import { sealRecord } from "@/lib/server/secrets";
 import { hashPassword, passwordProblem } from "@/lib/server/password";
 import { OWNER_EMAIL } from "@/lib/server/auth-config";
 import { clientKey, rateLimit } from "@/lib/server/rate-limit";
+import { logError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {
-    console.error("[api/auth/register]", err);
+    await logError("api/auth/register", err);
     return NextResponse.json({ error: "Could not create the account." }, { status: 500 });
   }
 }

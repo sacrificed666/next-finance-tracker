@@ -131,6 +131,7 @@ sheet of its own.
 | `DELETE /api/profile/sessions` | Ends every session of the account by raising its session epoch |
 | `GET/PUT/DELETE /api/push` | The key devices subscribe with and the hour notes go out; save or forget this device |
 | `POST /api/push/test` | Send a test notification to this device |
+| `GET/DELETE /api/errors` | The latest server failures, or clear them; the owner only |
 | `POST /api/push/remind` | Send the day's notes; called every 15 minutes by the server's own timer, with a token instead of a session |
 | `GET /api/inzhur` | Scrapes published Inzhur fund data, cached in memory for 10 minutes |
 | `GET/POST/DELETE /api/monobank` | Monobank connection: the card list (never the token), connect with a token, disconnect |

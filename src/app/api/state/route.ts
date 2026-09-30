@@ -5,6 +5,7 @@ import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from "@/lib/i18n/locales";
 import { claimOrphanData, loadState, saveChanges, stateRevision } from "@/lib/server/repo";
 import { resealOlderRecords } from "@/lib/server/reseal";
 import { describeChanges, parseChanges } from "@/lib/state/changes";
+import { logError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ function unauthorized() {
 
 function fail(err: unknown, status = 500) {
   const message = err instanceof Error ? err.message : "Unexpected database error";
-  console.error("[api/state]", err);
+  void logError("api/state", err);
   return NextResponse.json({ error: message }, { status });
 }
 
@@ -54,7 +55,7 @@ export async function HEAD() {
   try {
     return new NextResponse(null, { headers: { ETag: toEtag(await stateRevision(userId)) } });
   } catch (err) {
-    console.error("[api/state]", err);
+    await logError("api/state", err);
     return new NextResponse(null, { status: 500 });
   }
 }

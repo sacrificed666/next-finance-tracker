@@ -396,3 +396,11 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS reminded_on date;
+
+CREATE TABLE IF NOT EXISTS app_errors (
+    id      bigserial PRIMARY KEY,
+    at      timestamptz NOT NULL DEFAULT now(),
+    route   text NOT NULL,
+    message text NOT NULL,
+    digest  text
+);

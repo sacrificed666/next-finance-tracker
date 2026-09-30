@@ -63,6 +63,9 @@ date). Three more hold data that never travels with `AppState`:
 | `attachments` | Receipt photos, sealed, with their type. Photos no entry refers to any more are removed a day after the save that dropped them |
 | `push_subscriptions` | One sealed row per device that gets notifications: its push address and keys |
 
+`app_errors` is the one table not tied to an account: the latest 200 server failures — time, route
+pattern and message — for **Settings → Server problems**.
+
 `users` also carries two sign-in columns — `two_factor` (sealed: the authenticator secret and the
 recovery-code hashes, `NULL` while two-step verification is off) and `session_epoch` (an integer that
 *Sign out everywhere* raises) — and `reminded_on`, the last day the morning notification was handled.

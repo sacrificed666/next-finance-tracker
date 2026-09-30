@@ -10,6 +10,7 @@ import { ImportCard } from "./import-card";
 import { NotificationsCard } from "./notifications-card";
 import { RatesCard } from "./rates-card";
 import { RulesCard } from "./rules-card";
+import { ServerErrorsCard } from "./server-errors-card";
 import { SettingsHero } from "./settings-hero";
 
 function AboutCard() {
@@ -42,6 +43,7 @@ export function SettingsPage() {
             <>
               <GeneralCard />
               <NotificationsCard />
+              <ServerErrorsCard />
               <RatesCard />
               <AboutCard />
             </>

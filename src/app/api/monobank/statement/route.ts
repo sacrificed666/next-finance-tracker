@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/server/auth";
 import { loadMono, MONO_MAX_RANGE_S, monoStatement, MonoError, recordMonoBalance } from "@/lib/server/monobank";
+import { logError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ items });
   } catch (err) {
     if (err instanceof MonoError) return NextResponse.json({ error: err.message }, { status: err.status });
-    console.error("[api/monobank/statement]", err);
+    await logError("api/monobank/statement", err);
     return NextResponse.json({ error: "unreachable" }, { status: 502 });
   }
 }

@@ -164,6 +164,13 @@ To use an encrypted copy: `age -d -i finance-backup.key -o prod.dump prod-….du
 Container logs: `make dev-logs` (or `stage-` / `prod-`). The app logs one line per request with the
 route, status and timing.
 
+Failures are also kept in the database, so they can be read without a shell: **Settings → Server
+problems** lists the latest ones to the owner (`OWNER_EMAIL`) and appears only when there are any.
+Every API handler that catches an error records it (`logError` in `lib/error-log.ts`), and
+`onRequestError` in `src/instrumentation.ts` records the ones nothing caught — by route pattern, such
+as `GET /api/monobank/webhook/[key]`, so no secret from an address ends up in the log. The table keeps
+the latest 200; **Clear** empties it.
+
 ### Locked out of two-step verification
 
 Only the server's owner can do this, and it needs nothing but database access. Open `psql` with

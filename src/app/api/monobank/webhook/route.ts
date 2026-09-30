@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/server/auth";
 import { MonoError, publicMono, setMonoWebhook } from "@/lib/server/monobank";
+import { logError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
     return NextResponse.json(publicMono(await setMonoWebhook(userId, on ? origin : null)));
   } catch (err) {
     if (err instanceof MonoError) return NextResponse.json({ error: err.message }, { status: err.status });
-    console.error("[api/monobank/webhook]", err);
+    await logError("api/monobank/webhook", err);
     return NextResponse.json({ error: "unreachable" }, { status: 502 });
   }
 }

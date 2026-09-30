@@ -8,6 +8,7 @@ import {
   websiteProblem,
   type ProfilePatch,
 } from "@/lib/server/profile";
+import { logError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +67,7 @@ export async function PATCH(request: Request) {
     await saveProfile(id, patch);
     return NextResponse.json(await loadProfile(id));
   } catch (err) {
-    console.error("[api/profile]", err);
+    await logError("api/profile", err);
     return NextResponse.json({ error: "Could not save the profile." }, { status: 500 });
   }
 }

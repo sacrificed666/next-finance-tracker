@@ -10,6 +10,7 @@ import { makeI18n, type I18n } from "@/lib/i18n/core";
 import { serverMessages } from "@/lib/i18n/server";
 import type { Locale } from "@/lib/types";
 import { base64url, isSubscription, sendPush, vapidFromSeed, type PushSubscriptionKeys, type VapidKeys } from "@/lib/web-push";
+import { logError } from "@/lib/error-log";
 
 const seed = process.env.DATA_ENCRYPTION_KEY?.trim() || process.env.AUTH_SECRET?.trim();
 const vapid: VapidKeys | null = seed ? vapidFromSeed(createHash("sha256").update(`finance-tracker:vapid:${seed}`).digest()) : null;
@@ -105,7 +106,7 @@ export async function sendDigests(now = new Date()): Promise<{ checked: number; 
       const message = reminderMessage(dueReminders(state, date, i18n), date, i18n);
       if (message) sent += (await pushTo(id, message)).sent;
     } catch (err) {
-      console.error("[push] digest failed", err);
+      await logError("push digest", err);
     }
   }
   return { checked: due.rowCount ?? 0, sent };

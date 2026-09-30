@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/server/auth";
 import { connectMono, deleteMono, loadMono, MonoError, publicMono } from "@/lib/server/monobank";
+import { logError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ async function userId(): Promise<string | null> {
 
 function monoFailure(err: unknown) {
   if (err instanceof MonoError) return NextResponse.json({ error: err.message }, { status: err.status });
-  console.error("[api/monobank]", err);
+  void logError("api/monobank", err);
   return NextResponse.json({ error: "unreachable" }, { status: 502 });
 }
 
