@@ -197,7 +197,7 @@ Everything else lives in [`docs/`](./docs/README.md):
 | [Design system](./docs/design-system.md) | Surfaces, layout rules, contrast and colour rationale |
 | [Operations](./docs/operations.md) | Docker stacks, migrations, backups, troubleshooting |
 | [Security and privacy](./docs/security-and-privacy.md) | Sessions, hashing, two-step verification, what leaves the machine |
-| [Quality checks](./docs/quality-checks.md) | Types, lint, unit and browser tests, CI |
+| [Quality checks](./docs/quality-checks.md) | Types, lint, unit and browser tests, accessibility, screenshots, CI |
 
 ---
 

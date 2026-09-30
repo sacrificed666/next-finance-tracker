@@ -41,7 +41,7 @@ ROW := printf "  $(CYAN)%-20s$(RESET) %s\n"
         stage-psql stage-migrate stage-db-backup stage-db-restore stage-destroy stage-deploy \
         prod-build prod-up prod-down prod-restart prod-logs prod-ps prod-shell prod-psql \
         prod-migrate prod-db-backup prod-db-backup-now prod-backup-check prod-backups prod-db-restore prod-destroy prod-deploy \
-        lint typecheck build config prune clean
+        lint typecheck build e2e-visual e2e-visual-update config prune clean
 
 help:
 	@printf "\n$(BOLD)🧾 Finance tracker$(RESET) $(DIM)— docker orchestration$(RESET)\n"
@@ -100,6 +100,8 @@ help:
 	@$(ROW) "lint" "🧹 Run ESLint"
 	@$(ROW) "typecheck" "🔍 Run the TypeScript compiler"
 	@$(ROW) "build" "📦 Build the app on the host"
+	@$(ROW) "e2e-visual" "📸 Compare the screenshots in the Playwright image"
+	@$(ROW) "e2e-visual-update" "🖼️  Take the screenshots again as the new baseline"
 	@printf "\n$(BOLD)🧽 Housekeeping$(RESET)\n"
 	@$(ROW) "clean" "🧽 Remove local build artefacts"
 	@$(ROW) "prune" "🗑️  Prune dangling docker images · containers · networks"
@@ -354,6 +356,21 @@ typecheck:
 
 build:
 	@printf "📦 building…\n" && npm run build
+
+VISUAL_IMAGE := mcr.microsoft.com/playwright:v1.63.0-noble
+
+e2e-visual:
+	@$(MAKE) --no-print-directory visual-run MODE=check
+
+e2e-visual-update:
+	@$(MAKE) --no-print-directory visual-run MODE=update
+
+visual-run:
+	@printf "📸 building and screenshotting in $(VISUAL_IMAGE)…\n"
+	@mkdir -p e2e/visual.spec.ts-snapshots test-results
+	@docker network create finance-visual > /dev/null 2>&1 || true
+	@docker run -d --rm --name finance-visual-db --network finance-visual -e POSTGRES_USER=finance -e POSTGRES_PASSWORD=finance -e POSTGRES_DB=finance_tracker postgres:18-alpine > /dev/null
+	@export MSYS_NO_PATHCONV=1; docker run --rm --network finance-visual -v "$(CURDIR):/src:ro" -v "$(CURDIR)/e2e/visual.spec.ts-snapshots:/work/e2e/visual.spec.ts-snapshots" -v "$(CURDIR)/test-results:/work/test-results" -v finance-visual-npm:/cache $(VISUAL_IMAGE) bash /src/e2e/visual.sh $(MODE); status=$$?; docker rm -f finance-visual-db > /dev/null; docker network rm finance-visual > /dev/null; exit $$status
 
 clean:
 	@printf "🧽 removing .next and caches…\n"

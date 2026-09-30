@@ -63,6 +63,8 @@ phone, and the flows that tie pages together.
 | `e2e/pages.spec.ts` | Every page renders without page or console errors and shows no key from `en.ts` untranslated; a visitor without a session lands on the sign-in page, a signed-in one is sent on from it, and a session ended on every device reaches the form |
 | `e2e/layout.spec.ts` | No page is wider than the screen, and no block scrolls by only a few pixels |
 | `e2e/flows.spec.ts` | The command palette opens, filters and navigates; an entry opens from the address bar and closing clears it; a change is saved as a change set; an edit the server did not take survives a reload and undo drops it |
+| `e2e/a11y.spec.ts` | axe finds no serious or critical WCAG 2.1 A/AA problem on any page, the entry sheet, the command palette or the sign-in page |
+| `e2e/visual.spec.ts` | Six pages look as they did, pixel for pixel — the overview and Expenses in both themes, the rest in dark — at both sizes |
 
 ```bash
 npm run e2e                                   # against http://localhost:3000
@@ -83,6 +85,36 @@ E2E_USER_ID=<uuid> npm run e2e                # as a real account, read-only
 > [!WARNING]
 > Do not disable the middleware to make tests easier; the gate is part of what is being tested.
 
+### Accessibility
+
+`e2e/a11y.spec.ts` runs [axe](https://github.com/dequelabs/axe-core) with the WCAG 2.1 A and AA
+rules and fails on anything serious or critical. Colour contrast on the glass is the one thing axe
+cannot judge: over a blurred backdrop it reports "incomplete" rather than a result. That contrast is
+measured instead — see [Design system](./design-system.md#-why-the-glass-is-measured-not-styled).
+
+### Screenshots
+
+`e2e/visual.spec.ts` compares each screen with a stored PNG in `e2e/visual.spec.ts-snapshots/` and
+fails when more than 25 pixels differ. Two things keep the pictures stable:
+
+- **The same renderer everywhere.** The screenshots run only on Linux, inside the
+  `mcr.microsoft.com/playwright:v1.63.0-noble` image — CI runs its browser job in that image, and
+  `make e2e-visual` builds and runs the app in it locally. On Windows or macOS `npm run e2e` skips them.
+- **The same data and day.** The test answers `GET /api/state` with a fixed account
+  (`e2e/visual-state.ts`: three accounts, six months of entries, rent, two subscriptions, budgets, a
+  deposit, a car loan and a loan to a friend), fixes the clock at 15 September 2026, 10:00 Kyiv time,
+  and waits until the entrance animations and fonts are done. The theme comes from that state, so no
+  setting is ever saved.
+
+```bash
+make e2e-visual          # build in the image and compare
+make e2e-visual-update   # take them again after a deliberate change, then review the PNGs in the diff
+```
+
+> [!TIP]
+> When a comparison fails, `test-results/` holds the expected image, the actual one and a diff for
+> each screen. A new baseline belongs in the same commit as the change that caused it.
+
 ## 🤖 Continuous integration
 
 `.github/workflows/ci.yml` runs on every push to `main` and on pull requests:
@@ -90,7 +122,7 @@ E2E_USER_ID=<uuid> npm run e2e                # as a real account, read-only
 | Job | Steps |
 | --- | --- |
 | **Types, lint, unit tests, build** | `npm ci`, `tsc --noEmit`, `eslint src e2e`, `npm test`, `next build` |
-| **Browser tests** | A Postgres service, secrets generated for the run, the standalone production build started on port 3000, then `npx playwright test`; the report, traces and server log are kept for seven days when it fails |
+| **Browser tests** | Inside the Playwright image, with a Postgres service: secrets generated for the run, the standalone production build started on port 3000, then `npx playwright test` — pages, layout, flows, accessibility and screenshots; the report, traces and server log are kept for seven days when it fails |
 
 > [!NOTE]
 > CI needs no repository secrets: `AUTH_SECRET` and `DATA_ENCRYPTION_KEY` are random for each run and

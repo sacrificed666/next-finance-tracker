@@ -93,7 +93,7 @@ export function LanguagePicker({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls={listId}
+        aria-controls={open ? listId : undefined}
         aria-label={`${t("settings.language")}: ${current.native}`}
         onClick={() => (open ? setOpen(false) : openList())}
         onKeyDown={(e) => {
