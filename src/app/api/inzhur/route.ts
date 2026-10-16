@@ -10,10 +10,12 @@ const USER_AGENT =
 const TIMEOUT_MS = 12_000;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
-const NAV_LABEL = "ВЧА на сертифікат";
+const NAV_LABEL = "ВЧА\\s+на\\s+(?:1\\s+)?сертифікат";
+const NAV_KEY = "certificateNetAssetPrice";
+const NAV_WINDOW = 240;
 
 interface CacheEntry {
-  quotes: InzhurQuote[];
+  quotes: Map<string, InzhurQuote>;
   fetchedAt: number;
 }
 
@@ -21,7 +23,7 @@ let cache: CacheEntry | null = null;
 
 function parseUaNumber(raw: string): number | null {
   const cleaned = raw
-    .replace(/ | |\s/g, "")
+    .replace(/ | |\s/g, "")
     .replace(/₴/g, "")
     .replace(",", ".");
   const value = Number(cleaned);
@@ -29,18 +31,25 @@ function parseUaNumber(raw: string): number | null {
 }
 
 function extractNav(html: string): number | null {
+  const text = html.replace(/&quot;|&#34;|&#x22;/giu, '"');
+
   const rendered = new RegExp(
     `<dd[^>]*>([^<]*)</dd>\\s*<dt[^>]*>\\s*${NAV_LABEL}\\s*</dt>`,
     "u",
-  ).exec(html);
+  ).exec(text);
   if (rendered) {
     const value = parseUaNumber(rendered[1]);
     if (value) return value;
   }
-  const payload = /"([0-9]+[.,][0-9]+)"\s*,\s*"certificateNetAssetPrice"/u.exec(html);
-  if (payload) {
-    const value = parseUaNumber(payload[1]);
-    if (value) return value;
+
+  const key = text.indexOf(`"${NAV_KEY}"`);
+  if (key > 0) {
+    const before = text.slice(Math.max(0, key - NAV_WINDOW), key);
+    const quoted = [...before.matchAll(/"([0-9][0-9\s ]*(?:[.,][0-9]+)?)"/gu)];
+    for (let i = quoted.length - 1; i >= 0; i--) {
+      const value = parseUaNumber(quoted[i][1]);
+      if (value) return value;
+    }
   }
   return null;
 }
@@ -67,33 +76,48 @@ function currencyOf(raw: string | undefined): "USD" | "UAH" | undefined {
 
 const PROJECTED_RE =
   /прогнозован[а-яіїєґ']*\s+(?:середньорічн[а-яіїєґ']*\s+)?(?:прост[а-яіїєґ']*\s+)?дохідн[а-яіїєґ']*\s+фонду/giu;
-const PCT_RE = /(\d{1,3}(?:[.,]\d{1,2})?)(?:\s*[-–—]\s*(\d{1,3}(?:[.,]\d{1,2})?))?\s*%/u;
+const ACTUAL_RE = /фактичн[а-яіїєґ']*\s+дохідн[а-яіїєґ']*\s+фонду/giu;
+const PCT_RE =
+  /(\d{1,3}(?:[.,]\d{1,2})?)(?:\s*[-–—]\s*(\d{1,3}(?:[.,]\d{1,2})?))?\s*%([^%]{0,40})/giu;
+const LABEL_LEAD = 90;
+const LABEL_TAIL = 220;
 
-function extractProjected(
-  text: string,
-): { min: number; max?: number; currency?: "USD" | "UAH" } | null {
-  for (const match of text.matchAll(PROJECTED_RE)) {
-    const start = (match.index ?? 0) + match[0].length;
-    const tail = text.slice(start, start + 220);
-    const pct = PCT_RE.exec(tail);
-    const min = parsePct(pct?.[1]);
-    if (!pct || !min) continue;
-    const after = tail.slice(pct.index, pct.index + 60);
-    return {
-      min,
-      max: parsePct(pct[2]),
-      currency: currencyOf(/\b(USD|UAH)\b|доларах|гривн/u.exec(after)?.[0]),
-    };
+interface Yield {
+  min: number;
+  max?: number;
+  currency?: "USD" | "UAH";
+}
+
+function readPct(fragment: string, pick: "first" | "last"): Yield | null {
+  let found: Yield | null = null;
+  for (const match of fragment.matchAll(PCT_RE)) {
+    const min = parsePct(match[1]);
+    if (!min) continue;
+    found = { min, max: parsePct(match[2]), currency: currencyOf(match[3]) };
+    if (pick === "first") break;
+  }
+  return found;
+}
+
+function yieldNear(text: string, label: RegExp): Yield | null {
+  for (const match of text.matchAll(label)) {
+    const start = match.index ?? 0;
+    const before = readPct(text.slice(Math.max(0, start - LABEL_LEAD), start), "last");
+    if (before) return before;
+    const tail = start + match[0].length;
+    const after = readPct(text.slice(tail, tail + LABEL_TAIL), "first");
+    if (after) return after;
   }
   return null;
 }
 
+function extractProjected(text: string): Yield | null {
+  return yieldNear(text, PROJECTED_RE);
+}
+
 function extractActual(text: string): { pct: number; currency?: "USD" | "UAH" } | null {
-  const match =
-    /(\d{1,3}(?:[.,]\d{1,2})?)\s*%\s*у\s*(USD|UAH)\s*Фактична дохідність фонду за останні 12/u.exec(text) ??
-    /Фактична дохідність фонду\s*за останні 12 міс\s*[-–—:]?\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*%\s*у\s*(USD|UAH)/u.exec(text);
-  const pct = parsePct(match?.[1]);
-  return match && pct ? { pct, currency: currencyOf(match[2]) } : null;
+  const found = yieldNear(text, ACTUAL_RE);
+  return found ? { pct: found.min, currency: found.currency } : null;
 }
 
 async function fetchFundPage(slug: string): Promise<string | null> {
@@ -114,8 +138,8 @@ async function fetchFundPage(slug: string): Promise<string | null> {
   }
 }
 
-async function loadQuotes(): Promise<InzhurQuote[]> {
-  const results = await Promise.all(
+async function loadQuotes(): Promise<Array<InzhurQuote | null>> {
+  return Promise.all(
     INZHUR_FUNDS.map(async (fund): Promise<InzhurQuote | null> => {
       const html = await fetchFundPage(fund.slug);
       if (!html) return null;
@@ -137,7 +161,6 @@ async function loadQuotes(): Promise<InzhurQuote[]> {
       };
     }),
   );
-  return results.filter((q): q is InzhurQuote => q !== null);
 }
 
 export async function GET(request: Request) {
@@ -149,8 +172,12 @@ export async function GET(request: Request) {
   const now = Date.now();
   if (!cache || now - cache.fetchedAt > CACHE_TTL_MS) {
     try {
-      const quotes = await loadQuotes();
-      if (quotes.length > 0) cache = { quotes, fetchedAt: now };
+      const loaded = await loadQuotes();
+      const quotes = new Map(cache?.quotes ?? []);
+      for (const quote of loaded) {
+        if (quote) quotes.set(quote.id, quote);
+      }
+      if (quotes.size > 0) cache = { quotes, fetchedAt: now };
     } catch (err) {
       console.error("[api/inzhur]", err);
     }
@@ -167,13 +194,12 @@ export async function GET(request: Request) {
   const filter = wanted
     ? new Set(wanted.split(",").map((s) => s.trim()).filter(Boolean))
     : null;
-  const quotes = filter
-    ? cache.quotes.filter((q) => filter.has(q.id))
-    : cache.quotes;
+  const all = [...cache.quotes.values()];
+  const quotes = filter ? all.filter((q) => filter.has(q.id)) : all;
 
   return NextResponse.json({
     quotes,
     fetchedAt: new Date(cache.fetchedAt).toISOString(),
-    partial: quotes.length < INZHUR_FUNDS.length,
+    partial: all.length < INZHUR_FUNDS.length,
   });
 }

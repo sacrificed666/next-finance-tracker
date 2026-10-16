@@ -46,11 +46,22 @@ Three funds are supported, and everything about them is fetched rather than type
 
 `GET /api/inzhur` fetches each fund's public offer page server-side and extracts:
 
-- **NAV per certificate** ("ВЧА на сертифікат"), used to value your position;
+- **NAV per certificate** ("ВЧА на сертифікат" or "ВЧА на 1 сертифікат"), used to value your position;
 - **forecast yield**, including ranges such as `25–29%`;
 - **actual yield over the last 12 months**, when the fund publishes it.
 
-Results are cached in memory for 10 minutes, each request has a 12-second timeout, and the route
+> [!IMPORTANT]
+> On the fund pages the **number comes before its label** ("від 9,5% у USD · Прогнозована дохідність
+> фонду, річних"). The route therefore reads the percentage *in front of* each label and only falls
+> back to the text after it, which is the prose form MilTech uses. Reading forward first is what made
+> REIT report its 12-month result as the forecast.
+
+NAV is read from the rendered `<dd>/<dt>` pair, and when the page ships it only inside the
+HTML-escaped island payload (`&quot;value&quot;…&quot;certificateNetAssetPrice&quot;`), the route
+unescapes the markup and takes the number in front of that key.
+
+Results are cached in memory for 10 minutes **per fund**, so a page that fails to parse keeps its last
+good quote instead of dropping out of the response. Each request has a 12-second timeout and the route
 requires a session.
 
 > [!NOTE]
